@@ -5,7 +5,10 @@
 # ==============================================================================
 bashio::require.unprotected
 
-bashio::log.debug "Huly init script starting..."
+bashio::log.info "========================================"
+bashio::log.info "Huly init starting at $(date '+%Y-%m-%d %H:%M:%S %Z')"
+bashio::log.info "========================================"
+bashio::log.debug "Architecture: $(uname -m)"
 bashio::log.debug "Architecture: $(uname -m)"
 bashio::log.debug "Kernel: $(uname -r)"
 

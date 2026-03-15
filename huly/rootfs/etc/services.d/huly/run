@@ -3,7 +3,9 @@
 # Home Assistant Add-on: Huly
 # Starts the Huly stack via Docker Compose
 # ==============================================================================
-bashio::log.info "Starting Huly stack..."
+bashio::log.info "========================================"
+bashio::log.info "Huly stack starting at $(date '+%Y-%m-%d %H:%M:%S %Z')"
+bashio::log.info "========================================"
 
 cd /data/huly || exit 1
 

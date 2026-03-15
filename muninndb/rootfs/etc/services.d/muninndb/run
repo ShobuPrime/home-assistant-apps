@@ -4,7 +4,9 @@
 # Runs MuninnDB
 # ==============================================================================
 
-bashio::log.info 'Starting MuninnDB...'
+bashio::log.info "========================================"
+bashio::log.info "MuninnDB starting at $(date '+%Y-%m-%d %H:%M:%S %Z')"
+bashio::log.info "========================================"
 
 # Set data directory
 export MUNINNDB_DATA="/data/muninndb"
