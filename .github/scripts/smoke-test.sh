@@ -117,31 +117,53 @@ docker run -d \
 # ---------------------------------------------------------------------------
 # Wait for health endpoint
 # ---------------------------------------------------------------------------
-echo "==> Waiting for service to be healthy (max ${MAX_WAIT}s)..."
-WAITED=0
-HEALTHY=false
-while [ ${WAITED} -lt ${MAX_WAIT} ]; do
-    # Check container is still running
-    if ! docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
-        fail "Container exited prematurely"
-    fi
-
-    # Try health check — attempt common health paths, then fall back to TCP
-    for path in "${HEALTH_PATH}" "api/health" ""; do
-        if docker exec "${CONTAINER_NAME}" \
-            curl -sf --max-time 3 "http://127.0.0.1:${HEALTH_PORT}/${path}" > /dev/null 2>&1; then
-            pass "Health endpoint responded at /${path:-} (${WAITED}s)"
-            HEALTHY=true
-            break 2
+# For compose-based addons (huly), the full stack won't be available in CI
+# since Docker images aren't pre-pulled. Wait for the addon container's init
+# to complete instead of a health endpoint.
+if [ "${SLUG}" = "huly" ]; then
+    echo "==> Waiting for addon init to complete (max ${MAX_WAIT}s)..."
+    WAITED=0
+    while [ ${WAITED} -lt ${MAX_WAIT} ]; do
+        if ! docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
+            fail "Container exited prematurely"
         fi
+        if docker logs "${CONTAINER_NAME}" 2>&1 | grep -q "Huly initialization complete"; then
+            pass "Addon init completed (${WAITED}s)"
+            break
+        fi
+        sleep 2
+        WAITED=$((WAITED + 2))
+    done
+    if [ ${WAITED} -ge ${MAX_WAIT} ]; then
+        fail "Addon init did not complete within ${MAX_WAIT}s"
+    fi
+else
+    echo "==> Waiting for service to be healthy (max ${MAX_WAIT}s)..."
+    WAITED=0
+    HEALTHY=false
+    while [ ${WAITED} -lt ${MAX_WAIT} ]; do
+        # Check container is still running
+        if ! docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
+            fail "Container exited prematurely"
+        fi
+
+        # Try health check — attempt common health paths, then fall back to TCP
+        for path in "${HEALTH_PATH}" "api/health" ""; do
+            if docker exec "${CONTAINER_NAME}" \
+                curl -sf --max-time 3 "http://127.0.0.1:${HEALTH_PORT}/${path}" > /dev/null 2>&1; then
+                pass "Health endpoint responded at /${path:-} (${WAITED}s)"
+                HEALTHY=true
+                break 2
+            fi
+        done
+
+        sleep 2
+        WAITED=$((WAITED + 2))
     done
 
-    sleep 2
-    WAITED=$((WAITED + 2))
-done
-
-if [ "${HEALTHY}" != "true" ]; then
-    fail "Service did not become healthy within ${MAX_WAIT}s"
+    if [ "${HEALTHY}" != "true" ]; then
+        fail "Service did not become healthy within ${MAX_WAIT}s"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -176,6 +198,34 @@ case "${SLUG}" in
         fi
         ;;
 
+    huly)
+        # Huly is a compose orchestrator — full stack needs 14+ Docker images
+        # pulled from Docker Hub which is too slow/flaky for CI smoke tests.
+        # Validate the addon container itself starts, init runs, and the bridge
+        # service attempts to connect. Full stack testing is manual.
+        LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
+
+        if echo "${LOGS}" | grep -q "Huly initialization complete"; then
+            pass "Init script completed"
+        else
+            fail "Init script did not complete"
+        fi
+
+        if echo "${LOGS}" | grep -q "Starting Huly services"; then
+            pass "Compose startup initiated"
+        else
+            info "Compose startup not detected in logs yet"
+        fi
+
+        if echo "${LOGS}" | grep -q "Waiting for Huly compose network\|Starting port bridge"; then
+            pass "Bridge service started"
+        else
+            info "Bridge service not detected yet (compose may still be pulling images)"
+        fi
+
+        info "Full stack validation skipped (requires 14+ Docker image pulls)"
+        ;;
+
     arcane|dockhand)
         API_CODE=$(docker exec "${CONTAINER_NAME}" curl -s -o /dev/null -w "%{http_code}" \
             "http://127.0.0.1:${HEALTH_PORT}/${HEALTH_PATH}" 2>/dev/null)
@@ -205,7 +255,11 @@ esac
 # Test clean shutdown
 # ---------------------------------------------------------------------------
 echo "==> Testing shutdown..."
-docker stop -t 15 "${CONTAINER_NAME}" > /dev/null 2>&1
+STOP_TIMEOUT=15
+if [ "${SLUG}" = "huly" ]; then
+    STOP_TIMEOUT=90
+fi
+docker stop -t "${STOP_TIMEOUT}" "${CONTAINER_NAME}" > /dev/null 2>&1
 
 EXIT_CODE=$(docker inspect "${CONTAINER_NAME}" --format='{{.State.ExitCode}}' 2>/dev/null || echo "unknown")
 if [ "${EXIT_CODE}" = "0" ]; then
