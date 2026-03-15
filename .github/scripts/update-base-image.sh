@@ -68,7 +68,7 @@ get_changelog() {
 
     if [ -n "$release_info" ]; then
         changelog=$(echo "$release_info" | jq -r '.body // "No changelog available"' 2>/dev/null)
-        changelog=$(echo "$changelog" | head -c 1000 | sed 's/\r//g' | sed 's/@\([a-zA-Z0-9_-]*\)/\1/g')
+        changelog=$(echo "$changelog" | head -c 1000 | sed 's/\r//g' | sed 's/@\([a-zA-Z0-9_-]*\)/`\1`/g')
 
         if [ -n "$changelog" ] && [ "$changelog" != "null" ]; then
             echo "$changelog"

@@ -82,7 +82,7 @@ get_changelog() {
 
         # Limit to first 1000 characters, clean up, and strip @mentions
         # to avoid spamming upstream maintainers in automated PRs
-        changelog=$(echo "$changelog" | head -c 1000 | sed 's/\r//g' | sed 's/@\([a-zA-Z0-9_-]*\)/\1/g')
+        changelog=$(echo "$changelog" | head -c 1000 | sed 's/\r//g' | sed 's/@\([a-zA-Z0-9_-]*\)/`\1`/g')
 
         if [ -n "$changelog" ] && [ "$changelog" != "null" ]; then
             echo "$changelog"
