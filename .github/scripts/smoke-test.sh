@@ -171,13 +171,13 @@ case "${SLUG}" in
         # Phase 1: Init completes (config generation, path resolution, secrets)
         wait_for_log "Huly initialization complete" "Init completed" 120
 
-        # Phase 2: Compose starts pulling/starting services
-        wait_for_log "Starting Huly services" "Compose startup initiated" 30
+        # Phase 2: Run script started (banner appears immediately, before image pull)
+        wait_for_log "Huly stack starting" "Run script started" 30
 
-        # Phase 3: Wait for compose containers to be running
-        echo "==> Waiting for compose stack (max 300s)..."
+        # Phase 3: Wait for compose containers (includes image pull time on first run)
+        echo "==> Waiting for compose stack (max 600s)..."
         WAITED=0
-        while [ ${WAITED} -lt 300 ]; do
+        while [ ${WAITED} -lt 600 ]; do
             RUNNING=$(docker ps --filter "label=com.docker.compose.project=huly_ha" \
                 --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
             if [ "${RUNNING}" -ge 10 ]; then
