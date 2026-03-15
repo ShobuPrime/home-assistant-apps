@@ -1,6 +1,6 @@
 name: "MuninnDB"
 description: "Cognitive database with memory primitives - Ebbinghaus decay, Hebbian learning, Bayesian confidence"
-version: "0.4.1-alpha"
+version: "0.4.2-alpha"
 slug: "muninndb"
 init: false
 ingress: true

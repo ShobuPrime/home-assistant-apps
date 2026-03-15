@@ -1,6 +1,6 @@
 # Global ARGs must be declared before the first FROM
 ARG BUILD_FROM=ghcr.io/hassio-addons/base:20.0.1
-ARG MUNINNDB_VERSION=0.4.1-alpha
+ARG MUNINNDB_VERSION=0.4.2-alpha
 
 # ---------------------------------------------------------------------------
 # Stage 1: Extract glibc runtime libraries

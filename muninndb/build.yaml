@@ -2,4 +2,4 @@ build_from:
   aarch64: ghcr.io/hassio-addons/base:20.0.1
   amd64: ghcr.io/hassio-addons/base:20.0.1
 args:
-  MUNINNDB_VERSION: 0.4.1-alpha
+  MUNINNDB_VERSION: 0.4.2-alpha
