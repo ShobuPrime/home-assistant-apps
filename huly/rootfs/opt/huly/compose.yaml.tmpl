@@ -113,7 +113,7 @@ services:
       - SERVER_SECRET=${SECRET}
       - DB_URL=${CR_DB_URL}
       - STORAGE_CONFIG=minio|minio?accessKey=${MINIO_ROOT_USER}&secretKey=${MINIO_ROOT_PASSWORD}
-      - FRONT_URL=http://localhost:4859
+      - FRONT_URL=http://nginx:80
       - ACCOUNTS_URL=http://account:3000
       - FULLTEXT_URL=http://fulltext:4700
       - STATS_URL=http://stats:4900
@@ -150,10 +150,10 @@ services:
       - DB_URL=${CR_DB_URL}
       - TRANSACTOR_URL=ws://transactor:3333;ws://${HOST_ADDRESS}/_transactor
       - STORAGE_CONFIG=minio|minio?accessKey=${MINIO_ROOT_USER}&secretKey=${MINIO_ROOT_PASSWORD}
-      - FRONT_URL=http://${HOST_ADDRESS}
-      - STATS_URL=http://${HOST_ADDRESS}/_stats
+      - FRONT_URL=http://nginx:80
+      - STATS_URL=http://stats:4900
       - MODEL_ENABLED=*
-      - ACCOUNTS_URL=http://${HOST_ADDRESS}/_accounts
+      - ACCOUNTS_URL=http://nginx:80/_accounts
       - ACCOUNT_PORT=3000
       - QUEUE_CONFIG=kafka:9092
     restart: unless-stopped
@@ -187,17 +187,19 @@ services:
     environment:
       - SERVER_PORT=8080
       - SERVER_SECRET=${SECRET}
+      # Browser-facing URLs use HOST_ADDRESS (what the user types in their browser)
       - ACCOUNTS_URL=http://${HOST_ADDRESS}/_accounts
-      - ACCOUNTS_URL_INTERNAL=http://account:3000
       - REKONI_URL=http://${HOST_ADDRESS}/_rekoni
       - CALENDAR_URL=http://${HOST_ADDRESS}/_calendar
       - GMAIL_URL=http://${HOST_ADDRESS}/_gmail
       - TELEGRAM_URL=http://${HOST_ADDRESS}/_telegram
       - LOVE_ENDPOINT=http://${HOST_ADDRESS}/_love
-      - STATS_URL=http://${HOST_ADDRESS}/_stats
+      - COLLABORATOR_URL=ws://${HOST_ADDRESS}/_collaborator
+      # Internal URLs for server-side calls (compose network, not through nginx)
+      - ACCOUNTS_URL_INTERNAL=http://account:3000
+      - STATS_URL=http://stats:4900
       - UPLOAD_URL=/files
       - ELASTIC_URL=http://elastic:9200
-      - COLLABORATOR_URL=ws://${HOST_ADDRESS}/_collaborator
       - STORAGE_CONFIG=minio|minio?accessKey=${MINIO_ROOT_USER}&secretKey=${MINIO_ROOT_PASSWORD}
       - TITLE=${TITLE}
       - DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE}
