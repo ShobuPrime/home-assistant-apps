@@ -28,7 +28,7 @@ jobs:
       all_addons: ${{ steps.all_addons.outputs.addons }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.head_sha || '' }}
           fetch-depth: 0
@@ -150,7 +150,7 @@ jobs:
         addon: ${{ fromJson(needs.init.outputs.changed_addons) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.head_sha || '' }}
 
@@ -176,7 +176,7 @@ jobs:
         addon: ${{ fromJson(needs.init.outputs.changed_addons) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.head_sha || '' }}
 

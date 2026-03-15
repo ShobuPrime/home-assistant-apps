@@ -40,7 +40,7 @@ jobs:
     needs: resolve-context
     steps:
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.resolve-context.outputs.head_sha }}
           fetch-depth: 0
@@ -136,7 +136,7 @@ jobs:
 
       - name: Comment validation results
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -154,7 +154,7 @@ jobs:
     needs: resolve-context
     steps:
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.resolve-context.outputs.head_sha }}
           fetch-depth: 0
@@ -204,7 +204,7 @@ jobs:
 
       - name: Comment changelog warnings
         if: failure() || steps.check.outputs.WARNINGS != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -224,7 +224,7 @@ jobs:
     needs: resolve-context
     steps:
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.resolve-context.outputs.head_sha }}
           fetch-depth: 0
@@ -242,7 +242,7 @@ jobs:
 
       - name: Set up Python
         if: steps.changed_yaml.outputs.files != ''
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
@@ -314,7 +314,7 @@ jobs:
 
       - name: Add success label
         if: steps.results.outputs.passed == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -344,7 +344,7 @@ jobs:
 
       - name: Remove success label on failure
         if: steps.results.outputs.passed != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -373,7 +373,7 @@ jobs:
       needs.summary.result == 'success'
     steps:
       - name: Check conditions and merge
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
