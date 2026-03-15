@@ -42,7 +42,7 @@ else
 fi
 
 # Disconnect addon from compose network before teardown
-ADDON_CID=$(grep -oP 'docker/containers/\K[a-f0-9]{64}' /proc/self/mountinfo 2>/dev/null | head -1) || true
+ADDON_CID=$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -1) || true
 if [[ -n "${ADDON_CID}" ]]; then
     curl -sf --unix-socket "${DOCKER_SOCK}" \
         -X POST -H "Content-Type: application/json" \

@@ -169,7 +169,7 @@ bashio::log.info "Resolving host data path (hostname: ${CONTAINER_HOSTNAME})..."
 #   1. Full container ID from /proc/self/mountinfo (most reliable)
 #   2. HAOS addon naming: addon_<hash>_<slug> (hostname with - replaced by _)
 #   3. Plain hostname (fallback)
-PROC_CID=$(grep -oP 'docker/containers/\K[a-f0-9]{64}' /proc/self/mountinfo 2>/dev/null | head -1) || true
+PROC_CID=$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -1) || true
 HAOS_CID="addon_$(echo "${CONTAINER_HOSTNAME}" | sed 's/-/_/g')"
 
 for CONTAINER_ID in ${PROC_CID} ${HAOS_CID} ${CONTAINER_HOSTNAME}; do

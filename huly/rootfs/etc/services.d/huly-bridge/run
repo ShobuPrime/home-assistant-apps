@@ -31,8 +31,8 @@ if [[ ${WAITED} -ge ${MAX_WAIT} ]]; then
     exit 1
 fi
 
-# Get our own container ID
-ADDON_CONTAINER=$(grep -oP 'docker/containers/\K[a-f0-9]{64}' /proc/self/mountinfo 2>/dev/null | head -1)
+# Get our own container ID (no -P flag — Alpine busybox grep doesn't support Perl regex)
+ADDON_CONTAINER=$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -1)
 if [[ -z "${ADDON_CONTAINER}" ]]; then
     ADDON_CONTAINER="addon_$(hostname | sed 's/-/_/g')"
 fi
