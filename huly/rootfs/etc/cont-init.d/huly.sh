@@ -375,99 +375,27 @@ if [[ -d /data/huly/nginx.conf ]]; then
     rm -rf /data/huly/nginx.conf
 fi
 
-# Generate nginx config for routing
+# Generate nginx config for routing.
+# Upstream uses a single location / that proxies everything to front:8080.
+# The Huly front service handles all internal routing (/_accounts, /_transactor,
+# /_collaborator, /files, etc.) and authenticates with backend services.
 bashio::log.info "Generating nginx configuration..."
 cat > /data/huly/nginx.conf << 'NGINXEOF'
 server {
     listen 80;
     server_name _;
 
-    client_max_body_size 100M;
+    client_max_body_size 250M;
 
     location / {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_pass http://front:8080;
-    }
-
-    location /_accounts {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        rewrite ^/_accounts(/.*)$ $1 break;
-        proxy_pass http://account:3000/;
-    }
-
-    location /_collaborator {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        rewrite ^/_collaborator(/.*)$ $1 break;
-        proxy_pass http://collaborator:3078/;
-    }
-
-    location /_transactor {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        rewrite ^/_transactor(/.*)$ $1 break;
-        proxy_pass http://transactor:3333/;
-    }
-
-    location ~ ^/eyJ {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_pass http://transactor:3333;
-    }
-
-    location /_rekoni {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        rewrite ^/_rekoni(/.*)$ $1 break;
-        proxy_pass http://rekoni:4004/;
-    }
-
-    location /_stats {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        rewrite ^/_stats(/.*)$ $1 break;
-        proxy_pass http://stats:4900/;
-    }
-
-    location /files {
-        rewrite ^/files(/.*)$ $1 break;
-        proxy_pass http://minio:9000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 NGINXEOF
