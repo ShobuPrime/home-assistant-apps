@@ -298,12 +298,27 @@ TITLE=$(bashio::config 'title')
 DEFAULT_LANGUAGE=$(bashio::config 'default_language')
 LAST_NAME_FIRST=$(bashio::config 'last_name_first')
 
-# Determine HOST_ADDRESS - use config value or fall back to default
+# Determine HOST_ADDRESS:
+#   1. User-configured value (domain name or IP for reverse proxy setups)
+#   2. Auto-detected from HA Supervisor network API
+#   3. Fallback to localhost:4859 (won't work from browser but prevents crash)
 if bashio::var.has_value "${HOST_ADDRESS}"; then
     bashio::log.info "Using configured host address: ${HOST_ADDRESS}"
 else
-    HOST_ADDRESS="localhost:4859"
-    bashio::log.info "No host_address configured, using default: ${HOST_ADDRESS}"
+    # Auto-detect the HA host IP via Supervisor API
+    DETECTED_IP=$(curl -s -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        http://supervisor/network/info 2>/dev/null \
+        | jq -r '.data.interfaces[]?.ipv4.address[]? // empty' 2>/dev/null \
+        | head -1 | cut -d'/' -f1)
+
+    if [[ -n "${DETECTED_IP}" ]] && [[ "${DETECTED_IP}" != 172.* ]] && [[ "${DETECTED_IP}" != 127.* ]]; then
+        HOST_ADDRESS="${DETECTED_IP}:4859"
+        bashio::log.info "Auto-detected host address: ${HOST_ADDRESS}"
+    else
+        HOST_ADDRESS="localhost:4859"
+        bashio::log.warning "Could not auto-detect host IP. Set host_address in addon config."
+        bashio::log.warning "Using fallback: ${HOST_ADDRESS} (browser access may not work)"
+    fi
 fi
 
 # Determine HULY_VERSION from build ENV or default (includes v prefix)
