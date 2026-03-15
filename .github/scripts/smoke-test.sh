@@ -174,22 +174,36 @@ case "${SLUG}" in
         # Phase 2: Run script started (banner appears immediately, before image pull)
         wait_for_log "Huly stack starting" "Run script started" 30
 
-        # Phase 3: Compose up completed (detached mode — logs this after docker-compose up -d)
-        wait_for_log "Huly services started in background" "Compose up succeeded" 600
-
-        # Phase 4: Wait for compose containers to be running
-        echo "==> Waiting for compose stack (max 600s)..."
+        # Phase 3: Wait for compose containers to be running.
+        # Tracks progress by counting containers via docker ps — no fixed timer.
+        # Image pulls happen before docker-compose up -d; once containers appear
+        # they come up quickly. Timeout is a safety net, not the expected wait.
+        echo "==> Waiting for compose stack..."
         WAITED=0
-        while [ ${WAITED} -lt 600 ]; do
+        COMPOSE_TIMEOUT=600
+        RUNNING=0
+        while [ ${WAITED} -lt ${COMPOSE_TIMEOUT} ]; do
+            if ! docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
+                fail "Addon container exited while waiting for compose stack"
+            fi
+
             RUNNING=$(docker ps --filter "label=com.docker.compose.project=huly_ha" \
                 --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
+
             if [ "${RUNNING}" -ge 10 ]; then
                 pass "Compose stack running (${RUNNING} containers, ${WAITED}s)"
                 break
             fi
+
+            # Log pull progress if images are still downloading
             if [ $((WAITED % 30)) -eq 0 ] && [ ${WAITED} -gt 0 ]; then
-                info "Progress: ${RUNNING} containers running (${WAITED}s)"
+                PULL_STATUS=""
+                if docker logs "${CONTAINER_NAME}" 2>&1 | grep -q "Pulling\|Downloading\|Extracting"; then
+                    PULL_STATUS=" (images still pulling)"
+                fi
+                info "${RUNNING} containers running${PULL_STATUS} (${WAITED}s)"
             fi
+
             sleep 5
             WAITED=$((WAITED + 5))
         done
@@ -199,13 +213,13 @@ case "${SLUG}" in
             fail "Only ${RUNNING} compose containers running (expected 10+)"
         fi
 
-        # Phase 5: Bridge connects and forwards
+        # Phase 4: Bridge connects and forwards
         wait_for_log "Starting port bridge" "Bridge forwarding" 120
 
-        # Phase 6: Web UI reachable end-to-end
+        # Phase 5: Web UI reachable end-to-end
         wait_for_health 4859 60
 
-        # Phase 7: Verify key infrastructure services
+        # Phase 6: Verify key infrastructure services
         LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
 
         # Kafka healthy
