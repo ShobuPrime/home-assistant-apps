@@ -401,18 +401,26 @@ server {
         proxy_pass http://front:8080;
     }
 
-    # Account service API — strip /_accounts prefix
-    location /_accounts {
+    # Account service API
+    # Trailing slash in proxy_pass makes nginx strip the location prefix automatically.
+    # /_accounts → account:3000/  |  /_accounts/foo → account:3000/foo
+    location /_accounts/ {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        rewrite ^/_accounts(/.*)?$ $1 break;
-        proxy_pass http://account:3000;
+        proxy_pass http://account:3000/;
+    }
+    location = /_accounts {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://account:3000/;
     }
 
-    # Real-time collaboration (WebSocket) — strip /_collaborator prefix
-    location /_collaborator {
+    # Real-time collaboration (WebSocket)
+    location /_collaborator/ {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -420,12 +428,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        rewrite ^/_collaborator(/.*)?$ $1 break;
-        proxy_pass http://collaborator:3078;
+        proxy_pass http://collaborator:3078/;
     }
-
-    # Transactor (WebSocket) — strip /_transactor prefix
-    location /_transactor {
+    location = /_collaborator {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -433,8 +438,29 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        rewrite ^/_transactor(/.*)?$ $1 break;
-        proxy_pass http://transactor:3333;
+        proxy_pass http://collaborator:3078/;
+    }
+
+    # Transactor (WebSocket)
+    location /_transactor/ {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://transactor:3333/;
+    }
+    location = /_transactor {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://transactor:3333/;
     }
 
     # Transactor workspace tokens (base64 JWT paths)
@@ -449,24 +475,36 @@ server {
         proxy_pass http://transactor:3333;
     }
 
-    # Document thumbnail/preview service — strip /_rekoni prefix
-    location /_rekoni {
+    # Document thumbnail/preview service
+    location /_rekoni/ {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        rewrite ^/_rekoni(/.*)?$ $1 break;
-        proxy_pass http://rekoni:4004;
+        proxy_pass http://rekoni:4004/;
+    }
+    location = /_rekoni {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://rekoni:4004/;
     }
 
-    # Analytics/telemetry — strip /_stats prefix
-    location /_stats {
+    # Analytics/telemetry
+    location /_stats/ {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        rewrite ^/_stats(/.*)?$ $1 break;
-        proxy_pass http://stats:4900;
+        proxy_pass http://stats:4900/;
+    }
+    location = /_stats {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://stats:4900/;
     }
 }
 NGINXEOF
