@@ -35,8 +35,8 @@ options:
   last_name_first: true
   server_secret: ""
   cockroachdb_password: ""
-  minio_root_user: ""
-  minio_root_password: ""
+  minio_root_user: "minioadmin"
+  minio_root_password: "minioadmin"
 schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
   host_address: str

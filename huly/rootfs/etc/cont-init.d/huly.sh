@@ -97,19 +97,12 @@ resolve_credential() {
 
 SECRET=$(resolve_credential "${CFG_SECRET}" "${SECRET:-}" "openssl rand -hex 32")
 CR_USER_PASSWORD=$(resolve_credential "${CFG_CR_PASSWORD}" "${CR_USER_PASSWORD:-}" "openssl rand -hex 16")
-MINIO_ROOT_USER=$(resolve_credential "${CFG_MINIO_USER}" "${MINIO_ROOT_USER:-}" "openssl rand -hex 8")
-MINIO_ROOT_PASSWORD=$(resolve_credential "${CFG_MINIO_PWD}" "${MINIO_ROOT_PASSWORD:-}" "openssl rand -hex 16")
-
-# MinIO enforces minimum lengths: user >= 3, password >= 8.
-# Guard against edge cases (corrupt secrets file, truncated values).
-if [[ "${#MINIO_ROOT_USER}" -lt 3 ]]; then
-    bashio::log.warning "MINIO_ROOT_USER too short (${#MINIO_ROOT_USER} chars), regenerating..."
-    MINIO_ROOT_USER=$(openssl rand -hex 8)
-fi
-if [[ "${#MINIO_ROOT_PASSWORD}" -lt 8 ]]; then
-    bashio::log.warning "MINIO_ROOT_PASSWORD too short (${#MINIO_ROOT_PASSWORD} chars), regenerating..."
-    MINIO_ROOT_PASSWORD=$(openssl rand -hex 16)
-fi
+# MinIO defaults to minioadmin/minioadmin (matching upstream huly-selfhost).
+# Nginx proxies /files/ to MinIO unauthenticated, which works with the defaults
+# since MinIO allows anonymous read access in its default configuration.
+# Custom credentials break this unless a public bucket policy is also configured.
+MINIO_ROOT_USER=$(resolve_credential "${CFG_MINIO_USER}" "${MINIO_ROOT_USER:-}" "echo minioadmin")
+MINIO_ROOT_PASSWORD=$(resolve_credential "${CFG_MINIO_PWD}" "${MINIO_ROOT_PASSWORD:-}" "echo minioadmin")
 
 # Persist resolved values so subsequent restarts (without config changes) reuse them
 cat > "${SECRETS_FILE}" << EOF
