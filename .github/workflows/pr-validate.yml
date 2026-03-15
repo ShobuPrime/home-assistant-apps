@@ -428,8 +428,8 @@ jobs:
             // For repository_dispatch events, check runs are attached to master's
             // HEAD (not the PR SHA), so we query workflow runs instead.
             console.log('Checking Builder workflow status...');
-            const maxAttempts = 45;
-            const pollInterval = 20000; // 20 seconds (45 * 20s = 15 min total)
+            const maxAttempts = 60;
+            const pollInterval = 30000; // 30 seconds (60 * 30s = 30 min total)
 
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
               let builderFound = false;
