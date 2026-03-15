@@ -46,7 +46,7 @@ NEEDS_DOCKER=$(grep -q "^docker_api: true" "${CONFIG}" && echo "true" || echo "f
 
 # Extract health check port from watchdog config
 WATCHDOG=$(grep "^watchdog:" "${CONFIG}" | sed 's/watchdog: *//')
-HEALTH_PORT=$(echo "${WATCHDOG}" | grep -oP 'PORT:\K[0-9]+')
+HEALTH_PORT=$(echo "${WATCHDOG}" | sed -n 's/.*PORT:\([0-9]*\).*/\1/p')
 HEALTH_PATH=$(echo "${WATCHDOG}" | sed 's|.*\]||; s|^/||; s|/$||')
 
 if [ -z "${HEALTH_PORT}" ]; then

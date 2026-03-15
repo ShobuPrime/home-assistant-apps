@@ -92,7 +92,7 @@ Huly runs 14 internal Docker services, all orchestrated via Docker Compose:
 - **CockroachDB**: Distributed SQL database for application data
 - **Elasticsearch**: Full-text search engine for content indexing
 - **MinIO**: S3-compatible object storage for files and attachments
-- **Kafka**: Event streaming platform (KRaft mode, no ZooKeeper)
+- **Redpanda**: Kafka-compatible event streaming platform
 - **Account**: User authentication and workspace management
 - **Front**: Web application frontend
 - **Collaborator**: Real-time collaboration engine
@@ -110,7 +110,7 @@ All services communicate over an internal Docker network. Only nginx (port 4859)
 - **CockroachDB data**: Stored in `/data/huly/cockroach`
 - **Elasticsearch data**: Stored in `/data/huly/elastic`
 - **MinIO data**: Stored in `/data/huly/minio`
-- **Kafka data**: Stored in `/data/huly/kafka`
+- **Redpanda data**: Stored in `/data/huly/redpanda`
 - **Huly configuration**: Stored in `/data/huly/config`
 - **Generated secrets**: Stored in `/data/huly/secrets`
 
