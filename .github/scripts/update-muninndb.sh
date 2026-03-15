@@ -80,8 +80,9 @@ get_changelog() {
         # Extract and format changelog
         changelog=$(echo "$release_info" | jq -r '.body // "No changelog available"' 2>/dev/null)
 
-        # Limit to first 1000 characters and clean up
-        changelog=$(echo "$changelog" | head -c 1000 | sed 's/\r//g')
+        # Limit to first 1000 characters, clean up, and strip @mentions
+        # to avoid spamming upstream maintainers in automated PRs
+        changelog=$(echo "$changelog" | head -c 1000 | sed 's/\r//g' | sed 's/@\([a-zA-Z0-9_-]*\)/\1/g')
 
         if [ -n "$changelog" ] && [ "$changelog" != "null" ]; then
             echo "$changelog"
