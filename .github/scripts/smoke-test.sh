@@ -26,6 +26,12 @@ fail() { echo -e "  ${RED}FAIL${NC}: $1"; echo "--- Container logs ---"; docker 
 info() { echo -e "  ${YELLOW}INFO${NC}: $1"; }
 
 cleanup() {
+    # Clean up compose containers if this is a compose-based addon
+    if [ "${NEEDS_DOCKER}" = "true" ]; then
+        docker ps -a --filter "label=com.docker.compose.project=huly_ha" \
+            --format '{{.ID}}' 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+        docker network rm huly_ha_huly_net 2>/dev/null || true
+    fi
     docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm -f "${SUPERVISOR_NAME}" 2>/dev/null || true
     docker network rm "${NETWORK_NAME}" 2>/dev/null || true
@@ -74,9 +80,8 @@ docker run -d \
     python:3-slim \
     python3 /mock-supervisor.py /addon 80 > /dev/null
 
-# Wait for mock supervisor to be ready (python:3-slim has no curl, use python)
-sleep 2
-for i in 1 2 3 4 5; do
+# Wait for mock supervisor to be ready
+for i in 1 2 3 4 5 6 7 8 9 10; do
     if docker exec "${SUPERVISOR_NAME}" python3 -c "
 import urllib.request
 urllib.request.urlopen('http://localhost/supervisor/info').read()
@@ -90,7 +95,6 @@ if ! docker exec "${SUPERVISOR_NAME}" python3 -c "
 import urllib.request
 urllib.request.urlopen('http://localhost/supervisor/info').read()
 " > /dev/null 2>&1; then
-    echo "--- Mock Supervisor logs ---"
     docker logs "${SUPERVISOR_NAME}" 2>&1 | tail -10
     fail "Mock Supervisor did not start"
 fi
@@ -115,100 +119,123 @@ docker run -d \
     "${IMAGE_NAME}" > /dev/null
 
 # ---------------------------------------------------------------------------
-# Wait for health endpoint
+# Helper: wait for a log pattern with timeout
 # ---------------------------------------------------------------------------
-# Huly is a compose orchestrator — needs longer timeouts for image pulls
-# and full stack startup (14+ services).
-if [ "${SLUG}" = "huly" ]; then
-    MAX_WAIT=600  # 10 minutes for image pulls + service startup
-
-    echo "==> Waiting for Huly init to complete (max ${MAX_WAIT}s)..."
-    WAITED=0
-    while [ ${WAITED} -lt ${MAX_WAIT} ]; do
+wait_for_log() {
+    local pattern="$1" label="$2" timeout="${3:-${MAX_WAIT}}"
+    local waited=0
+    echo "==> Waiting for: ${label} (max ${timeout}s)..."
+    while [ ${waited} -lt ${timeout} ]; do
         if ! docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
-            fail "Container exited prematurely"
+            fail "Container exited while waiting for: ${label}"
         fi
-        if docker logs "${CONTAINER_NAME}" 2>&1 | grep -q "Huly initialization complete"; then
-            pass "Addon init completed (${WAITED}s)"
-            break
+        if docker logs "${CONTAINER_NAME}" 2>&1 | grep -q "${pattern}"; then
+            pass "${label} (${waited}s)"
+            return 0
         fi
-        sleep 5
-        WAITED=$((WAITED + 5))
+        sleep 3
+        waited=$((waited + 3))
     done
-    if [ ${WAITED} -ge ${MAX_WAIT} ]; then
-        fail "Addon init did not complete within ${MAX_WAIT}s"
-    fi
+    fail "${label} — not detected within ${timeout}s"
+}
 
-    echo "==> Waiting for Huly compose stack + bridge (max ${MAX_WAIT}s)..."
-    WAITED=0
-    HEALTHY=false
-    while [ ${WAITED} -lt ${MAX_WAIT} ]; do
+# ---------------------------------------------------------------------------
+# Helper: wait for HTTP health check with timeout
+# ---------------------------------------------------------------------------
+wait_for_health() {
+    local port="$1" timeout="${2:-${MAX_WAIT}}"
+    local waited=0
+    echo "==> Waiting for health on port ${port} (max ${timeout}s)..."
+    while [ ${waited} -lt ${timeout} ]; do
         if ! docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
-            fail "Container exited prematurely"
+            fail "Container exited while waiting for health"
         fi
-
-        # Check if the socat bridge is forwarding port 4859 to compose nginx
-        if docker exec "${CONTAINER_NAME}" \
-            curl -sf --max-time 5 "http://127.0.0.1:4859/" > /dev/null 2>&1; then
-            pass "Huly web UI reachable on port 4859 (${WAITED}s)"
-            HEALTHY=true
-            break
-        fi
-
-        # Print progress every 30 seconds
-        if [ $((WAITED % 30)) -eq 0 ] && [ ${WAITED} -gt 0 ]; then
-            PULLING=$(docker logs "${CONTAINER_NAME}" 2>&1 | grep -c "Pulling\|Extracting\|Pull complete" || true)
-            RUNNING=$(docker ps --filter "label=com.docker.compose.project=huly_ha" --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
-            info "Still waiting... (${WAITED}s, ${RUNNING} compose containers running, ${PULLING} pull events)"
-        fi
-
-        sleep 5
-        WAITED=$((WAITED + 5))
-    done
-
-    if [ "${HEALTHY}" != "true" ]; then
-        echo "--- Compose container status ---"
-        docker ps -a --filter "label=com.docker.compose.project=huly_ha" \
-            --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || true
-        echo "--- Bridge logs ---"
-        docker logs "${CONTAINER_NAME}" 2>&1 | grep -E "bridge|socat|nginx|compose network" | tail -10
-        fail "Huly web UI not reachable within ${MAX_WAIT}s"
-    fi
-else
-    echo "==> Waiting for service to be healthy (max ${MAX_WAIT}s)..."
-    WAITED=0
-    HEALTHY=false
-    while [ ${WAITED} -lt ${MAX_WAIT} ]; do
-        # Check container is still running
-        if ! docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
-            fail "Container exited prematurely"
-        fi
-
-        # Try health check — attempt common health paths, then fall back to TCP
         for path in "${HEALTH_PATH}" "api/health" ""; do
             if docker exec "${CONTAINER_NAME}" \
-                curl -sf --max-time 3 "http://127.0.0.1:${HEALTH_PORT}/${path}" > /dev/null 2>&1; then
-                pass "Health endpoint responded at /${path:-} (${WAITED}s)"
-                HEALTHY=true
-                break 2
+                curl -sf --max-time 3 "http://127.0.0.1:${port}/${path}" > /dev/null 2>&1; then
+                pass "Health endpoint responded at :${port}/${path:-} (${waited}s)"
+                return 0
             fi
         done
-
-        sleep 2
-        WAITED=$((WAITED + 2))
+        sleep 3
+        waited=$((waited + 3))
     done
-
-    if [ "${HEALTHY}" != "true" ]; then
-        fail "Service did not become healthy within ${MAX_WAIT}s"
-    fi
-fi
+    fail "Health endpoint on port ${port} not reachable within ${timeout}s"
+}
 
 # ---------------------------------------------------------------------------
-# Addon-specific tests
+# Addon-specific test flow
 # ---------------------------------------------------------------------------
 case "${SLUG}" in
+    huly)
+        # Phase 1: Init completes (config generation, path resolution, secrets)
+        wait_for_log "Huly initialization complete" "Init completed" 120
+
+        # Phase 2: Compose starts pulling/starting services
+        wait_for_log "Starting Huly services" "Compose startup initiated" 30
+
+        # Phase 3: Wait for compose containers to be running
+        echo "==> Waiting for compose stack (max 300s)..."
+        WAITED=0
+        while [ ${WAITED} -lt 300 ]; do
+            RUNNING=$(docker ps --filter "label=com.docker.compose.project=huly_ha" \
+                --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
+            if [ "${RUNNING}" -ge 10 ]; then
+                pass "Compose stack running (${RUNNING} containers, ${WAITED}s)"
+                break
+            fi
+            if [ $((WAITED % 30)) -eq 0 ] && [ ${WAITED} -gt 0 ]; then
+                info "Progress: ${RUNNING} containers running (${WAITED}s)"
+            fi
+            sleep 5
+            WAITED=$((WAITED + 5))
+        done
+        if [ "${RUNNING}" -lt 10 ]; then
+            docker ps -a --filter "label=com.docker.compose.project=huly_ha" \
+                --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || true
+            fail "Only ${RUNNING} compose containers running (expected 10+)"
+        fi
+
+        # Phase 4: Bridge connects and forwards
+        wait_for_log "Starting port bridge" "Bridge forwarding" 120
+
+        # Phase 5: Web UI reachable end-to-end
+        wait_for_health 4859 60
+
+        # Phase 6: Verify key infrastructure services
+        LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
+
+        # Kafka healthy
+        KAFKA_HEALTHY=$(docker ps --filter "name=kafka" --filter "health=healthy" \
+            --format '{{.Names}}' 2>/dev/null | head -1)
+        if [ -n "${KAFKA_HEALTHY}" ]; then
+            pass "Kafka healthy"
+        else
+            info "Kafka not yet healthy"
+        fi
+
+        # Elasticsearch healthy
+        ES_HEALTHY=$(docker ps --filter "name=huly_ha-elastic" --filter "health=healthy" \
+            --format '{{.Names}}' 2>/dev/null | head -1)
+        if [ -n "${ES_HEALTHY}" ]; then
+            pass "Elasticsearch healthy"
+        else
+            info "Elasticsearch not yet healthy"
+        fi
+
+        # MinIO healthy
+        MINIO_HEALTHY=$(docker ps --filter "name=huly_ha-minio" --filter "health=healthy" \
+            --format '{{.Names}}' 2>/dev/null | head -1)
+        if [ -n "${MINIO_HEALTHY}" ]; then
+            pass "MinIO healthy"
+        else
+            info "MinIO not yet healthy"
+        fi
+        ;;
+
     muninndb)
-        # Verify local embedder initialized
+        wait_for_health "${HEALTH_PORT}" 120
+
         LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
         if echo "${LOGS}" | grep -q "local embed provider initialized"; then
             pass "Local ONNX embedder initialized"
@@ -216,7 +243,6 @@ case "${SLUG}" in
             fail "Local embedder not available"
         fi
 
-        # Verify admin login
         LOGIN_CODE=$(docker exec "${CONTAINER_NAME}" curl -s -o /dev/null -w "%{http_code}" \
             -X POST http://127.0.0.1:8476/api/auth/login \
             -H 'Content-Type: application/json' \
@@ -227,7 +253,6 @@ case "${SLUG}" in
             fail "Admin login returned HTTP ${LOGIN_CODE}"
         fi
 
-        # Verify provisioning ran
         if echo "${LOGS}" | grep -q "MuninnDB provisioning complete"; then
             pass "Provisioning completed"
         else
@@ -235,80 +260,16 @@ case "${SLUG}" in
         fi
         ;;
 
-    huly)
-        LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
-
-        # Verify init completed
-        if echo "${LOGS}" | grep -q "Huly initialization complete"; then
-            pass "Init script completed"
-        else
-            fail "Init script did not complete"
-        fi
-
-        # Verify compose services are running
-        COMPOSE_RUNNING=$(docker ps --filter "label=com.docker.compose.project=huly_ha" \
-            --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
-        if [ "${COMPOSE_RUNNING}" -ge 10 ]; then
-            pass "Compose stack running (${COMPOSE_RUNNING} containers)"
-        else
-            info "Only ${COMPOSE_RUNNING} compose containers running (expected 14+)"
-        fi
-
-        # Verify bridge is active
-        if echo "${LOGS}" | grep -q "Starting port bridge"; then
-            pass "Bridge service forwarding port 4859"
-        else
-            fail "Bridge service not active"
-        fi
-
-        # Verify nginx returns HTML (Huly frontend)
-        HTTP_CODE=$(docker exec "${CONTAINER_NAME}" curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 5 "http://127.0.0.1:4859/" 2>/dev/null)
-        if [ "${HTTP_CODE}" = "200" ]; then
-            pass "Nginx serving Huly frontend (HTTP 200)"
-        else
-            fail "Nginx returned HTTP ${HTTP_CODE}"
-        fi
-
-        # Verify CockroachDB is healthy
-        CR_STATUS=$(docker exec "$(docker ps -q --filter 'name=huly_ha-cockroach' 2>/dev/null | head -1)" \
-            cockroach sql --insecure -e "SELECT 1" 2>&1 || echo "FAIL")
-        if echo "${CR_STATUS}" | grep -q "1"; then
-            pass "CockroachDB responding to queries"
-        else
-            info "CockroachDB query test inconclusive"
-        fi
-
-        # Verify Elasticsearch is healthy
-        ES_STATUS=$(docker exec "${CONTAINER_NAME}" curl -sf --max-time 5 \
-            "http://127.0.0.1:4859/" 2>/dev/null | head -1 || echo "")
-        # If we got HTML, the full stack is serving
-        if [ -n "${ES_STATUS}" ]; then
-            pass "Full stack serving content"
-        fi
-        ;;
-
     arcane|dockhand)
-        API_CODE=$(docker exec "${CONTAINER_NAME}" curl -s -o /dev/null -w "%{http_code}" \
-            "http://127.0.0.1:${HEALTH_PORT}/${HEALTH_PATH}" 2>/dev/null)
-        if [ "${API_CODE}" = "200" ]; then
-            pass "API health endpoint returned 200"
-        else
-            info "API returned HTTP ${API_CODE} (may need configuration)"
-        fi
+        wait_for_health "${HEALTH_PORT}" 120
         ;;
 
     portainer_ee_lts|portainer_ee_sts)
-        API_CODE=$(docker exec "${CONTAINER_NAME}" curl -s -o /dev/null -w "%{http_code}" \
-            "http://127.0.0.1:9000/api/status" 2>/dev/null)
-        if [ "${API_CODE}" = "200" ]; then
-            pass "Portainer API responded"
-        else
-            info "Portainer returned HTTP ${API_CODE} (initial setup may be needed)"
-        fi
+        wait_for_health "${HEALTH_PORT}" 120
         ;;
 
     *)
+        wait_for_health "${HEALTH_PORT}" 120
         info "No addon-specific tests for '${SLUG}'"
         ;;
 esac
