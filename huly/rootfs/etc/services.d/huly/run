@@ -52,7 +52,36 @@ else
     bashio::log.debug "Images already pulled for version ${CURRENT_VERSION}"
 fi
 
-# Start the stack
+# Start the stack in detached mode so compose container logs don't flood HA.
+# S6 needs a foreground process, so we keep alive with a health monitor loop.
 bashio::log.info "Starting Huly services..."
-bashio::log.debug "Running: docker-compose up --remove-orphans"
-exec /usr/local/bin/docker-compose up --remove-orphans 2>&1
+/usr/local/bin/docker-compose up -d --remove-orphans 2>&1
+
+if [[ $? -ne 0 ]]; then
+    bashio::log.error "docker-compose up failed"
+    exit 1
+fi
+
+bashio::log.info "Huly services started in background"
+bashio::log.info "Use 'docker compose -f /data/huly/compose.yml logs -f' on the host to view service logs"
+
+# Health monitor — keeps S6 service alive and periodically checks compose stack
+HEALTH_INTERVAL=30
+while true; do
+    sleep "${HEALTH_INTERVAL}"
+
+    # Count running compose containers
+    RUNNING=$(/usr/local/bin/docker-compose ps --status running -q 2>/dev/null | wc -l)
+    TOTAL=$(/usr/local/bin/docker-compose ps -q 2>/dev/null | wc -l)
+
+    if [[ "${RUNNING}" -eq 0 ]]; then
+        bashio::log.error "All Huly containers have stopped unexpectedly"
+        exit 1
+    fi
+
+    if [[ "${RUNNING}" -lt "${TOTAL}" ]]; then
+        # Log which containers are down
+        DOWN=$(/usr/local/bin/docker-compose ps --status exited --format '{{.Name}}' 2>/dev/null | tr '\n' ', ')
+        bashio::log.warning "Huly: ${RUNNING}/${TOTAL} containers running (down: ${DOWN%,})"
+    fi
+done

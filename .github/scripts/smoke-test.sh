@@ -174,7 +174,10 @@ case "${SLUG}" in
         # Phase 2: Run script started (banner appears immediately, before image pull)
         wait_for_log "Huly stack starting" "Run script started" 30
 
-        # Phase 3: Wait for compose containers (includes image pull time on first run)
+        # Phase 3: Compose up completed (detached mode — logs this after docker-compose up -d)
+        wait_for_log "Huly services started in background" "Compose up succeeded" 600
+
+        # Phase 4: Wait for compose containers to be running
         echo "==> Waiting for compose stack (max 600s)..."
         WAITED=0
         while [ ${WAITED} -lt 600 ]; do
@@ -196,13 +199,13 @@ case "${SLUG}" in
             fail "Only ${RUNNING} compose containers running (expected 10+)"
         fi
 
-        # Phase 4: Bridge connects and forwards
+        # Phase 5: Bridge connects and forwards
         wait_for_log "Starting port bridge" "Bridge forwarding" 120
 
-        # Phase 5: Web UI reachable end-to-end
+        # Phase 6: Web UI reachable end-to-end
         wait_for_health 4859 60
 
-        # Phase 6: Verify key infrastructure services
+        # Phase 7: Verify key infrastructure services
         LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
 
         # Kafka healthy
