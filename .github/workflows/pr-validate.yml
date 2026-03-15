@@ -424,25 +424,66 @@ jobs:
               return;
             }
 
-            // Wait for Builder workflow to complete
+            // Wait for Builder workflow to complete.
+            // For repository_dispatch events, check runs are attached to master's
+            // HEAD (not the PR SHA), so we query workflow runs instead.
             console.log('Checking Builder workflow status...');
             const maxAttempts = 45;
             const pollInterval = 20000; // 20 seconds (45 * 20s = 15 min total)
 
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-              const { data: checkRuns } = await github.rest.checks.listForRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: headSha,
-                filter: 'latest'
-              });
+              let builderFound = false;
+              let builderComplete = false;
+              let builderSuccess = false;
+              let builderDetails = [];
 
-              // Find Builder check runs (build jobs from builder.yml)
-              const builderRuns = checkRuns.check_runs.filter(cr =>
-                cr.name.startsWith('Build ') || cr.name === 'Initialize build'
-              );
+              if (context.eventName === 'repository_dispatch') {
+                // For dispatch events, find Builder workflow runs triggered around
+                // the same time. Check runs are on master's SHA, not the PR SHA.
+                const { data: workflows } = await github.rest.actions.listRepoWorkflows({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                });
+                const builderWorkflow = workflows.workflows.find(w => w.name === 'Builder');
+                if (builderWorkflow) {
+                  const { data: runs } = await github.rest.actions.listWorkflowRuns({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    workflow_id: builderWorkflow.id,
+                    event: 'repository_dispatch',
+                    per_page: 5,
+                  });
+                  // Find a run that started within 2 minutes of this workflow
+                  const recentRun = runs.workflow_runs.find(r => {
+                    const runTime = new Date(r.created_at).getTime();
+                    const now = Date.now();
+                    return (now - runTime) < 20 * 60 * 1000; // within 20 min
+                  });
+                  if (recentRun) {
+                    builderFound = true;
+                    builderComplete = recentRun.status === 'completed';
+                    builderSuccess = recentRun.conclusion === 'success';
+                    builderDetails = [{name: `Builder run #${recentRun.run_number}`, conclusion: recentRun.conclusion}];
+                  }
+                }
+              } else {
+                // For PR and push events, check runs are on the correct SHA
+                const { data: checkRuns } = await github.rest.checks.listForRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: headSha,
+                  filter: 'latest'
+                });
+                const runs = checkRuns.check_runs.filter(cr =>
+                  cr.name.startsWith('Build ') || cr.name === 'Initialize build'
+                );
+                builderFound = runs.length > 0;
+                builderComplete = runs.every(cr => cr.status === 'completed');
+                builderSuccess = runs.every(cr => cr.conclusion === 'success');
+                builderDetails = runs.map(cr => ({name: cr.name, conclusion: cr.conclusion}));
+              }
 
-              if (builderRuns.length === 0) {
+              if (!builderFound) {
                 console.log(`Attempt ${attempt}/${maxAttempts}: No Builder checks found yet, waiting...`);
                 if (attempt < maxAttempts) {
                   await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -452,11 +493,8 @@ jobs:
                 return;
               }
 
-              const allComplete = builderRuns.every(cr => cr.status === 'completed');
-              const allSuccess = builderRuns.every(cr => cr.conclusion === 'success');
-
-              if (!allComplete) {
-                console.log(`Attempt ${attempt}/${maxAttempts}: Builder still running (${builderRuns.filter(cr => cr.status === 'completed').length}/${builderRuns.length} complete)`);
+              if (!builderComplete) {
+                console.log(`Attempt ${attempt}/${maxAttempts}: Builder still running...`);
                 if (attempt < maxAttempts) {
                   await new Promise(resolve => setTimeout(resolve, pollInterval));
                   continue;
@@ -465,14 +503,13 @@ jobs:
                 return;
               }
 
-              if (!allSuccess) {
-                const failed = builderRuns.filter(cr => cr.conclusion !== 'success');
-                console.log('Builder checks failed:', failed.map(cr => `${cr.name}: ${cr.conclusion}`));
+              if (!builderSuccess) {
+                console.log('Builder checks failed:', builderDetails.map(d => `${d.name}: ${d.conclusion}`));
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: prNumber,
-                  body: `⚠️ Auto-merge skipped: Builder workflow failed.\n\nFailed checks:\n${failed.map(cr => `- **${cr.name}**: ${cr.conclusion}`).join('\n')}\n\nPlease investigate and merge manually if appropriate.`
+                  body: `⚠️ Auto-merge skipped: Builder workflow failed.\n\nFailed checks:\n${builderDetails.map(d => `- **${d.name}**: ${d.conclusion}`).join('\n')}\n\nPlease investigate and merge manually if appropriate.`
                 });
                 return;
               }
