@@ -22,7 +22,7 @@ The add-on orchestrates these services via Docker Compose:
 2. **CockroachDB** - Distributed SQL database
 3. **Elasticsearch** - Full-text search engine
 4. **MinIO** - S3-compatible object storage
-5. **Redpanda** - Kafka-compatible event streaming
+5. **Apache Kafka** - Event streaming (KRaft mode; upstream uses Redpanda but it crashes on Cortex-A76/Pi CM5)
 6. **Account** - Authentication and workspace management
 7. **Front** - Web frontend
 8. **Collaborator** - Real-time collaboration
@@ -78,7 +78,7 @@ Huly version tracking is based on the `.template.huly.conf` file in the [huly-se
 ## Common Pitfalls
 
 1. **Resource starvation**: Huly needs at least 8 GB RAM. Services will crash with OOM on smaller systems
-2. **Startup ordering**: Services have dependencies — CockroachDB, Elasticsearch, MinIO, and Redpanda must be healthy before app services start
+2. **Startup ordering**: Services have dependencies — CockroachDB, Elasticsearch, MinIO, and Kafka must be healthy before app services start
 3. **Secret management**: Secrets are generated once and stored in `/data/huly/secrets`. Regenerating them will break existing data
 4. **Docker socket**: Must have `docker_api: true` in config.yaml and protection mode disabled
 5. **Host address**: The `host_address` config option is critical — without it, internal service URLs will be misconfigured
@@ -105,6 +105,6 @@ Huly version tracking is based on the `.template.huly.conf` file in the [huly-se
 
 ### Data Persistence
 - All persistent data lives under `/data/huly/`
-- Subdirectories: `cockroach/`, `elastic/`, `minio/`, `redpanda/`, `config/`, `secrets/`
+- Subdirectories: `cockroach/`, `elastic/`, `minio/`, `kafka/`, `config/`, `secrets/`
 - Included automatically in Home Assistant backups
 - Backup size can be substantial due to databases and object storage

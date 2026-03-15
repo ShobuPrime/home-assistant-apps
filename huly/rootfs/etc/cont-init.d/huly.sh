@@ -12,15 +12,15 @@ bashio::log.debug "Kernel: $(uname -r)"
 # Create data directories for all Huly services
 bashio::log.info "Creating data directories..."
 for dir in /data/huly /data/huly/cockroach /data/huly/cockroach-certs \
-           /data/huly/elastic /data/huly/minio /data/huly/redpanda; do
+           /data/huly/elastic /data/huly/minio /data/huly/kafka; do
     mkdir -p "${dir}"
     chmod 755 "${dir}"
     bashio::log.debug "Created directory: ${dir}"
 done
 
-# One-time migration: clean up old Kafka data directory (replaced by Redpanda)
+# One-time migration: clean up old Redpanda data directory (replaced by Kafka)
 if [[ -d /data/huly/kafka ]]; then
-    bashio::log.info "Cleaning up legacy Kafka data directory (replaced by Redpanda)..."
+    bashio::log.info "Cleaning up legacy Redpanda data directory (replaced by Kafka)..."
     rm -rf /data/huly/kafka
 fi
 
@@ -344,11 +344,7 @@ VOLUME_CR_DATA_PATH=${HOST_DATA_PATH}/huly/cockroach
 VOLUME_CR_CERTS_PATH=${HOST_DATA_PATH}/huly/cockroach-certs
 VOLUME_ELASTIC_PATH=${HOST_DATA_PATH}/huly/elastic
 VOLUME_FILES_PATH=${HOST_DATA_PATH}/huly/minio
-VOLUME_REDPANDA_PATH=${HOST_DATA_PATH}/huly/redpanda
-
-# Redpanda credentials
-REDPANDA_ADMIN_USER=admin
-REDPANDA_ADMIN_PWD=${SECRET}
+VOLUME_KAFKA_PATH=${HOST_DATA_PATH}/huly/kafka
 
 # Nginx config (host-side path for bind mount)
 NGINX_CONF_PATH=${HOST_DATA_PATH}/huly/nginx.conf
