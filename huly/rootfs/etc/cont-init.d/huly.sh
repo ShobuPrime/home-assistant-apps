@@ -375,25 +375,18 @@ if [[ -d /data/huly/nginx.conf ]]; then
     rm -rf /data/huly/nginx.conf
 fi
 
-# Generate nginx config for routing.
-# The front service is a Node.js SPA server — it does NOT reverse-proxy API
-# routes internally. The browser-side JS connects directly to /_accounts,
-# /_transactor, /_collaborator, etc. which must be routed by nginx to the
-# correct backend services. /files is handled by the front service via
-# UPLOAD_URL=/files (front authenticates with MinIO using STORAGE_CONFIG).
+# Generate nginx config — based on upstream .huly.nginx from hcengineering/huly-selfhost.
+# The rewrite + proxy_pass with trailing slash pattern:
+#   - rewrite handles sub-paths: /_accounts/foo → /foo → account:3000/foo
+#   - proxy_pass trailing slash handles exact match: /_accounts → account:3000/
 bashio::log.info "Generating nginx configuration..."
 cat > /data/huly/nginx.conf << 'NGINXEOF'
 server {
     listen 80;
     server_name _;
-
     client_max_body_size 250M;
 
-    # Default: serve the Huly SPA frontend
     location / {
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -401,109 +394,71 @@ server {
         proxy_pass http://front:8080;
     }
 
-    # Account service API
-    # Trailing slash in proxy_pass makes nginx strip the location prefix automatically.
-    # /_accounts → account:3000/  |  /_accounts/foo → account:3000/foo
-    location /_accounts/ {
+    location /_accounts {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://account:3000/;
-    }
-    location = /_accounts {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+
+        rewrite ^/_accounts(/.*)$ $1 break;
         proxy_pass http://account:3000/;
     }
 
-    # Real-time collaboration (WebSocket)
-    location /_collaborator/ {
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+    location /_collaborator {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://collaborator:3078/;
-    }
-    location = /_collaborator {
+
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        rewrite ^/_collaborator(/.*)$ $1 break;
         proxy_pass http://collaborator:3078/;
     }
 
-    # Transactor (WebSocket)
-    location /_transactor/ {
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+    location /_transactor {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://transactor:3333/;
-    }
-    location = /_transactor {
+
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        rewrite ^/_transactor(/.*)$ $1 break;
         proxy_pass http://transactor:3333/;
     }
 
-    # Transactor workspace tokens (base64 JWT paths)
     location ~ ^/eyJ {
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_pass http://transactor:3333;
     }
 
-    # Document thumbnail/preview service
-    location /_rekoni/ {
+    location /_rekoni {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://rekoni:4004/;
-    }
-    location = /_rekoni {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+
+        rewrite ^/_rekoni(/.*)$ $1 break;
         proxy_pass http://rekoni:4004/;
     }
 
-    # Analytics/telemetry
-    location /_stats/ {
+    location /_stats {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://stats:4900/;
-    }
-    location = /_stats {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+
+        rewrite ^/_stats(/.*)$ $1 break;
         proxy_pass http://stats:4900/;
     }
 }
