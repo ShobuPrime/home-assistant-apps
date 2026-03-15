@@ -23,7 +23,8 @@ RUN \
         curl \
         docker-cli \
         jq \
-        openssl
+        openssl \
+        socat
 
 # Install Docker Compose as a standalone binary (NOT as a CLI plugin)
 # Alpine's docker-cli plugin loader segfaults on aarch64 (docker/cli#4900).

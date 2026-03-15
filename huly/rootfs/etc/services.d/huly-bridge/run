@@ -1,0 +1,87 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant Add-on: Huly
+# Bridges HA ingress (port 4859) to the compose nginx service.
+#
+# The compose services run as sibling containers on the host Docker daemon.
+# This addon container is on the HA hassio network, not the compose network.
+# We connect to the compose network, resolve nginx's IP, and use socat to
+# forward port 4859 → nginx:80.
+# ==============================================================================
+
+COMPOSE_NETWORK="huly_ha_huly_net"
+ADDON_CONTAINER=""
+MAX_WAIT=120
+
+# Wait for the compose network to exist (huly service creates it)
+bashio::log.info "Waiting for Huly compose network..."
+WAITED=0
+while [[ ${WAITED} -lt ${MAX_WAIT} ]]; do
+    if curl -sf --unix-socket /var/run/docker.sock \
+        "http://localhost/networks/${COMPOSE_NETWORK}" > /dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+    WAITED=$((WAITED + 2))
+done
+
+if [[ ${WAITED} -ge ${MAX_WAIT} ]]; then
+    bashio::log.error "Compose network ${COMPOSE_NETWORK} not found after ${MAX_WAIT}s"
+    sleep 30
+    exit 1
+fi
+
+# Get our own container ID
+ADDON_CONTAINER=$(grep -oP 'docker/containers/\K[a-f0-9]{64}' /proc/self/mountinfo 2>/dev/null | head -1)
+if [[ -z "${ADDON_CONTAINER}" ]]; then
+    ADDON_CONTAINER="addon_$(hostname | sed 's/-/_/g')"
+fi
+bashio::log.info "Addon container: ${ADDON_CONTAINER}"
+
+# Connect addon container to the compose network (if not already connected)
+CONNECTED=$(curl -sf --unix-socket /var/run/docker.sock \
+    "http://localhost/networks/${COMPOSE_NETWORK}" 2>/dev/null \
+    | jq -r ".Containers[\"${ADDON_CONTAINER}\"] // empty" 2>/dev/null)
+
+if [[ -z "${CONNECTED}" ]]; then
+    bashio::log.info "Connecting addon to compose network ${COMPOSE_NETWORK}..."
+    curl -sf --unix-socket /var/run/docker.sock \
+        -X POST -H "Content-Type: application/json" \
+        -d "{\"Container\": \"${ADDON_CONTAINER}\"}" \
+        "http://localhost/networks/${COMPOSE_NETWORK}/connect" > /dev/null 2>&1
+    bashio::log.info "Connected to compose network"
+else
+    bashio::log.info "Already connected to compose network"
+fi
+
+# Wait for compose nginx to be reachable
+bashio::log.info "Waiting for Huly nginx to be ready..."
+WAITED=0
+while [[ ${WAITED} -lt ${MAX_WAIT} ]]; do
+    # Resolve nginx container IP from the compose network
+    NGINX_IP=$(curl -sf --unix-socket /var/run/docker.sock \
+        "http://localhost/networks/${COMPOSE_NETWORK}" 2>/dev/null \
+        | jq -r '.Containers | to_entries[] | select(.value.Name | test("nginx")) | .value.IPv4Address' 2>/dev/null \
+        | cut -d'/' -f1)
+
+    if [[ -n "${NGINX_IP}" ]]; then
+        # Test if nginx is responding
+        if curl -sf --max-time 2 "http://${NGINX_IP}:80/" > /dev/null 2>&1; then
+            bashio::log.info "Nginx reachable at ${NGINX_IP}:80"
+            break
+        fi
+    fi
+    sleep 2
+    WAITED=$((WAITED + 2))
+done
+
+if [[ -z "${NGINX_IP}" ]]; then
+    bashio::log.error "Could not resolve nginx IP on compose network"
+    sleep 30
+    exit 1
+fi
+
+# Forward port 4859 → nginx:80 via socat
+# This makes the Huly web UI accessible at the addon's ingress port.
+bashio::log.info "Starting port bridge: 0.0.0.0:4859 → ${NGINX_IP}:80"
+exec socat TCP-LISTEN:4859,fork,reuseaddr TCP:${NGINX_IP}:80

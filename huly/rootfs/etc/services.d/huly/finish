@@ -41,6 +41,15 @@ else
     bashio::log.debug "No running Huly containers found"
 fi
 
+# Disconnect addon from compose network before teardown
+ADDON_CID=$(grep -oP 'docker/containers/\K[a-f0-9]{64}' /proc/self/mountinfo 2>/dev/null | head -1) || true
+if [[ -n "${ADDON_CID}" ]]; then
+    curl -sf --unix-socket "${DOCKER_SOCK}" \
+        -X POST -H "Content-Type: application/json" \
+        -d "{\"Container\": \"${ADDON_CID}\", \"Force\": true}" \
+        "http://localhost/networks/huly_ha_huly_net/disconnect" 2>/dev/null || true
+fi
+
 # Phase 2: Run docker-compose down to remove stopped containers and networks.
 # Since containers are already stopped, this is fast — it just cleans up.
 if cd /data/huly 2>/dev/null; then
