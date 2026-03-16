@@ -5,7 +5,7 @@ description: Ensure the hassio-addons base image is correctly and consistently u
 
 # Home Assistant Base Image Updater
 
-This skill ensures the `ghcr.io/hassio-addons/base` image is properly and consistently managed across all add-ons in the `ShobuPrime/home-assistant-addons` repository.
+This skill ensures the `ghcr.io/hassio-addons/base` image is properly and consistently managed across all add-ons in the `ShobuPrime/home-assistant-apps` repository.
 
 ## Why This Matters
 

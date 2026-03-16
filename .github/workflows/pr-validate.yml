@@ -489,7 +489,7 @@ jobs:
                   await new Promise(resolve => setTimeout(resolve, pollInterval));
                   continue;
                 }
-                console.log('Builder workflow never appeared - skipping merge (fallback sweep will retry)');
+                console.log('Builder workflow never appeared - skipping merge');
                 return;
               }
 
@@ -499,7 +499,7 @@ jobs:
                   await new Promise(resolve => setTimeout(resolve, pollInterval));
                   continue;
                 }
-                console.log('Builder did not complete in time - fallback sweep will retry');
+                console.log('Builder did not complete in time - skipping merge');
                 return;
               }
 
@@ -575,6 +575,6 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
-                body: `⚠️ Auto-merge failed: ${error.message}\n\nThe scheduled fallback sweep will retry, or merge manually if appropriate.`
+                body: `⚠️ Auto-merge failed: ${error.message}\n\nPlease investigate and merge manually if appropriate.`
               });
             }

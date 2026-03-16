@@ -15,7 +15,7 @@ To use these add-ons in your Home Assistant installation:
 1. Navigate in your Home Assistant frontend to **Supervisor** → **Add-on Store**
 2. Click the menu icon (three dots) in the top right corner
 3. Select **Repositories**
-4. Add the URL of this repository: `https://github.com/shobuprime/home-assistant-addons`
+4. Add the URL of this repository: `https://github.com/shobuprime/home-assistant-apps`
 5. Scroll down to find the add-ons from this repository
 
 ## Add-ons
@@ -83,4 +83,4 @@ MIT License - see [LICENSE.md](LICENSE.md) for details.
 
 [project-stage-shield]: https://img.shields.io/badge/project%20stage-development-orange.svg
 [maintenance-shield]: https://img.shields.io/maintenance/yes/2026.svg
-[license-shield]: https://img.shields.io/github/license/shobuprime/home-assistant-addons.svg
+[license-shield]: https://img.shields.io/github/license/shobuprime/home-assistant-apps.svg

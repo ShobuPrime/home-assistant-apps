@@ -63,26 +63,6 @@ The auto-merge job:
 4. Verifies the PR is mergeable
 5. Performs a squash merge
 
-### 3. Auto-merge Fallback Sweep
-
-**File:** [`.github/workflows/auto-merge.yml`](workflows/auto-merge.yml)
-
-**Triggers:**
-- Every 30 minutes (scheduled sweep)
-- When a check suite completes (catches Builder completion)
-- Manual via workflow_dispatch
-
-This is a **safety net** that catches any automated PRs the primary merge path missed (e.g., due to Builder timing out, transient errors, or race conditions).
-
-**What it does:**
-1. Lists all open PRs created by `github-actions[bot]` with the `automated` label
-2. For each PR, verifies:
-   - Has `validation-passed` label
-   - No blocking labels (`do-not-merge`, `needs-review`, `on-hold`)
-   - All check runs (Builder + PR Validation) have completed successfully
-   - PR is mergeable
-3. Merges eligible PRs via squash merge
-
 ### Auto-merge Flow
 
 ```
@@ -99,9 +79,6 @@ Fires repository_dispatch 'automated-pr-created' with PR details
     |         |-- Auto-merge job: polls for Builder completion, then merges
     |
     +---> Builder runs (Docker image build test)
-    |
-    v
-Fallback: auto-merge.yml sweep (every 30 min) catches stragglers
 ```
 
 **Why `repository_dispatch`?** PRs created via `peter-evans/create-pull-request` use
@@ -124,10 +101,6 @@ You can manually trigger the update workflows:
 2. Select the workflow (e.g., "Update Portainer EE LTS")
 3. Click **Run workflow**
 4. Select branch and click **Run workflow**
-
-To manually trigger the auto-merge sweep:
-1. Go to **Actions** > **Auto-merge PRs**
-2. Click **Run workflow**
 
 ## Customizing Validation
 
@@ -153,14 +126,7 @@ Then add it to the `needs` array in the `summary` job.
 
 ### Modifying Auto-merge Behavior
 
-**Primary merge path** (in `pr-validate.yml`):
-- Modify the `auto-merge` job's conditions and script
-- Adjust Builder polling timeout (`maxAttempts` and `pollInterval`)
-
-**Fallback sweep** (in `auto-merge.yml`):
-- Change sweep frequency by editing the cron schedule
-- Add more blocking labels in the `blockingLabels` array
-- Change merge method (`merge`, `squash`, `rebase`)
+In `pr-validate.yml`, modify the `auto-merge` job's conditions and script. Adjust Builder polling timeout via `maxAttempts` and `pollInterval`.
 
 ## Documentation Update Strategy
 
@@ -189,17 +155,13 @@ Check the PR comments for specific error messages. Common issues:
 
 ### Auto-merge Not Triggering
 
-The auto-merge system has two paths. If PRs are not being merged:
+If PRs are not being merged:
 
-1. **Check primary path** (PR Validation workflow):
+1. **Check the PR Validation workflow**:
    - Look at the `Auto-merge if eligible` job in the PR Validation workflow run
    - Verify it ran and check its logs for skip reasons
 
-2. **Check fallback sweep**:
-   - Go to Actions > "Auto-merge PRs" and verify the scheduled runs are executing
-   - Manually trigger the workflow to force a sweep
-
-3. **Common causes**:
+2. **Common causes**:
    - PR missing `automated` or `validation-passed` label
    - Blocking label present (`do-not-merge`, `needs-review`, `on-hold`)
    - Builder workflow failed or hasn't completed

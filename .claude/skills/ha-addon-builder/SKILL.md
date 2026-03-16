@@ -1,11 +1,11 @@
 ---
 name: ha-addon-builder
-description: Build new Home Assistant add-ons for the ShobuPrime/home-assistant-addons repository. Use this skill whenever the user wants to create a new HA addon, scaffold an addon, add a new service to their Home Assistant setup, or integrate a new Docker-based application as a Home Assistant add-on. Also use when the user asks about addon structure, CI/CD automation for addons, or how their existing addons work. This skill covers the full lifecycle - scaffolding all required files, setting up automated version updates, and integrating with the repository's CI/CD pipeline.
+description: Build new Home Assistant add-ons for the ShobuPrime/home-assistant-apps repository. Use this skill whenever the user wants to create a new HA addon, scaffold an addon, add a new service to their Home Assistant setup, or integrate a new Docker-based application as a Home Assistant add-on. Also use when the user asks about addon structure, CI/CD automation for addons, or how their existing addons work. This skill covers the full lifecycle - scaffolding all required files, setting up automated version updates, and integrating with the repository's CI/CD pipeline.
 ---
 
 # Home Assistant Add-on Builder
 
-This skill guides you through creating production-ready Home Assistant add-ons for the `ShobuPrime/home-assistant-addons` repository. It covers the full lifecycle: scaffolding, S6-overlay integration, CI/CD automation, and documentation.
+This skill guides you through creating production-ready Home Assistant add-ons for the `ShobuPrime/home-assistant-apps` repository. It covers the full lifecycle: scaffolding, S6-overlay integration, CI/CD automation, and documentation.
 
 ## Before You Start
 
