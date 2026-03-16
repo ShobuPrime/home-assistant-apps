@@ -118,7 +118,7 @@ Currently running Dockge 1.5.0
 
 MIT License
 
-Copyright (c) 2024 Home Assistant Add-ons
+Copyright (c) 2024 Home Assistant Community Apps
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
