@@ -1,4 +1,4 @@
-# Dockge Add-on for Home Assistant
+# Dockge App for Home Assistant
 
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
@@ -10,7 +10,7 @@ A fancy, easy-to-use and reactive self-hosted docker compose.yaml stack-oriented
 
 ## About
 
-Dockge is a self-hosted, easy-to-use Docker Compose stack manager. It provides a web interface to manage your Docker Compose stacks with features like an interactive YAML editor, web terminal, and real-time updates. This add-on brings Dockge to Home Assistant, integrating it seamlessly with the sidebar.
+Dockge is a self-hosted, easy-to-use Docker Compose stack manager. It provides a web interface to manage your Docker Compose stacks with features like an interactive YAML editor, web terminal, and real-time updates. This app brings Dockge to Home Assistant, integrating it seamlessly with the sidebar.
 
 ## Features
 
@@ -27,17 +27,17 @@ Dockge is a self-hosted, easy-to-use Docker Compose stack manager. It provides a
 ## Installation
 
 1. Add this repository to your Home Assistant instance
-2. Search for "Dockge" in the add-on store
+2. Search for "Dockge" in the app store
 3. Click Install
-4. Configure the add-on options (if needed)
-5. Start the add-on
+4. Configure the app options (if needed)
+5. Start the app
 6. Click "OPEN WEB UI" or access via the sidebar
 
 ## Configuration
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon and can
+The `log_level` option controls the level of log output by the app and can
 be changed to be more or less verbose, which might be useful when you are
 dealing with an unknown issue. Possible values are:
 
@@ -46,7 +46,7 @@ dealing with an unknown issue. Possible values are:
 - `info`: Normal (usually) interesting events.
 - `warning`: Exceptional occurrences that are not errors.
 - `error`: Runtime errors that do not require immediate action.
-- `fatal`: Something went terribly wrong. Add-on becomes unusable.
+- `fatal`: Something went terribly wrong. App becomes unusable.
 
 ### Option: `stacks_dir`
 
@@ -57,13 +57,13 @@ All stacks are automatically included in Home Assistant backups.
 
 When enabled (default), hides Home Assistant system containers from the Dockge
 interface. This includes supervisor, core, audio, dns, multicast, cli, observer,
-and addon containers.
+and app containers.
 
 ## Folder Access
 
-This addon has access to the following Home Assistant directories:
+This app has access to the following Home Assistant directories:
 
-- `/data` - Addon persistent data (read/write)
+- `/data` - App persistent data (read/write)
 - `/share` - Home Assistant share folder (read/write)
 
 These folders are accessible from within Dockge and can be used for stack storage or volume mounts.
@@ -77,18 +77,18 @@ These folders are accessible from within Dockge and can be used for stack storag
 
 ## Docker Socket Access
 
-This add-on requires access to the Docker socket to manage containers. For security,
-ensure you understand the implications of granting Docker access to this addon.
+This app requires access to the Docker socket to manage containers. For security,
+ensure you understand the implications of granting Docker access to this app.
 
 ## Known Issues and Limitations
 
 - **Console Feature**: As of Dockge 1.5.0, the console/terminal feature is disabled
-  by default for security. Since this addon uses the official Docker image, enabling
+  by default for security. Since this app uses the official Docker image, enabling
   the console would require building a custom image with `DOCKGE_ENABLE_CONSOLE=true`
 - Full Docker socket access is required
 - Ingress port must be set to 5001 (default)
 
-## Updating the Add-on
+## Updating the App
 
 An update script is included to check for new Dockge versions:
 

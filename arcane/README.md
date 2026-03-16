@@ -1,4 +1,4 @@
-# Arcane Docker Manager Add-on for Home Assistant
+# Arcane Docker Manager App for Home Assistant
 
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
@@ -7,7 +7,7 @@ Modern Docker management UI - a lightweight, beautiful alternative to Portainer.
 
 ## About
 
-Arcane is a modern, open-source Docker management platform designed for everyone. It provides an intuitive web-based interface for managing Docker containers, images, volumes, networks, and Docker Compose stacks. This add-on brings Arcane to Home Assistant, integrating it seamlessly with the sidebar and providing easy access to all Docker management features.
+Arcane is a modern, open-source Docker management platform designed for everyone. It provides an intuitive web-based interface for managing Docker containers, images, volumes, networks, and Docker Compose stacks. This app brings Arcane to Home Assistant, integrating it seamlessly with the sidebar and providing easy access to all Docker management features.
 
 ## Features
 
@@ -27,17 +27,17 @@ Arcane is a modern, open-source Docker management platform designed for everyone
 ## Installation
 
 1. Add this repository to your Home Assistant instance
-2. Search for "Arcane Docker Manager" in the add-on store
+2. Search for "Arcane Docker Manager" in the app store
 3. Click Install
-4. Configure the add-on options (if needed)
-5. Start the add-on
+4. Configure the app options (if needed)
+5. Start the app
 6. Click "OPEN WEB UI" or access via the sidebar
 
 ## Configuration
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon:
+The `log_level` option controls the level of log output by the app:
 
 - `trace`: Show every detail
 - `debug`: Shows detailed debug information
@@ -61,10 +61,10 @@ When enabled (default), hides Home Assistant system containers from the Arcane i
 
 ## Folder Access
 
-This addon has access to the following Home Assistant directories:
+This app has access to the following Home Assistant directories:
 
 - `/ssl` - SSL certificates (read-only)
-- `/data` - Addon persistent data (read/write)
+- `/data` - App persistent data (read/write)
 - `/media` - Home Assistant media folder (read/write)
 - `/share` - Home Assistant share folder (read/write)
 

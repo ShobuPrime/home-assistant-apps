@@ -1,4 +1,4 @@
-# MuninnDB Add-on for Home Assistant
+# MuninnDB App for Home Assistant
 
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
@@ -11,7 +11,7 @@ Cognitive database with memory primitives — Ebbinghaus decay, Hebbian learning
 
 [MuninnDB](https://muninndb.com) is the world's first cognitive database. Rather than storing rows or documents, it stores engrams — memory traces that score by recency and frequency, learn associations via Hebbian learning, and trigger notifications when they become relevant. It's MCP-native and ships as a single binary with zero external dependencies.
 
-This add-on integrates MuninnDB into Home Assistant, providing persistent cognitive memory storage accessible via REST, gRPC, MBP, and MCP protocols.
+This app integrates MuninnDB into Home Assistant, providing persistent cognitive memory storage accessible via REST, gRPC, MBP, and MCP protocols.
 
 ---
 
@@ -31,10 +31,10 @@ This add-on integrates MuninnDB into Home Assistant, providing persistent cognit
 ## Installation
 
 1. Add this repository to your Home Assistant instance
-2. Search for "MuninnDB" in the add-on store
+2. Search for "MuninnDB" in the app store
 3. Click Install
-4. Configure the add-on options (embedding providers, memory limits, etc.)
-5. Start the add-on
+4. Configure the app options (embedding providers, memory limits, etc.)
+5. Start the app
 6. Click "OPEN WEB UI" or access via the sidebar
 
 ---
@@ -43,7 +43,7 @@ This add-on integrates MuninnDB into Home Assistant, providing persistent cognit
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon:
+The `log_level` option controls the level of log output by the app:
 
 - `trace`: Show every detail
 - `debug`: Shows detailed debug information
@@ -56,7 +56,7 @@ The `log_level` option controls the level of log output by the addon:
 
 ### Option: `admin_password`
 
-Sets the admin password for the MuninnDB web UI. On first startup, MuninnDB creates a default `root` / `password` account. When this option is set, the addon automatically changes the admin password after MuninnDB starts. The password must be at least 8 characters. Leave empty to keep the default (not recommended).
+Sets the admin password for the MuninnDB web UI. On first startup, MuninnDB creates a default `root` / `password` account. When this option is set, the app automatically changes the admin password after MuninnDB starts. The password must be at least 8 characters. Leave empty to keep the default (not recommended).
 
 ---
 
@@ -68,7 +68,7 @@ Name of a vault to automatically create on first startup. Default: `homeassistan
 
 ### Backups
 
-- `backup_on_shutdown` — Trigger a native MuninnDB backup before the addon stops (default: `true`). Backups are stored in `/data/muninndb/backups/` and included in Home Assistant addon backups. The last 3 shutdown backups are retained.
+- `backup_on_shutdown` — Trigger a native MuninnDB backup before the app stops (default: `true`). Backups are stored in `/data/muninndb/backups/` and included in Home Assistant app backups. The last 3 shutdown backups are retained.
 - `backup_interval` — Enable automated periodic backups (e.g., `6h`, `30m`). Leave empty to disable.
 - `backup_retain` — Number of automated backups to keep (default: `5`).
 
@@ -115,10 +115,10 @@ API keys and URLs for embedding and LLM enrichment providers (all optional, alph
 
 ## Folder Access
 
-This addon has access to the following Home Assistant directories:
+This app has access to the following Home Assistant directories:
 
 - `/ssl` - SSL certificates (read-only)
-- `/data` - Addon persistent data (read/write)
+- `/data` - App persistent data (read/write)
 - `/media` - Home Assistant media folder (read/write)
 - `/share` - Home Assistant share folder (read/write)
 
@@ -126,9 +126,9 @@ This addon has access to the following Home Assistant directories:
 
 ## First Time Setup
 
-1. Set `admin_password` in the addon configuration (at least 8 characters)
+1. Set `admin_password` in the app configuration (at least 8 characters)
 2. Optionally set `default_vault` (defaults to `homeassistant`)
-3. Start the add-on
+3. Start the app
 4. Open the Web UI (port 8476) via ingress or directly
 5. Log in with `root` and your configured password
 6. Connect your AI tools via the MCP endpoint (port 8750)

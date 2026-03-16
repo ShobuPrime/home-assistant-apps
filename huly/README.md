@@ -1,4 +1,4 @@
-# Huly Add-on for Home Assistant
+# Huly App for Home Assistant
 
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
@@ -10,7 +10,7 @@ An open-source, all-in-one project management platform — alternative to Linear
 
 ## About
 
-Huly is a self-hosted project management platform that combines issue tracking, team chat, collaborative documents, and video meetings into a single application. This add-on brings the complete Huly stack to Home Assistant, orchestrating all 14 required services via Docker Compose internally.
+Huly is a self-hosted project management platform that combines issue tracking, team chat, collaborative documents, and video meetings into a single application. This app brings the complete Huly stack to Home Assistant, orchestrating all 14 required services via Docker Compose internally.
 
 ## Features
 
@@ -38,11 +38,11 @@ Huly is a resource-intensive application that runs 14 internal services includin
 ## Installation
 
 1. Add this repository to your Home Assistant instance
-2. Search for "Huly" in the add-on store
+2. Search for "Huly" in the app store
 3. Click Install
 4. Disable protection mode (required for Docker socket access)
 5. Configure the `host_address` option with your domain or IP
-6. Start the add-on
+6. Start the app
 7. Wait for all services to initialize (first start may take several minutes)
 8. Click "OPEN WEB UI" or access via the sidebar
 
@@ -50,7 +50,7 @@ Huly is a resource-intensive application that runs 14 internal services includin
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon and can
+The `log_level` option controls the level of log output by the app and can
 be changed to be more or less verbose, which might be useful when you are
 dealing with an unknown issue. Possible values are:
 
@@ -59,12 +59,12 @@ dealing with an unknown issue. Possible values are:
 - `info`: Normal (usually) interesting events.
 - `warning`: Exceptional occurrences that are not errors.
 - `error`: Runtime errors that do not require immediate action.
-- `fatal`: Something went terribly wrong. Add-on becomes unusable.
+- `fatal`: Something went terribly wrong. App becomes unusable.
 
 ### Option: `host_address`
 
 The domain name or IP address used to access your Huly instance. This is
-**required** and must be set before starting the add-on. Examples:
+**required** and must be set before starting the app. Examples:
 
 - `huly.example.com` (if using a reverse proxy with a domain)
 - `192.168.1.100` (if accessing via local IP)
@@ -85,9 +85,9 @@ Controls the name display order throughout the platform.
 
 ## Folder Access
 
-This addon has access to the following Home Assistant directories:
+This app has access to the following Home Assistant directories:
 
-- `/data` - Addon persistent data (read/write)
+- `/data` - App persistent data (read/write)
 - `/share` - Home Assistant share folder (read/write)
 
 All Huly data (databases, object storage, configuration) is stored under `/data` and automatically included in Home Assistant backups.
@@ -95,7 +95,7 @@ All Huly data (databases, object storage, configuration) is stored under `/data`
 ## First Time Setup
 
 1. Ensure `host_address` is configured with your domain or IP
-2. Start the add-on and wait for all 14 services to initialize
+2. Start the app and wait for all 14 services to initialize
 3. Access Huly via the sidebar or direct URL
 4. Create your first workspace and admin account
 5. Invite team members and begin managing your projects
@@ -104,9 +104,9 @@ All Huly data (databases, object storage, configuration) is stored under `/data`
 
 ## Docker Socket Access
 
-This add-on requires access to the Docker socket to orchestrate the internal
+This app requires access to the Docker socket to orchestrate the internal
 service stack via Docker Compose. Protection mode must be disabled in the
-add-on configuration for the Docker socket to be accessible.
+app configuration for the Docker socket to be accessible.
 
 ## Known Issues and Limitations
 

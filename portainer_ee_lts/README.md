@@ -1,4 +1,4 @@
-# Portainer EE (LTS) Add-on for Home Assistant
+# Portainer EE (LTS) App for Home Assistant
 
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
@@ -10,9 +10,9 @@ Manage your Docker environment with ease using Portainer Enterprise Edition (Lon
 
 ## About
 
-Portainer is a lightweight management UI which allows you to easily manage your Docker environments. This add-on brings Portainer EE LTS (Long Term Support) to Home Assistant, integrating it seamlessly with the sidebar and providing easy access to all Docker management features.
+Portainer is a lightweight management UI which allows you to easily manage your Docker environments. This app brings Portainer EE LTS (Long Term Support) to Home Assistant, integrating it seamlessly with the sidebar and providing easy access to all Docker management features.
 
-**Note**: This is the LTS version which tracks Portainer's Long Term Support releases for maximum stability and extended support. For the latest features with STS (Short Term Support), see the `portainer_ee_sts` addon.
+**Note**: This is the LTS version which tracks Portainer's Long Term Support releases for maximum stability and extended support. For the latest features with STS (Short Term Support), see the `portainer_ee_sts` app.
 
 ## Features
 
@@ -33,17 +33,17 @@ Portainer is a lightweight management UI which allows you to easily manage your 
 ## Installation
 
 1. Add this repository to your Home Assistant instance
-2. Search for "Portainer EE (LTS)" in the add-on store
+2. Search for "Portainer EE (LTS)" in the app store
 3. Click Install
-4. Configure the add-on options (if needed)
-5. Start the add-on
+4. Configure the app options (if needed)
+5. Start the app
 6. Click "OPEN WEB UI" or access via the sidebar
 
 ## Configuration
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon and can
+The `log_level` option controls the level of log output by the app and can
 be changed to be more or less verbose, which might be useful when you are
 dealing with an unknown issue. Possible values are:
 
@@ -52,7 +52,7 @@ dealing with an unknown issue. Possible values are:
 - `info`: Normal (usually) interesting events.
 - `warning`: Exceptional occurrences that are not errors.
 - `error`: Runtime errors that do not require immediate action.
-- `fatal`: Something went terribly wrong. Add-on becomes unusable.
+- `fatal`: Something went terribly wrong. App becomes unusable.
 
 ### Option: `ssl`
 
@@ -86,17 +86,17 @@ to Portainer via the `LICENSE_KEY` environment variable.
 
 When enabled (default), hides Home Assistant system containers from the Portainer 
 interface. This includes supervisor, core, audio, dns, multicast, cli, observer, 
-and addon containers.
+and app containers.
 
 **Note**: Due to Portainer's caching, toggling this option may require manual
 intervention. See the documentation for details.
 
 ## Folder Access
 
-This addon has access to the following Home Assistant directories:
+This app has access to the following Home Assistant directories:
 
 - `/ssl` - SSL certificates (read-only)
-- `/data` - Addon persistent data (read/write)
+- `/data` - App persistent data (read/write)
 - `/media` - Home Assistant media folder (read/write)
 - `/share` - Home Assistant share folder (read/write)
 
@@ -114,7 +114,7 @@ These folders are accessible from within Portainer and can be mounted as volumes
 
 **Issue**: Portainer versions 2.33.0 and later introduced Content-Security-Policy headers that block iframe embedding, which prevents access through Home Assistant's ingress.
 
-**Fix**: This add-on automatically sets `CSP=false` to disable the restrictive CSP headers and restore ingress functionality. If you experience access issues after updating, rebuild the add-on.
+**Fix**: This app automatically sets `CSP=false` to disable the restrictive CSP headers and restore ingress functionality. If you experience access issues after updating, rebuild the app.
 
 **Security Note**: Disabling CSP is necessary for Home Assistant integration but reduces some security protections. For enhanced security, you can access Portainer directly via ports 9000 (HTTP) or 9443 (HTTPS) instead of through ingress.
 
@@ -130,7 +130,7 @@ Got questions or found a bug? Please open an issue on the GitHub repository.
 
 ## Updates
 
-**Note**: As a local addon, updates require the Home Assistant integration package.
+**Note**: As a local app, updates require the Home Assistant integration package.
 
 ### Quick Setup:
 1. Copy the package to your config:

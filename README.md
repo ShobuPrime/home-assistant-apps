@@ -1,4 +1,4 @@
-# ShobuPrime Home Assistant Add-ons
+# ShobuPrime Home Assistant Apps
 
 ![Project Stage][project-stage-shield]
 ![Maintenance][maintenance-shield]
@@ -6,68 +6,27 @@
 
 ## About
 
-This repository contains custom Home Assistant add-ons.
+This repository contains custom Home Assistant apps.
 
 ## Installation
 
-To use these add-ons in your Home Assistant installation:
-
-1. Navigate in your Home Assistant frontend to **Supervisor** → **Add-on Store**
+1. Navigate in your Home Assistant frontend to **Settings** → **Add-ons** → **Add-on Store**
 2. Click the menu icon (three dots) in the top right corner
 3. Select **Repositories**
 4. Add the URL of this repository: `https://github.com/shobuprime/home-assistant-apps`
-5. Scroll down to find the add-ons from this repository
+5. Scroll down to find the apps from this repository
 
-## Add-ons
+## Apps
 
-This repository contains the following add-ons:
-
-### Portainer EE (LTS)
-Manage your Docker environment with Portainer Enterprise Edition (Long Term Support). This version tracks Portainer's LTS releases for maximum stability and extended support.
-
-- Full Docker management interface
-- SSL/TLS support using Home Assistant certificates
-- Ingress support for seamless sidebar integration
-- Automatic version updates via GitHub Actions
-
-### Portainer EE (STS)
-Manage your Docker environment with Portainer Enterprise Edition (Short Term Support). This version tracks Portainer's STS releases for the latest features and updates.
-
-- Full Docker management interface
-- SSL/TLS support using Home Assistant certificates
-- Ingress support for seamless sidebar integration
-- Automatic version updates via GitHub Actions
-
-### Arcane
-A modern Docker management interface with a clean, intuitive UI.
-
-- Lightweight alternative to Portainer
-- Ingress support for sidebar integration
-- Automatic version updates via GitHub Actions
-
-### Dockhand
-A Node.js-based Docker management interface for monitoring and managing containers.
-
-- Simple container management UI
-- Ingress support for sidebar integration
-- Automatic version updates via GitHub Actions
-
-### Dockge
-A fancy, easy-to-use Docker Compose stack-oriented manager.
-
-- Interactive YAML editor with syntax highlighting
-- Real-time container status updates
-- Ingress support for sidebar integration
-
-### Huly
-An open-source, all-in-one project management platform — alternative to Linear, Jira, Slack, and Notion.
-
-- Project management with issue tracking and kanban boards
-- Team chat, collaborative documents, and video meetings
-- Full 14-service stack orchestrated via Docker Compose
-- Ingress support with WebSocket real-time updates
-- Automatic version updates via GitHub Actions
-- Requires minimum 2 vCPUs and 8 GB RAM
+| App | Description |
+|-----|-------------|
+| [Arcane](arcane/) | Modern Docker management interface with a clean, intuitive UI |
+| [Dockge](dockge/) | Docker Compose stack-oriented manager with interactive YAML editor |
+| [Dockhand](dockhand/) | Node.js-based Docker management for monitoring and managing containers |
+| [Huly](huly/) | All-in-one project management platform — alternative to Linear, Jira, Slack, and Notion |
+| [MuninnDB](muninndb/) | Local-first AI memory and knowledge base with ONNX embedder |
+| [Portainer EE (LTS)](portainer_ee_lts/) | Docker management with Portainer Enterprise Edition (Long Term Support) |
+| [Portainer EE (STS)](portainer_ee_sts/) | Docker management with Portainer Enterprise Edition (Short Term Support) |
 
 ## Support
 

@@ -1,4 +1,4 @@
-# Home Assistant Add-on: Dockhand
+# Home Assistant App: Dockhand
 
 [![Release][release-shield]][release] ![Project Stage][project-stage-shield]
 
@@ -17,9 +17,9 @@ Dockhand is a privacy-focused Docker management platform that provides:
 
 ## Installation
 
-1. Add this repository to your Home Assistant Add-on store
-2. Install the "Dockhand" add-on
-3. Start the add-on
+1. Add this repository to your Home Assistant App store
+2. Install the "Dockhand" app
+3. Start the app
 4. Click "Open Web UI" or access via the sidebar
 
 ## Documentation
@@ -28,7 +28,7 @@ See the [DOCS.md](DOCS.md) file for detailed documentation.
 
 ## Support
 
-For issues specific to this Home Assistant add-on, please open an issue in this repository.
+For issues specific to this Home Assistant app, please open an issue in this repository.
 
 For Dockhand application issues, see the [Dockhand GitHub repository](https://github.com/Finsys/dockhand).
 
