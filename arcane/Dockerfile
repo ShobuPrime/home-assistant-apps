@@ -2,7 +2,7 @@ ARG BUILD_FROM=ghcr.io/hassio-addons/base:20.0.1
 FROM $BUILD_FROM
 
 # Build arguments for version
-ARG ARCANE_VERSION=1.16.2
+ARG ARCANE_VERSION=1.16.3
 
 # Install requirements
 # Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
