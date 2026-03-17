@@ -1,5 +1,16 @@
 # Changelog
 
+## Version 0.4.4-alpha (2026-03-17)
+
+## What's Changed
+* release: merge develop into main for v0.4.4-alpha by `scrypster` in https://github.com/scrypster/muninndb/pull/272
+
+
+**Full Changelog**: https://github.com/scrypster/muninndb/compare/v0.4.3-alpha...v0.4.4-alpha
+
+---
+
+
 ## Version 0.4.3-alpha (2026-03-16)
 
 ## What's Changed
