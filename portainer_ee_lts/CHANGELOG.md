@@ -1,5 +1,30 @@
 # Changelog
 
+## Version 2.39.1 (2026-03-20)
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+- Fixed an issue where a Git-based Docker stack from GitLab failed validation for non-admin users
+- Re-enabled image registries for FIPS
+- Fixed an issue where groups were missing after an upgrade
+- Fixed an issue where not all containers for a service were shown in v2.39.0 Alpine
+- Fixed an issue where users could not add new environments to an existing group when the group already contained a large number of environments
+- Fixed an issue where the Edit this application button was disabled for non-admin users
+- Fixed an issue where custom template file content was accessib
+
+---
+
+
 ## Version 2.39.0 (2026-02-26)
 
 ## Known issues

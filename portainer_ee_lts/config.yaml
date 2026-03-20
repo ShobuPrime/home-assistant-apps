@@ -1,6 +1,6 @@
 name: "Portainer EE (LTS)"
 description: "Manage your Docker environment with Portainer Enterprise Edition (Long Term Support)"
-version: "2.39.0"
+version: "2.39.1"
 slug: "portainer_ee_lts"
 init: false
 ingress: true
