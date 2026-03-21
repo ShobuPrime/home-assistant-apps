@@ -285,6 +285,32 @@ case "${SLUG}" in
         wait_for_health "${HEALTH_PORT}" 120
         ;;
 
+    hay_cm5_fan)
+        # Hardware-specific addon — no /dev/gpiochip0 on CI runners.
+        # Verify the image built successfully and the init script runs
+        # (it will fail at GPIO check, which is expected).
+        sleep 5
+        LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
+        if echo "${LOGS}" | grep -q "Initializing HAY CM5 Fan Controller"; then
+            pass "Init script executed"
+        else
+            fail "Init script did not run"
+        fi
+        if echo "${LOGS}" | grep -q "libgpiod tools found"; then
+            pass "libgpiod installed"
+        else
+            fail "libgpiod not found in image"
+        fi
+        if echo "${LOGS}" | grep -q "GPIO chip device.*not found"; then
+            info "GPIO device not available (expected on CI)"
+        fi
+        if docker exec "${CONTAINER_NAME}" vcgencmd --version > /dev/null 2>&1; then
+            pass "vcgencmd installed"
+        else
+            info "vcgencmd not testable without /dev/vcio"
+        fi
+        ;;
+
     *)
         wait_for_health "${HEALTH_PORT}" 120
         info "No addon-specific tests for '${SLUG}'"

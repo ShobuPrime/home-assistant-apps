@@ -27,14 +27,16 @@ fi
 bashio::log.info "libgpiod tools found: $(gpioset --version 2>&1 | head -1)"
 
 # Validate GPIO character device exists
+# Don't hard-fail here — let the run script handle the missing device
+# so the container stays up for diagnostics and CI smoke tests
 if [[ ! -c "/dev/${GPIO_CHIP}" ]]; then
-    bashio::log.error "GPIO chip device /dev/${GPIO_CHIP} not found!"
-    bashio::log.error "Ensure full_access: true is set and the host has the GPIO character device."
-    ls -la /dev/gpiochip* 2>/dev/null || bashio::log.error "  No GPIO chips found"
-    exit 1
+    bashio::log.warning "GPIO chip device /dev/${GPIO_CHIP} not found!"
+    bashio::log.warning "Ensure full_access: true is set and the host has the GPIO character device."
+    ls -la /dev/gpiochip* 2>/dev/null || bashio::log.warning "  No GPIO chips found"
+    bashio::log.warning "Fan control will not work until GPIO device is available."
+else
+    bashio::log.info "GPIO chip /dev/${GPIO_CHIP} found"
 fi
-
-bashio::log.info "GPIO chip /dev/${GPIO_CHIP} found"
 
 # Validate temperature sensor
 if [[ -f "${TEMP_SENSOR}" ]]; then
