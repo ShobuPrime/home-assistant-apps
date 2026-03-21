@@ -185,13 +185,34 @@ jobs:
         run: |
           ADDON="${{ matrix.addon }}"
           VERSION=$(grep "^version:" "${ADDON}/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+
+          # Try amd64 first (native on CI runner), fall back to aarch64
           BASE_IMAGE=$(grep "amd64:" "${ADDON}/build.yaml" | head -1 | awk '{print $2}')
+          BUILD_ARCH="amd64"
+          PLATFORM="linux/amd64"
+          if [ -z "${BASE_IMAGE}" ]; then
+            BASE_IMAGE=$(grep "aarch64:" "${ADDON}/build.yaml" | head -1 | awk '{print $2}')
+            BUILD_ARCH="aarch64"
+            PLATFORM="linux/arm64"
+            echo "No amd64 base image found, using aarch64 with QEMU"
+          fi
+
           IMAGE_TAG="smoke-test/${ADDON}:${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "base_image=${BASE_IMAGE}" >> $GITHUB_OUTPUT
+          echo "build_arch=${BUILD_ARCH}" >> $GITHUB_OUTPUT
+          echo "platform=${PLATFORM}" >> $GITHUB_OUTPUT
           echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
 
-      - name: Build image for smoke test (amd64)
+      - name: Set up QEMU
+        if: steps.config.outputs.build_arch != 'amd64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.config.outputs.build_arch != 'amd64'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image for smoke test
         run: |
           ADDON="${{ matrix.addon }}"
 
@@ -201,22 +222,29 @@ jobs:
 
           BUILD_ARGS=(
             --build-arg "BUILD_FROM=${{ steps.config.outputs.base_image }}"
-            --build-arg "BUILD_ARCH=amd64"
+            --build-arg "BUILD_ARCH=${{ steps.config.outputs.build_arch }}"
             --build-arg "BUILD_VERSION=${{ steps.config.outputs.version }}"
             --build-arg "BUILD_NAME=${ADDON}"
             --build-arg "BUILD_DESCRIPTION=Smoke test"
             --build-arg "BUILD_REF=$(git rev-parse --short HEAD)"
             --build-arg "BUILD_REPOSITORY=local"
             --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            --build-arg "TARGETARCH=amd64"
+            --build-arg "TARGETARCH=${{ steps.config.outputs.build_arch }}"
           )
 
           if [ -n "${VERSION_ARG}" ] && [ -n "${VERSION_VAL}" ]; then
             BUILD_ARGS+=(--build-arg "${VERSION_ARG}=${VERSION_VAL}")
           fi
 
-          echo "Building ${ADDON} for smoke test..."
-          docker build \
+          # Use --platform for cross-arch builds, --load to make image available locally
+          PLATFORM_ARGS=()
+          if [ "${{ steps.config.outputs.build_arch }}" != "amd64" ]; then
+            PLATFORM_ARGS=(--platform "${{ steps.config.outputs.platform }}" --load)
+          fi
+
+          echo "Building ${ADDON} for smoke test (${{ steps.config.outputs.build_arch }})..."
+          docker buildx build \
+            "${PLATFORM_ARGS[@]}" \
             "${BUILD_ARGS[@]}" \
             -t "${{ steps.config.outputs.image_tag }}" \
             "./${ADDON}"
