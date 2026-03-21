@@ -264,8 +264,15 @@ trap cleanup SIGTERM SIGINT
 HEADER_PINS="2:3 3:5 4:7 14:8 15:10"  # gpio_line:header_pin
 
 scan_gpio_header() {
-    local gpio_output
-    gpio_output=$(gpioinfo 2>/dev/null | sed -n '/^gpiochip0/,/^gpiochip[1-9]/p' | grep "line") || return
+    # Capture gpioinfo output safely (avoid pipes that cause SIGPIPE under pipefail)
+    local raw_output gpio_output
+    raw_output=$(gpioinfo 2>/dev/null || true)
+    [ -z "${raw_output}" ] && return
+    # Write to temp file to avoid pipe issues with grep/sed
+    echo "${raw_output}" > /tmp/hay_gpioinfo.tmp
+    gpio_output=$(grep "line" /tmp/hay_gpioinfo.tmp || true)
+    rm -f /tmp/hay_gpioinfo.tmp
+    [ -z "${gpio_output}" ] && return
 
     bashio::log.info "=== Yellow 10-Pin GPIO Header (J11) ==="
     bashio::log.info "  Pin 1 [3.3V]  Pin 2 [5V]"
@@ -279,16 +286,20 @@ scan_gpio_header() {
         local gpio_num=${mapping%%:*}
         local pin_num=${mapping##*:}
 
-        # Parse gpioinfo line for this GPIO
+        # Parse gpioinfo line for this GPIO — use temp file to avoid pipe issues
+        echo "${gpio_output}" > /tmp/hay_gpio_parse.tmp
         local line_info
-        line_info=$(echo "${gpio_output}" | grep "line *${gpio_num}:" | head -1)
+        line_info=$(grep "line *${gpio_num}:" /tmp/hay_gpio_parse.tmp | head -1 || true)
+        rm -f /tmp/hay_gpio_parse.tmp
+        [ -z "${line_info}" ] && continue
 
-        local gpio_name direction consumer status flags
-        gpio_name=$(echo "${line_info}" | sed 's/.*"\([^"]*\)".*/\1/')
-        direction=$(echo "${line_info}" | awk '{for(i=1;i<=NF;i++) if($i=="input"||$i=="output") print $i}')
+        local gpio_name direction consumer status
+        gpio_name=$(echo "${line_info}" | sed 's/.*"\([^"]*\)".*/\1/' || true)
+        direction="input"
+        echo "${line_info}" | grep -q "output" && direction="output"
         consumer=""
-        if echo "${line_info}" | grep -q 'consumer='; then
-            consumer=$(echo "${line_info}" | sed 's/.*consumer="\([^"]*\)".*/\1/')
+        if echo "${line_info}" | grep -q 'consumer=' 2>/dev/null; then
+            consumer=$(echo "${line_info}" | sed 's/.*consumer="\([^"]*\)".*/\1/' || true)
         fi
 
         # Determine status
@@ -318,7 +329,7 @@ scan_gpio_header() {
 
     # Publish GPIO header entity
     local attrs
-    attrs=$(echo "${gpio_json}" | jq -c '.')
+    attrs=$(echo "${gpio_json}" | jq -c '.' 2>/dev/null || echo "${gpio_json}")
     publish_state "sensor" "gpio_header" "${state_summary}" "CM5 GPIO Header" "${attrs}"
 }
 
