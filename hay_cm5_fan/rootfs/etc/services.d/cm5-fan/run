@@ -283,7 +283,6 @@ parse_gpio_line() {
         _GPIO_CONSUMER=$(echo "${line_info}" | sed 's/.*consumer="\([^"]*\)".*/\1/' || true)
     fi
 
-    # Build status string: [dir] or [dir, consumer]
     if [ -n "${_GPIO_CONSUMER}" ]; then
         _GPIO_STATUS="[${_GPIO_DIR}, ${_GPIO_CONSUMER}]"
     else
@@ -291,14 +290,60 @@ parse_gpio_line() {
     fi
 }
 
-# Helper: dynamically build and print a perfectly aligned table
-# Uses printf with computed column widths so alignment is always correct
-# regardless of content length (consumer names, temps, etc.)
+# ── Table rendering primitives ──
+# These build visually rendered tables with box-drawing characters
+# and dynamically centered content that re-aligns on every render.
+
+# Return the max string length among all arguments
+max_len() {
+    local max=0
+    for s in "$@"; do [ ${#s} -gt ${max} ] && max=${#s}; done
+    echo ${max}
+}
+
+# Center text within a field of given width
+center_text() {
+    local text=$1 width=$2
+    local len=${#text}
+    if [ ${len} -ge ${width} ]; then
+        printf "%s" "${text}"
+        return
+    fi
+    local pad_left=$(( (width - len) / 2 ))
+    local pad_right=$(( width - len - pad_left ))
+    printf "%${pad_left}s%s%${pad_right}s" "" "${text}" ""
+}
+
+# Build a horizontal border line: ┌──┬──┐ or ├──┼──┤ or └──┴──┘
+# Usage: tbl_border "┌" "┬" "┐" w1 w2 w3 ...
+tbl_border() {
+    local left=$1 mid=$2 right=$3
+    shift 3
+    local result="${left}" first=true
+    for w in "$@"; do
+        [ "${first}" = "true" ] && first=false || result="${result}${mid}"
+        result="${result}$(printf '%*s' $((w + 2)) '' | tr ' ' '─')"
+    done
+    echo "${result}${right}"
+}
+
+# Build a data row with centered content: │ val │ val │
+# Usage: tbl_row val1 w1 val2 w2 ...
+tbl_row() {
+    local result="│"
+    while [ $# -ge 2 ]; do
+        local text=$1 width=$2
+        shift 2
+        result="${result} $(center_text "${text}" ${width}) │"
+    done
+    echo "${result}"
+}
+
+# ── Combined status report: GPIO pinout + thermal ──
 print_status_report() {
     # ── Capture GPIO info ──
     _GPIOINFO=$(gpioinfo 2>/dev/null || true)
 
-    # Parse GPIO lines for the header pins
     parse_gpio_line 2  ; local s2=${_GPIO_STATUS} c2=${_GPIO_CONSUMER}
     parse_gpio_line 3  ; local s3=${_GPIO_STATUS} c3=${_GPIO_CONSUMER}
     parse_gpio_line 4  ; local s4=${_GPIO_STATUS} c4=${_GPIO_CONSUMER}
@@ -310,22 +355,15 @@ print_status_report() {
         [ -n "${c}" ] && active=$((active + 1)) || avail=$((avail + 1))
     done
 
-    # ── Define table rows as arrays ──
-    # Each row: left_status | left_name | left_func | left_pin | right_pin | right_func | right_name | right_status
-    # Power/GND pins have empty status columns
+    # ── GPIO table data ──
+    # Columns: Status | Name | Function | Pin | Pin | Function | Name | Status
     local R1_LS="" R1_LN="3v3"    R1_LF="Power"   R1_LP="Pin 1"  R1_RP="Pin 2"  R1_RF="Power"   R1_RN="5v"     R1_RS=""
     local R2_LS="${s2}"  R2_LN="GPIO2"  R2_LF="I2C SDA"  R2_LP="Pin 3"  R2_RP="Pin 4"  R2_RF="Power"   R2_RN="5v"     R2_RS=""
     local R3_LS="${s3}"  R3_LN="GPIO3"  R3_LF="I2C SCL"  R3_LP="Pin 5"  R3_RP="Pin 6"  R3_RF="Ground"  R3_RN="GND"    R3_RS=""
     local R4_LS="${s4}"  R4_LN="GPIO4"  R4_LF="GPCLK0"   R4_LP="Pin 7"  R4_RP="Pin 8"  R4_RF="UART TX" R4_RN="GPIO14" R4_RS="${s14}"
     local R5_LS="" R5_LN="GND"    R5_LF="Ground"  R5_LP="Pin 9"  R5_RP="Pin 10" R5_RF="UART RX" R5_RN="GPIO15" R5_RS="${s15}"
 
-    # ── Compute column widths from all rows for perfect alignment ──
-    max_len() {
-        local max=0
-        for s in "$@"; do [ ${#s} -gt ${max} ] && max=${#s}; done
-        echo ${max}
-    }
-
+    # ── Compute column widths (resilient: always re-measured from data) ──
     local W_LS=$(max_len "Status" "$R1_LS" "$R2_LS" "$R3_LS" "$R4_LS" "$R5_LS")
     local W_LN=$(max_len "Name" "$R1_LN" "$R2_LN" "$R3_LN" "$R4_LN" "$R5_LN")
     local W_LF=$(max_len "Function" "$R1_LF" "$R2_LF" "$R3_LF" "$R4_LF" "$R5_LF")
@@ -335,26 +373,22 @@ print_status_report() {
     local W_RN=$(max_len "Name" "$R1_RN" "$R2_RN" "$R3_RN" "$R4_RN" "$R5_RN")
     local W_RS=$(max_len "Status" "$R1_RS" "$R2_RS" "$R3_RS" "$R4_RS" "$R5_RS")
 
-    # Build format string and separator dynamically
-    local fmt="| %-${W_LS}s | %-${W_LN}s | %-${W_LF}s | %-${W_LP}s | %-${W_RP}s | %-${W_RF}s | %-${W_RN}s | %-${W_RS}s |"
-    local sep
-    sep=$(printf "|-%${W_LS}s-|-%${W_LN}s-|-%${W_LF}s-|-%${W_LP}s-|-%${W_RP}s-|-%${W_RF}s-|-%${W_RN}s-|-%${W_RS}s-|" "" "" "" "" "" "" "" "" | tr ' ' '-')
-
-    # ── Print GPIO table ──
+    # ── Render GPIO table ──
     bashio::log.info ""
-    bashio::log.info "Yellow 10-Pin GPIO Header (J11) -- Pin 1 = square pad on PCB"
+    bashio::log.info "  Yellow 10-Pin GPIO Header (J11) · Pin 1 = square pad"
     bashio::log.info ""
-    bashio::log.info "$(printf "${fmt}" "Status" "Name" "Function" "Pin" "Pin" "Function" "Name" "Status")"
-    bashio::log.info "${sep}"
-    bashio::log.info "$(printf "${fmt}" "$R1_LS" "$R1_LN" "$R1_LF" "$R1_LP" "$R1_RP" "$R1_RF" "$R1_RN" "$R1_RS")"
-    bashio::log.info "$(printf "${fmt}" "$R2_LS" "$R2_LN" "$R2_LF" "$R2_LP" "$R2_RP" "$R2_RF" "$R2_RN" "$R2_RS")"
-    bashio::log.info "$(printf "${fmt}" "$R3_LS" "$R3_LN" "$R3_LF" "$R3_LP" "$R3_RP" "$R3_RF" "$R3_RN" "$R3_RS")"
-    bashio::log.info "$(printf "${fmt}" "$R4_LS" "$R4_LN" "$R4_LF" "$R4_LP" "$R4_RP" "$R4_RF" "$R4_RN" "$R4_RS")"
-    bashio::log.info "$(printf "${fmt}" "$R5_LS" "$R5_LN" "$R5_LF" "$R5_LP" "$R5_RP" "$R5_RF" "$R5_RN" "$R5_RS")"
-    bashio::log.info "${sep}"
-    bashio::log.info "GPIO: ${active} active, ${avail} available"
+    bashio::log.info "$(tbl_border '┌' '┬' '┐' $W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
+    bashio::log.info "$(tbl_row "Status" $W_LS "Name" $W_LN "Function" $W_LF "Pin" $W_LP "Pin" $W_RP "Function" $W_RF "Name" $W_RN "Status" $W_RS)"
+    bashio::log.info "$(tbl_border '├' '┼' '┤' $W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
+    bashio::log.info "$(tbl_row "$R1_LS" $W_LS "$R1_LN" $W_LN "$R1_LF" $W_LF "$R1_LP" $W_LP "$R1_RP" $W_RP "$R1_RF" $W_RF "$R1_RN" $W_RN "$R1_RS" $W_RS)"
+    bashio::log.info "$(tbl_row "$R2_LS" $W_LS "$R2_LN" $W_LN "$R2_LF" $W_LF "$R2_LP" $W_LP "$R2_RP" $W_RP "$R2_RF" $W_RF "$R2_RN" $W_RN "$R2_RS" $W_RS)"
+    bashio::log.info "$(tbl_row "$R3_LS" $W_LS "$R3_LN" $W_LN "$R3_LF" $W_LF "$R3_LP" $W_LP "$R3_RP" $W_RP "$R3_RF" $W_RF "$R3_RN" $W_RN "$R3_RS" $W_RS)"
+    bashio::log.info "$(tbl_row "$R4_LS" $W_LS "$R4_LN" $W_LN "$R4_LF" $W_LF "$R4_LP" $W_LP "$R4_RP" $W_RP "$R4_RF" $W_RF "$R4_RN" $W_RN "$R4_RS" $W_RS)"
+    bashio::log.info "$(tbl_row "$R5_LS" $W_LS "$R5_LN" $W_LN "$R5_LF" $W_LF "$R5_LP" $W_LP "$R5_RP" $W_RP "$R5_RF" $W_RF "$R5_RN" $W_RN "$R5_RS" $W_RS)"
+    bashio::log.info "$(tbl_border '└' '┴' '┘' $W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
+    bashio::log.info "  ${active} active · ${avail} available"
 
-    # ── Read all temperatures for the report ──
+    # ── Read all temperatures ──
     local cpu_temp="" nvme_temp="" rp1_temp=""
     for hwmon_dir in /sys/class/hwmon/hwmon*; do
         [ -d "${hwmon_dir}" ] || continue
@@ -375,29 +409,26 @@ print_status_report() {
         done
     done
 
-    # ── Print temperature table ──
+    # ── Temperature table ──
     local fan_str="OFF"
     [ "${FAN_STATE}" = "1" ] && fan_str="ON"
-
-    # Compute widths for temperature table
-    local T_WN=$(max_len "Sensor" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "CM5 Fan")
     local fan_detail="${fan_str} (${FAN_MODE}, on>=${TEMP_ON}C off<=${TEMP_OFF}C)"
+
+    local T_WN=$(max_len "Sensor" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "CM5 Fan")
     local T_WV=$(max_len "Value" "${cpu_temp}C" "${rp1_temp}C" "${nvme_temp}C" "${fan_detail}")
 
-    local tfmt="| %-${T_WN}s | %-${T_WV}s |"
-    local tsep
-    tsep=$(printf "|-%${T_WN}s-|-%${T_WV}s-|" "" "" | tr ' ' '-')
-
     bashio::log.info ""
-    bashio::log.info "System Thermal Status"
+    bashio::log.info "  System Thermal Status"
     bashio::log.info ""
-    bashio::log.info "$(printf "${tfmt}" "Sensor" "Value")"
-    bashio::log.info "${tsep}"
-    [ -n "${cpu_temp}" ]  && bashio::log.info "$(printf "${tfmt}" "CM5 Processor" "${cpu_temp}C")"
-    [ -n "${rp1_temp}" ]  && bashio::log.info "$(printf "${tfmt}" "CM5 I/O Controller (RP1)" "${rp1_temp}C")"
-    [ -n "${nvme_temp}" ] && bashio::log.info "$(printf "${tfmt}" "NVMe SSD" "${nvme_temp}C")"
-    bashio::log.info "${tsep}"
-    bashio::log.info "$(printf "${tfmt}" "CM5 Fan" "${fan_detail}")"
+    bashio::log.info "$(tbl_border '┌' '┬' '┐' $T_WN $T_WV)"
+    bashio::log.info "$(tbl_row "Sensor" $T_WN "Value" $T_WV)"
+    bashio::log.info "$(tbl_border '├' '┼' '┤' $T_WN $T_WV)"
+    [ -n "${cpu_temp}" ]  && bashio::log.info "$(tbl_row "CM5 Processor" $T_WN "${cpu_temp}C" $T_WV)"
+    [ -n "${rp1_temp}" ]  && bashio::log.info "$(tbl_row "CM5 I/O Controller (RP1)" $T_WN "${rp1_temp}C" $T_WV)"
+    [ -n "${nvme_temp}" ] && bashio::log.info "$(tbl_row "NVMe SSD" $T_WN "${nvme_temp}C" $T_WV)"
+    bashio::log.info "$(tbl_border '├' '┼' '┤' $T_WN $T_WV)"
+    bashio::log.info "$(tbl_row "CM5 Fan" $T_WN "${fan_detail}" $T_WV)"
+    bashio::log.info "$(tbl_border '└' '┴' '┘' $T_WN $T_WV)"
     bashio::log.info ""
 
     # ── Publish GPIO header HA entity ──
@@ -420,8 +451,7 @@ print_status_report() {
             pin_10_GPIO15: {function: "UART RX", status: $s15, consumer: $c15}
         }' 2>/dev/null || echo '{}')
 
-    local state_summary="${active} active, ${avail} available"
-    publish_state "sensor" "gpio_header" "${state_summary}" "CM5 GPIO Header" "${gpio_json}"
+    publish_state "sensor" "gpio_header" "${active} active, ${avail} available" "CM5 GPIO Header" "${gpio_json}"
 }
 
 # ==============================================================================
