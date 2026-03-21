@@ -6,7 +6,8 @@ FROM $BUILD_FROM
 RUN apk upgrade --no-cache \
     && apk add --no-cache \
         curl \
-        jq
+        jq \
+        libgpiod
 
 # Copy root filesystem
 COPY rootfs /

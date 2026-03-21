@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant Add-on for controlling a GPIO-connected fan on the Home Assistant Yellow with a Raspberry Pi CM5 compute module. Unlike other addons in this repo, this addon has no upstream binary — it is a pure shell-script daemon that reads CPU temperature and controls a fan via the Linux sysfs GPIO interface.
+This is a Home Assistant Add-on for controlling a GPIO-connected fan on the Home Assistant Yellow with a Raspberry Pi CM5 compute module. Unlike other addons in this repo, this addon has no upstream binary — it is a pure shell-script daemon that reads CPU temperature and controls a fan via the libgpiod character device interface (`/dev/gpiochip0`).
 
 ## Essential Commands
 
@@ -21,16 +21,21 @@ docker run --rm -it --privileged local/aarch64-addon-local_hay_cm5_fan:1.0.0
 
 ### How It Works
 
-1. **Init script** (`cont-init.d/cm5-fan.sh`): Exports sysfs GPIO, sets direction to output, turns fan ON
-2. **Daemon** (`services.d/cm5-fan/run`): Polls CPU temperature, applies hysteresis logic, updates HA entities
+1. **Init script** (`cont-init.d/cm5-fan.sh`): Validates libgpiod tools and `/dev/gpiochip0` exist
+2. **Daemon** (`services.d/cm5-fan/run`): Manages background `gpioset` process for fan control, polls CPU temperature, applies hysteresis logic, updates HA entities
 3. **Shutdown**: SIGTERM trap leaves fan in configured state (default: ON for safety)
 
-### GPIO Control via sysfs
+### GPIO Control via libgpiod
 
-The CM5 on Yellow uses sysfs GPIO number **583** (RP1 base 569 + GPIO 14). Control is via file writes:
-- `/sys/class/gpio/export` — claim the GPIO pin
-- `/sys/class/gpio/gpio583/direction` — set to "out"
-- `/sys/class/gpio/gpio583/value` — "1" = fan on, "0" = fan off
+The addon uses `gpioset` from the libgpiod tools to control GPIO14 on `gpiochip0` (pinctrl-rp1).
+
+**Why libgpiod instead of sysfs?** Modern HAOS mounts `/sys/class/gpio/` read-only. The sysfs GPIO interface cannot be used even with `full_access: true`. The libgpiod character device interface (`/dev/gpiochip0`) works correctly.
+
+**How `gpioset` works:**
+- `gpioset gpiochip0 14=1` sets GPIO14 HIGH and **blocks** (holds the line)
+- The daemon runs `gpioset` as a background process
+- To toggle state: kill the existing `gpioset`, start a new one with the desired value
+- When `gpioset` exits, the line is released — GPIO14/UART TX idles HIGH (fan ON = safe failsafe)
 
 ### Temperature Reading
 
@@ -46,14 +51,14 @@ Entities are created via the Supervisor REST API (`POST /core/api/states/`):
 All temperature sensors include `state_class: measurement` and `device_class: temperature` for full history/LTS support. These are "virtual" entities — they show state but don't support service calls. Fan control is via addon config (fan_mode: auto/on/off).
 
 ### Directory Structure
-- **`/rootfs/etc/cont-init.d/cm5-fan.sh`**: S6 initialization (GPIO export, fan ON)
+- **`/rootfs/etc/cont-init.d/cm5-fan.sh`**: S6 initialization (validate libgpiod, check `/dev/gpiochip0`)
 - **`/rootfs/etc/services.d/cm5-fan/`**: Service definition with `run` (daemon) and `finish` (crash handler)
 
 ### Critical Files
 - **`config.yaml`**: Add-on configuration (version, options schema, full_access)
 - **`build.yaml`**: Build configuration — **aarch64 only** (CM5 hardware)
-- **`Dockerfile`**: Minimal — just curl, jq, and shell scripts (no binary download)
-- **`apparmor.txt`**: Security profile with GPIO and hwmon sysfs paths
+- **`Dockerfile`**: Minimal — curl, jq, libgpiod, and shell scripts (no binary download)
+- **`apparmor.txt`**: Security profile with `/dev/gpiochip*` and hwmon sysfs paths
 
 ### Architecture Support
 - `aarch64` only — this addon is hardware-specific to the Raspberry Pi CM5
@@ -72,17 +77,19 @@ This addon has no upstream software to track. The addon IS the software. Version
 ### Configuration Handling
 - Read options using `bashio::config` functions
 - `bashio::config.true` for boolean checks
-- Threshold validation: `temp_off` must be less than `temp_on`
+- Threshold validation: `temp_off` must be less than `temp_on` (in auto mode)
 
 ### Safety Invariants
 - Fan MUST be ON at startup before the polling loop begins
 - Fan MUST be forced ON if temperature sensor becomes unavailable
+- Fan MUST be forced ON if the `gpioset` background process dies unexpectedly
 - `leave_on_at_shutdown: true` is the recommended and default setting
-- The addon requires `full_access: true` for sysfs GPIO writes
+- The addon requires `full_access: true` for `/dev/gpiochip0` access
 
 ### Hardware Constraints (Do NOT violate)
 - GPIO14 is on/off only — no hardware PWM
-- sysfs GPIO number 583 is specific to CM5 RP1 chip on Yellow
+- GPIO chip is `gpiochip0` (pinctrl-rp1) on CM5, GPIO line is 14
+- Do NOT use the legacy sysfs GPIO interface — it is read-only on modern HAOS
 - `dtparam=cooling_fan` controls GPIO45 (CM5 dedicated header) — NOT the Yellow 10-pin header
 - HAOS silently ignores custom device tree overlays
 - Do NOT attempt to unbind UART driver at runtime
@@ -95,32 +102,40 @@ When updating version:
 
 ### Testing Checklist
 - Build completes successfully on aarch64
-- GPIO export succeeds on Yellow hardware
+- `/dev/gpiochip0` is accessible in the container
+- `gpioset` successfully holds GPIO line 14
 - Fan turns ON at startup
 - Temperature reading works
 - Hysteresis logic: fan turns ON at temp_on, OFF at temp_off, stable between
 - Fan mode override works (on/off/auto)
 - Shutdown handler respects leave_on_at_shutdown config
-- HA entities appear (sensor.cm5_cpu_temperature, binary_sensor.cm5_cpu_fan)
+- HA entities appear (sensor.hay_cpu_temperature, binary_sensor.hay_cm5_cpu_fan)
 - Temperature sensor failure triggers failsafe (fan ON)
+- gpioset process death triggers failsafe (fan ON)
 
 ## Important Notes
 
 - **Never commit changes** to version numbers without testing on actual Yellow hardware
-- **full_access: true** is required — there is no lesser privilege that allows sysfs GPIO writes
-- **AppArmor profile** must include `/sys/class/gpio/**` and `/sys/class/hwmon/**` paths
+- **full_access: true** is required — there is no lesser privilege that allows `/dev/gpiochip0` access
+- **AppArmor profile** must include `/dev/gpiochip*` and `/sys/class/hwmon/**` paths
 - The addon creates entities via REST API, not via an integration — they don't survive HA restarts unless the addon is running
 
 ## Common Issues and Troubleshooting
 
-### Issue: GPIO Export Fails
+### Issue: GPIO Chip Not Found
 
-**Cause:** Missing sysfs support, wrong GPIO number, or insufficient privileges
+**Cause:** `/dev/gpiochip0` not available in the container
 
 **Solution:**
 1. Verify `full_access: true` in config.yaml
-2. Check that sysfs GPIO is available: `ls /sys/class/gpio/`
-3. Confirm GPIO number (583 for CM5 GPIO14 on Yellow)
+2. Check that the device exists on the host: `ls -la /dev/gpiochip*`
+3. The pinctrl-rp1 chip should be `gpiochip0` on CM5
+
+### Issue: gpioset Process Dies
+
+**Cause:** Line requested by another process, or permissions issue
+
+**Solution:** The daemon auto-detects this and restarts gpioset with fan ON. Check logs for repeated warnings.
 
 ### Issue: Entities Disappear After HA Restart
 

@@ -15,7 +15,8 @@ apparmor: true
 map:
   - data:rw
 options:
-  gpio_number: 583
+  gpio_chip: "gpiochip0"
+  gpio_line: 14
   temp_sensor_path: "/sys/class/hwmon/hwmon0/temp1_input"
   poll_interval: 5
   temp_on: 55
@@ -24,7 +25,8 @@ options:
   leave_on_at_shutdown: true
   log_level: info
 schema:
-  gpio_number: int
+  gpio_chip: str
+  gpio_line: int(0,53)
   temp_sensor_path: str
   poll_interval: int(1,60)
   temp_on: int(30,90)

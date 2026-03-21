@@ -6,7 +6,7 @@ GPIO-based fan control with thermal management for Home Assistant Yellow with Ra
 
 ## About
 
-This addon controls a fan connected to the Home Assistant Yellow's 10-pin GPIO header (connector J11) via sysfs GPIO. It provides hysteresis-based thermal management to keep the CM5 cool while avoiding rapid fan cycling. Fan state and all system temperatures (CPU, NVMe, etc.) are exposed as Home Assistant entities with full history and long-term statistics support.
+This addon controls a fan connected to the Home Assistant Yellow's 10-pin GPIO header (connector J11) via libgpiod (`/dev/gpiochip0`). It provides hysteresis-based thermal management to keep the CM5 cool while avoiding rapid fan cycling. Fan state and all system temperatures (CPU, NVMe, etc.) are exposed as Home Assistant entities with full history and long-term statistics support.
 
 ## Features
 
@@ -18,7 +18,7 @@ This addon controls a fan connected to the Home Assistant Yellow's 10-pin GPIO h
 - All sensors support HA history graphs, statistics cards, and long-term statistics
 - Safe defaults: fan ON at startup, stays ON at shutdown
 - Failsafe: fan forced ON if temperature sensor becomes unavailable
-- Configurable GPIO number for custom wiring setups
+- Uses libgpiod character device interface (works on modern HAOS with read-only sysfs)
 
 ## Hardware Requirements
 
@@ -26,7 +26,7 @@ This addon controls a fan connected to the Home Assistant Yellow's 10-pin GPIO h
 - Fan connected to the Yellow 10-pin GPIO header (J11):
   - Pin 4: 5V (red)
   - Pin 6: GND (black)
-  - Pin 8: GPIO14 / PWM signal (blue) — sysfs GPIO 583
+  - Pin 8: GPIO14 / PWM signal (blue) — gpiochip0 line 14
 
 ### Tested Fan
 
@@ -42,9 +42,13 @@ This addon has been tested and verified compatible with the [Seeed Studio Alumin
 
 ## Configuration
 
-### Option: `gpio_number`
+### Option: `gpio_chip`
 
-The sysfs GPIO number for the fan control pin. Default `583` corresponds to GPIO14 on the CM5 (RP1 base 569 + GPIO 14).
+The GPIO character device name. Default: `gpiochip0` (pinctrl-rp1 on CM5).
+
+### Option: `gpio_line`
+
+The GPIO line number on the chip. Default: `14` (GPIO14 on the Yellow 10-pin header, Pin 8).
 
 ### Option: `temp_sensor_path`
 

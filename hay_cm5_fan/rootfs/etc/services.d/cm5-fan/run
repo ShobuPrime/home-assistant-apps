@@ -2,23 +2,25 @@
 # ==============================================================================
 # Home Assistant Add-on: HAY CM5 Fan Controller
 # Thermal monitoring daemon with hysteresis-based fan control
+# Uses libgpiod character device interface (/dev/gpiochip0)
 # Discovers and reports all system temperatures (CPU, NVMe, etc.)
 # ==============================================================================
 
 bashio::log.info "Starting HAY CM5 Fan Controller daemon..."
 
 # Read configuration
-GPIO_NUM=$(bashio::config 'gpio_number')
+GPIO_CHIP=$(bashio::config 'gpio_chip')
+GPIO_LINE=$(bashio::config 'gpio_line')
 POLL_INTERVAL=$(bashio::config 'poll_interval')
 TEMP_ON=$(bashio::config 'temp_on')
 TEMP_OFF=$(bashio::config 'temp_off')
 FAN_MODE=$(bashio::config 'fan_mode')
 TEMP_SENSOR=$(bashio::config 'temp_sensor_path')
 
-GPIO_PATH="/sys/class/gpio/gpio${GPIO_NUM}"
-
-# Current fan state (1=on, 0=off) — init script sets it to 1
-FAN_STATE=1
+# Current fan state (1=on, 0=off)
+FAN_STATE=""
+# PID of the background gpioset process holding the GPIO line
+GPIOSET_PID=""
 
 # Track last reported values to avoid redundant API calls
 LAST_REPORTED_STATE=""
@@ -28,38 +30,61 @@ LAST_REPORTED_CPU_TEMP=""
 SENSOR_CACHE_DIR="/tmp/hay_cm5_fan_cache"
 mkdir -p "${SENSOR_CACHE_DIR}"
 
+# Kill the background gpioset process if running
+kill_gpioset() {
+    if [ -n "${GPIOSET_PID}" ] && kill -0 "${GPIOSET_PID}" 2>/dev/null; then
+        kill "${GPIOSET_PID}" 2>/dev/null
+        wait "${GPIOSET_PID}" 2>/dev/null
+    fi
+    GPIOSET_PID=""
+}
+
 # Shutdown handler
 cleanup() {
     bashio::log.info "Shutdown signal received..."
+    kill_gpioset
+
     if bashio::config.true 'leave_on_at_shutdown'; then
         bashio::log.info "Leaving fan ON for safety (leave_on_at_shutdown=true)"
-        echo "1" > "${GPIO_PATH}/value" 2>/dev/null || true
+        # Start gpioset to hold line HIGH, then detach so it outlives us briefly
+        # On container exit all child processes die anyway, but GPIO14/UART TX
+        # idles HIGH as hardware failsafe
+        gpioset "${GPIO_CHIP}" "${GPIO_LINE}=1" &
+        sleep 0.2
     else
         bashio::log.info "Turning fan OFF (leave_on_at_shutdown=false)"
-        echo "0" > "${GPIO_PATH}/value" 2>/dev/null || true
+        gpioset "${GPIO_CHIP}" "${GPIO_LINE}=0" &
+        sleep 0.2
     fi
+
     rm -rf "${SENSOR_CACHE_DIR}" 2>/dev/null
     exit 0
 }
 
 trap cleanup SIGTERM SIGINT
 
-# Set fan state and log changes
+# Set fan state via libgpiod — manages background gpioset process
 set_fan() {
     local new_state=$1
     if [ "${new_state}" != "${FAN_STATE}" ]; then
-        echo "${new_state}" > "${GPIO_PATH}/value"
+        # Kill existing gpioset holding the line
+        kill_gpioset
+
+        # Start new gpioset to hold the line at the desired value
+        # gpioset blocks while holding the line — run in background
+        gpioset "${GPIO_CHIP}" "${GPIO_LINE}=${new_state}" &
+        GPIOSET_PID=$!
+
         FAN_STATE=${new_state}
         if [ "${new_state}" = "1" ]; then
-            bashio::log.info "Fan turned ON"
+            bashio::log.info "Fan turned ON (gpioset PID: ${GPIOSET_PID})"
         else
-            bashio::log.info "Fan turned OFF"
+            bashio::log.info "Fan turned OFF (gpioset PID: ${GPIOSET_PID})"
         fi
     fi
 }
 
 # Discover all hwmon temperature sensors and build a sensor list
-# Each sensor gets: hwmon_name, sensor_path, entity_id, friendly_name
 discover_sensors() {
     bashio::log.info "Discovering hardware temperature sensors..."
     local sensor_count=0
@@ -149,7 +174,7 @@ update_primary_entities() {
         curl -s -X POST \
             -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"state\": \"${fan_state_str}\", \"attributes\": {\"friendly_name\": \"HAY CM5 CPU Fan\", \"device_class\": \"running\", \"icon\": \"mdi:fan\", \"temperature\": ${temp_display}, \"gpio\": ${GPIO_NUM}, \"mode\": \"${FAN_MODE}\", \"temp_on_threshold\": ${TEMP_ON}, \"temp_off_threshold\": ${TEMP_OFF}}}" \
+            -d "{\"state\": \"${fan_state_str}\", \"attributes\": {\"friendly_name\": \"HAY CM5 CPU Fan\", \"device_class\": \"running\", \"icon\": \"mdi:fan\", \"temperature\": ${temp_display}, \"gpio_chip\": \"${GPIO_CHIP}\", \"gpio_line\": ${GPIO_LINE}, \"mode\": \"${FAN_MODE}\", \"temp_on_threshold\": ${TEMP_ON}, \"temp_off_threshold\": ${TEMP_OFF}}}" \
             "http://supervisor/core/api/states/binary_sensor.hay_cm5_cpu_fan" > /dev/null 2>&1
         LAST_REPORTED_STATE="${fan_state_str}"
     fi
@@ -210,7 +235,8 @@ discover_sensors
 
 # Log startup configuration
 bashio::log.info "Configuration:"
-bashio::log.info "  GPIO: ${GPIO_NUM} (${GPIO_PATH})"
+bashio::log.info "  GPIO chip: ${GPIO_CHIP}"
+bashio::log.info "  GPIO line: ${GPIO_LINE}"
 bashio::log.info "  Poll interval: ${POLL_INTERVAL}s"
 bashio::log.info "  Fan ON threshold: ${TEMP_ON}C"
 bashio::log.info "  Fan OFF threshold: ${TEMP_OFF}C"
@@ -218,8 +244,19 @@ bashio::log.info "  Fan mode: ${FAN_MODE}"
 bashio::log.info "  Leave on at shutdown: $(bashio::config 'leave_on_at_shutdown')"
 bashio::log.info "  CPU temp sensor: ${TEMP_SENSOR}"
 
+# Turn fan ON as initial safe state
+bashio::log.info "Turning fan ON (initial safe state)..."
+set_fan 1
+
 # Main polling loop
 while true; do
+    # Verify gpioset is still holding the line
+    if [ -n "${GPIOSET_PID}" ] && ! kill -0 "${GPIOSET_PID}" 2>/dev/null; then
+        bashio::log.warning "gpioset process died unexpectedly, restarting with fan ON..."
+        FAN_STATE=""
+        set_fan 1
+    fi
+
     # Read CPU temperature (millidegrees C) for fan control
     if [ -f "${TEMP_SENSOR}" ]; then
         TEMP_RAW=$(cat "${TEMP_SENSOR}")

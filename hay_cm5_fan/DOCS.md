@@ -2,7 +2,7 @@
 
 ## Overview
 
-This addon provides GPIO-based fan control for the Home Assistant Yellow with a Raspberry Pi CM5 compute module. It uses the Linux sysfs GPIO interface to control a fan connected to the Yellow's 10-pin GPIO header, with hysteresis-based thermal management to prevent rapid cycling.
+This addon provides GPIO-based fan control for the Home Assistant Yellow with a Raspberry Pi CM5 compute module. It uses the libgpiod character device interface (`/dev/gpiochip0`) to control a fan connected to the Yellow's 10-pin GPIO header, with hysteresis-based thermal management to prevent rapid cycling. This avoids the legacy sysfs GPIO interface which is mounted read-only on modern HAOS.
 
 In addition to fan control, the addon automatically discovers and exposes **all hardware temperature sensors** (CPU, NVMe SSD, board sensors, etc.) as Home Assistant entities with full long-term statistics support for history graphs and dashboards.
 
@@ -29,18 +29,25 @@ This addon has been tested and verified compatible with the [Seeed Studio Alumin
 
 ### GPIO Details
 
-- GPIO14 is shared with UART0 (ttyAMA0), but sysfs export overrides the UART pinmux
-- sysfs GPIO number: **583** (RP1 base 569 + GPIO 14)
+- GPIO14 is on `gpiochip0` (pinctrl-rp1), line 14
+- Controlled via libgpiod character device (`/dev/gpiochip0`) — NOT the legacy sysfs interface
+- The sysfs GPIO interface (`/sys/class/gpio/`) is mounted read-only on modern HAOS and cannot be used
 - Control is on/off only (no hardware PWM on GPIO14)
 - UART TX idles HIGH, so the fan runs by default as a failsafe even without this addon
 
 ## Configuration
 
-### Option: `gpio_number`
+### Option: `gpio_chip`
 
-The sysfs GPIO number for the fan control pin. Default: `583`
+The GPIO character device name. Default: `gpiochip0`
 
-This corresponds to GPIO14 on the CM5's RP1 chip (base offset 569 + GPIO number 14). Only change this if you've wired your fan to a different GPIO pin.
+This is the pinctrl-rp1 chip on the CM5. Use `gpioinfo` to list available chips and lines.
+
+### Option: `gpio_line`
+
+The GPIO line number on the chip. Default: `14` (GPIO14, Pin 8 on the Yellow 10-pin header).
+
+Only change this if you've wired your fan to a different GPIO pin.
 
 ### Option: `temp_sensor_path`
 
@@ -323,8 +330,8 @@ Based on testing with the CM5 on Home Assistant Yellow:
 
 ## Security Considerations
 
-- **Full access**: This addon requires `full_access: true` to write to sysfs GPIO. This gives the addon container elevated privileges.
-- **AppArmor**: Custom profile restricts access to only GPIO and hwmon sysfs paths
+- **Full access**: This addon requires `full_access: true` to access `/dev/gpiochip0`. This gives the addon container elevated privileges.
+- **AppArmor**: Custom profile restricts access to only GPIO character devices and hwmon sysfs paths
 
 ## Troubleshooting
 
@@ -332,13 +339,14 @@ Based on testing with the CM5 on Home Assistant Yellow:
 
 **Symptoms:**
 - Addon starts but fan doesn't spin
-- Logs show GPIO export errors
+- Logs show gpioset errors or "GPIO chip device not found"
 
 **Solutions:**
 1. Verify wiring (Pin 4=5V, Pin 6=GND, Pin 8=GPIO14)
-2. Check that `gpio_number` is correct (583 for GPIO14 on CM5)
-3. Ensure HAOS supports sysfs GPIO (HAOS 17.1+ recommended)
+2. Check that `/dev/gpiochip0` exists: `ls -la /dev/gpiochip*`
+3. Verify `gpio_chip` and `gpio_line` config values (default: `gpiochip0`, line `14`)
 4. Check addon logs for specific error messages
+5. Ensure `full_access: true` is set in config.yaml
 
 ### Temperature Sensor Not Found
 
@@ -381,6 +389,7 @@ Based on testing with the CM5 on Home Assistant Yellow:
 - This addon is specific to the **Raspberry Pi CM5** on **Home Assistant Yellow**
 - GPIO14's dedicated fan header (GPIO45 / `dtparam=cooling_fan`) is NOT used — it's not routed to the Yellow's 10-pin header
 - Hardware PWM is not available on GPIO14 — control is on/off only
+- Do NOT use the legacy sysfs GPIO interface (`/sys/class/gpio/`) — it is mounted read-only on modern HAOS
 - Do NOT use device tree overlays — HAOS bootloader silently ignores them
 - All temperature entities use `state_class: measurement` for automatic long-term statistics
 
@@ -388,5 +397,5 @@ Based on testing with the CM5 on Home Assistant Yellow:
 
 - [Home Assistant Yellow Hardware](https://yellow.home-assistant.io/)
 - [Raspberry Pi CM5 Datasheet](https://www.raspberrypi.com/documentation/computers/compute-module.html)
-- [Linux sysfs GPIO Interface](https://www.kernel.org/doc/Documentation/gpio/sysfs.txt)
+- [libgpiod Documentation](https://libgpiod.readthedocs.io/)
 - [HA Long-Term Statistics](https://www.home-assistant.io/docs/configuration/state_object/#state_class)

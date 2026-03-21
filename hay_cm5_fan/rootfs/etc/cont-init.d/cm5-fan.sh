@@ -1,67 +1,55 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: CM5 Fan Controller
-# Initializes GPIO for fan control on Home Assistant Yellow with CM5
+# Home Assistant Add-on: HAY CM5 Fan Controller
+# Validates libgpiod and hardware prerequisites
 # ==============================================================================
 
-# Read GPIO number from config
-GPIO_NUM=$(bashio::config 'gpio_number')
-GPIO_PATH="/sys/class/gpio/gpio${GPIO_NUM}"
+# Read config
+GPIO_CHIP=$(bashio::config 'gpio_chip')
+GPIO_LINE=$(bashio::config 'gpio_line')
 TEMP_SENSOR=$(bashio::config 'temp_sensor_path')
 
-bashio::log.info "Initializing CM5 Fan Controller..."
-bashio::log.info "  GPIO number: ${GPIO_NUM}"
-bashio::log.info "  GPIO sysfs path: ${GPIO_PATH}"
+bashio::log.info "Initializing HAY CM5 Fan Controller..."
+bashio::log.info "  GPIO chip: ${GPIO_CHIP}"
+bashio::log.info "  GPIO line: ${GPIO_LINE}"
 bashio::log.info "  Temperature sensor: ${TEMP_SENSOR}"
 
 # Create data directory
 mkdir -p /data/hay_cm5_fan
 chmod 755 /data/hay_cm5_fan
 
-# Validate sysfs GPIO is available
-if [[ ! -d /sys/class/gpio ]]; then
-    bashio::log.error "sysfs GPIO interface not available!"
-    bashio::log.error "Ensure the addon has full_access: true and the host supports sysfs GPIO."
+# Validate libgpiod tools are installed
+if ! command -v gpioset &> /dev/null; then
+    bashio::log.error "gpioset not found! libgpiod package is missing."
     exit 1
 fi
 
-# Export GPIO pin (ignore error if already exported)
-if [[ ! -d "${GPIO_PATH}" ]]; then
-    bashio::log.info "Exporting GPIO ${GPIO_NUM}..."
-    echo "${GPIO_NUM}" > /sys/class/gpio/export 2>/dev/null || {
-        bashio::log.error "Failed to export GPIO ${GPIO_NUM}!"
-        bashio::log.error "Check that GPIO number is correct (CM5 on Yellow: RP1 base 569 + GPIO 14 = 583)"
+if ! command -v gpioget &> /dev/null; then
+    bashio::log.error "gpioget not found! libgpiod package is missing."
+    exit 1
+fi
+
+bashio::log.info "libgpiod tools found: $(gpioset --version 2>&1 | head -1)"
+
+# Validate GPIO character device exists
+if [[ ! -c "/dev/${GPIO_CHIP}" ]]; then
+    bashio::log.error "GPIO chip device /dev/${GPIO_CHIP} not found!"
+    bashio::log.error "Ensure full_access: true is set and the host has the GPIO character device."
+    bashio::log.error "Available GPIO chips:"
+    ls -la /dev/gpiochip* 2>/dev/null || bashio::log.error "  (none found)"
+    exit 1
+fi
+
+bashio::log.info "GPIO chip /dev/${GPIO_CHIP} found"
+
+# Validate the GPIO line exists on this chip
+if ! gpioinfo "${GPIO_CHIP}" 2>/dev/null | grep -q "line *${GPIO_LINE}"; then
+    # gpioinfo might format differently; just check the chip is readable
+    if ! gpioinfo "${GPIO_CHIP}" &>/dev/null; then
+        bashio::log.error "Cannot read GPIO chip ${GPIO_CHIP}!"
         exit 1
-    }
-    # Brief delay for sysfs to create the GPIO directory
-    sleep 0.3
-fi
-
-if [[ ! -d "${GPIO_PATH}" ]]; then
-    bashio::log.error "GPIO ${GPIO_NUM} directory not created after export!"
-    exit 1
-fi
-
-# Set direction to output
-bashio::log.info "Setting GPIO ${GPIO_NUM} direction to output..."
-echo "out" > "${GPIO_PATH}/direction" || {
-    bashio::log.error "Failed to set GPIO direction!"
-    exit 1
-}
-
-# Turn fan ON as initial safe state
-bashio::log.info "Turning fan ON (initial safe state)..."
-echo "1" > "${GPIO_PATH}/value" || {
-    bashio::log.error "Failed to set GPIO value!"
-    exit 1
-}
-
-# Verify fan state
-FAN_VALUE=$(cat "${GPIO_PATH}/value" 2>/dev/null)
-if [[ "${FAN_VALUE}" = "1" ]]; then
-    bashio::log.info "Fan is ON (GPIO ${GPIO_NUM} = 1)"
-else
-    bashio::log.warning "Unexpected fan state: ${FAN_VALUE}"
+    fi
+    bashio::log.info "GPIO line ${GPIO_LINE} will be validated on first use"
 fi
 
 # Validate temperature sensor
@@ -74,4 +62,4 @@ else
     bashio::log.warning "Fan will remain ON as a safety measure until sensor is available"
 fi
 
-bashio::log.info "CM5 Fan Controller initialization complete"
+bashio::log.info "HAY CM5 Fan Controller initialization complete"
