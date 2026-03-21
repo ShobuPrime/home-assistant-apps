@@ -25,8 +25,17 @@ FAN_STATE=""
 GPIOSET_PID=""
 LAST_REPORTED_STATE=""
 LAST_REPORTED_CPU_TEMP=""
+LAST_REPORTED_FREQ=""
+LAST_REPORTED_THROTTLE=""
+LAST_REPORTED_UNDERVOLT=""
 SENSOR_CACHE_DIR="/tmp/hay_cm5_fan_cache"
 mkdir -p "${SENSOR_CACHE_DIR}"
+
+# CPU frequency paths
+CPUFREQ_DIR="/sys/devices/system/cpu/cpu0/cpufreq"
+CPU_MAX_FREQ_KHZ=""
+UNDERVOLT_PATH="/sys/class/hwmon/hwmon3/in0_lcrit_alarm"
+THROTTLE_TEMP_LIMIT=80  # Firmware starts throttling at ~85C, warn at 80
 
 # ==============================================================================
 # MQTT Setup — auto-detect via Supervisor API
@@ -120,6 +129,7 @@ publish_binary_sensor_discovery() {
     local object_id=$1
     local name=$2
     local icon=$3
+    local dc=${4:-"running"}
 
     local payload
     payload=$(jq -cn \
@@ -129,6 +139,7 @@ publish_binary_sensor_discovery() {
         --arg st "hay_cm5_fan/${object_id}/state" \
         --arg at "hay_cm5_fan/${object_id}/attributes" \
         --arg icon "$icon" \
+        --arg dc "$dc" \
         --argjson dev "$DEVICE_JSON" \
         '{
             name: $name,
@@ -136,7 +147,7 @@ publish_binary_sensor_discovery() {
             object_id: $oid,
             state_topic: $st,
             json_attributes_topic: $at,
-            device_class: "running",
+            device_class: $dc,
             payload_on: "ON",
             payload_off: "OFF",
             icon: $icon,
@@ -407,23 +418,51 @@ print_status_report() {
         done
     done
 
-    # ── Temperature table ──
+    # ── System status table ──
     local fan_str="OFF"
     [ "${FAN_STATE}" = "1" ] && fan_str="ON"
     local fan_detail="${fan_str} (${FAN_MODE}, on>=${TEMP_ON}C off<=${TEMP_OFF}C)"
 
-    local T_WN=$(max_len "Sensor" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "CM5 Fan")
-    local T_WV=$(max_len "Value" "${cpu_temp}C" "${rp1_temp}C" "${nvme_temp}C" "${fan_detail}")
+    # Read CPU clock speed for the report
+    local rpt_freq="" rpt_max="" rpt_gov="" rpt_throttle="No" rpt_undervolt="OK"
+    if [ -f "${CPUFREQ_DIR}/scaling_cur_freq" ]; then
+        local fk=$(cat "${CPUFREQ_DIR}/scaling_cur_freq")
+        rpt_freq="$((fk / 1000)) MHz"
+        [ -n "${CPU_MAX_FREQ_KHZ}" ] && rpt_max="$((CPU_MAX_FREQ_KHZ / 1000)) MHz"
+    fi
+    [ -f "${CPUFREQ_DIR}/scaling_governor" ] && rpt_gov=$(cat "${CPUFREQ_DIR}/scaling_governor")
+    if [ -f "${UNDERVOLT_PATH}" ]; then
+        local uv=$(cat "${UNDERVOLT_PATH}" 2>/dev/null || echo "0")
+        [ "${uv}" = "1" ] && rpt_undervolt="ALERT"
+    fi
+    # Check throttle
+    if [ -n "${rpt_freq}" ] && [ -n "${CPU_MAX_FREQ_KHZ}" ]; then
+        local ck=$(cat "${CPUFREQ_DIR}/scaling_cur_freq" 2>/dev/null || echo "0")
+        if [ "${ck}" -lt "${CPU_MAX_FREQ_KHZ}" ] && [ "${TEMP_C}" -ge "${THROTTLE_TEMP_LIMIT}" ]; then
+            rpt_throttle="YES"
+        fi
+    fi
+
+    local freq_display="${rpt_freq}"
+    [ -n "${rpt_max}" ] && freq_display="${rpt_freq} / ${rpt_max}"
+
+    local T_WN=$(max_len "Metric" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "CM5 Fan" "CPU Clock Speed" "CPU Governor" "CPU Throttled" "Undervoltage")
+    local T_WV=$(max_len "Value" "${cpu_temp}C" "${rp1_temp}C" "${nvme_temp}C" "${fan_detail}" "${freq_display}" "${rpt_gov}" "${rpt_throttle}" "${rpt_undervolt}")
 
     bashio::log.info ""
-    bashio::log.info "  System Thermal Status"
+    bashio::log.info "  System Status"
     bashio::log.info ""
     bashio::log.info "$(tbl_border $T_WN $T_WV)"
-    bashio::log.info "$(tbl_row "Sensor" $T_WN "Value" $T_WV)"
+    bashio::log.info "$(tbl_row "Metric" $T_WN "Value" $T_WV)"
     bashio::log.info "$(tbl_border $T_WN $T_WV)"
     [ -n "${cpu_temp}" ]  && bashio::log.info "$(tbl_row "CM5 Processor" $T_WN "${cpu_temp}C" $T_WV)"
     [ -n "${rp1_temp}" ]  && bashio::log.info "$(tbl_row "CM5 I/O Controller (RP1)" $T_WN "${rp1_temp}C" $T_WV)"
     [ -n "${nvme_temp}" ] && bashio::log.info "$(tbl_row "NVMe SSD" $T_WN "${nvme_temp}C" $T_WV)"
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
+    bashio::log.info "$(tbl_row "CPU Clock Speed" $T_WN "${freq_display}" $T_WV)"
+    bashio::log.info "$(tbl_row "CPU Governor" $T_WN "${rpt_gov}" $T_WV)"
+    bashio::log.info "$(tbl_row "CPU Throttled" $T_WN "${rpt_throttle}" $T_WV)"
+    bashio::log.info "$(tbl_row "Undervoltage" $T_WN "${rpt_undervolt}" $T_WV)"
     bashio::log.info "$(tbl_border $T_WN $T_WV)"
     bashio::log.info "$(tbl_row "CM5 Fan" $T_WN "${fan_detail}" $T_WV)"
     bashio::log.info "$(tbl_border $T_WN $T_WV)"
@@ -667,12 +706,22 @@ setup_mqtt
 if [ "${MQTT_AVAILABLE}" = "true" ]; then
     bashio::log.info "Publishing MQTT discovery configs..."
     publish_binary_sensor_discovery "fan" "CM5 Fan" "mdi:fan"
+    publish_sensor_discovery "cpu_clock_speed" "CM5 CPU Clock Speed" "mdi:speedometer" "MHz"
+    publish_binary_sensor_discovery "cpu_throttled" "CM5 CPU Throttled" "mdi:alert-octagon" "problem"
+    publish_binary_sensor_discovery "undervoltage" "CM5 Undervoltage" "mdi:flash-alert" "problem"
+    publish_text_sensor_discovery "cpu_governor" "CM5 CPU Governor" "mdi:tune"
     publish_text_sensor_discovery "gpio_header" "CM5 GPIO Header" "mdi:chip"
     # Temperature sensors are registered during discover_sensors()
 fi
 
 # Discover temperature sensors
 discover_sensors
+
+# Read CPU max frequency (static, doesn't change at runtime)
+if [ -f "${CPUFREQ_DIR}/scaling_max_freq" ]; then
+    CPU_MAX_FREQ_KHZ=$(cat "${CPUFREQ_DIR}/scaling_max_freq")
+    bashio::log.info "CPU max frequency: $((CPU_MAX_FREQ_KHZ / 1000)) MHz"
+fi
 
 # Log configuration
 bashio::log.info "Configuration:"
@@ -728,7 +777,79 @@ while true; do
             ;;
     esac
 
-    # Update entities
+    # ── CPU clock speed + throttle detection ──
+    CUR_FREQ_KHZ=""
+    CUR_FREQ_MHZ=""
+    CPU_THROTTLED="OFF"
+    CPU_UNDERVOLT="OFF"
+    CPU_GOVERNOR=""
+
+    if [ -f "${CPUFREQ_DIR}/scaling_cur_freq" ]; then
+        CUR_FREQ_KHZ=$(cat "${CPUFREQ_DIR}/scaling_cur_freq")
+        CUR_FREQ_MHZ=$((CUR_FREQ_KHZ / 1000))
+    fi
+    if [ -f "${CPUFREQ_DIR}/scaling_governor" ]; then
+        CPU_GOVERNOR=$(cat "${CPUFREQ_DIR}/scaling_governor")
+    fi
+    if [ -f "${UNDERVOLT_PATH}" ]; then
+        local uv_val
+        uv_val=$(cat "${UNDERVOLT_PATH}" 2>/dev/null || echo "0")
+        [ "${uv_val}" = "1" ] && CPU_UNDERVOLT="ON"
+    fi
+
+    # Thermal throttle: freq below max while temp is high
+    if [ -n "${CUR_FREQ_KHZ}" ] && [ -n "${CPU_MAX_FREQ_KHZ}" ]; then
+        if [ "${CUR_FREQ_KHZ}" -lt "${CPU_MAX_FREQ_KHZ}" ] && [ "${TEMP_C}" -ge "${THROTTLE_TEMP_LIMIT}" ]; then
+            CPU_THROTTLED="ON"
+        fi
+    fi
+
+    # Log throttle state changes
+    if [ "${CPU_THROTTLED}" != "${LAST_REPORTED_THROTTLE}" ]; then
+        if [ "${CPU_THROTTLED}" = "ON" ]; then
+            bashio::log.warning "CPU THERMAL THROTTLE: ${CUR_FREQ_MHZ} MHz (max $((CPU_MAX_FREQ_KHZ / 1000)) MHz) at ${TEMP_DISPLAY}C"
+        elif [ "${LAST_REPORTED_THROTTLE}" = "ON" ]; then
+            bashio::log.info "CPU throttle cleared: ${CUR_FREQ_MHZ} MHz at ${TEMP_DISPLAY}C"
+        fi
+    fi
+    if [ "${CPU_UNDERVOLT}" != "${LAST_REPORTED_UNDERVOLT}" ]; then
+        if [ "${CPU_UNDERVOLT}" = "ON" ]; then
+            bashio::log.warning "UNDERVOLTAGE DETECTED — check power supply!"
+        elif [ "${LAST_REPORTED_UNDERVOLT}" = "ON" ]; then
+            bashio::log.info "Undervoltage cleared"
+        fi
+    fi
+
+    # ── Publish clock speed entity ──
+    if [ -n "${CUR_FREQ_MHZ}" ] && [ "${CUR_FREQ_MHZ}" != "${LAST_REPORTED_FREQ}" ]; then
+        local freq_attrs
+        freq_attrs=$(jq -cn \
+            --arg unit "MHz" --argjson max "$((CPU_MAX_FREQ_KHZ / 1000))" --arg gov "${CPU_GOVERNOR}" \
+            '{unit_of_measurement: $unit, icon: "mdi:speedometer", state_class: "measurement", max_frequency_mhz: $max, governor: $gov}')
+        publish_state "sensor" "cpu_clock_speed" "${CUR_FREQ_MHZ}" "CM5 CPU Clock Speed" "${freq_attrs}"
+        LAST_REPORTED_FREQ="${CUR_FREQ_MHZ}"
+    fi
+
+    # ── Publish throttle + undervoltage entities ──
+    if [ "${CPU_THROTTLED}" != "${LAST_REPORTED_THROTTLE}" ]; then
+        local thr_attrs
+        thr_attrs=$(jq -cn --arg freq "${CUR_FREQ_MHZ} MHz" --arg max "$((CPU_MAX_FREQ_KHZ / 1000)) MHz" --arg temp "${TEMP_DISPLAY}C" \
+            '{icon: "mdi:alert-octagon", frequency: $freq, max_frequency: $max, temperature: $temp}')
+        publish_state "binary_sensor" "cpu_throttled" "${CPU_THROTTLED}" "CM5 CPU Throttled" "${thr_attrs}"
+        LAST_REPORTED_THROTTLE="${CPU_THROTTLED}"
+    fi
+    if [ "${CPU_UNDERVOLT}" != "${LAST_REPORTED_UNDERVOLT}" ]; then
+        local uv_attrs='{"icon": "mdi:flash-alert"}'
+        publish_state "binary_sensor" "undervoltage" "${CPU_UNDERVOLT}" "CM5 Undervoltage" "${uv_attrs}"
+        LAST_REPORTED_UNDERVOLT="${CPU_UNDERVOLT}"
+    fi
+
+    # ── Publish governor (rarely changes, check each cycle) ──
+    if [ -n "${CPU_GOVERNOR}" ]; then
+        publish_state "sensor" "cpu_governor" "${CPU_GOVERNOR}" "CM5 CPU Governor" '{"icon": "mdi:tune"}'
+    fi
+
+    # Update temperature + fan entities
     update_primary_entities "${TEMP_DISPLAY}" "${FAN_STATE}"
     update_discovered_sensors
 
