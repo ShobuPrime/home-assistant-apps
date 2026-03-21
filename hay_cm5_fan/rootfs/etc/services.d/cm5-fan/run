@@ -49,11 +49,11 @@ cleanup() {
         # Start gpioset to hold line HIGH, then detach so it outlives us briefly
         # On container exit all child processes die anyway, but GPIO14/UART TX
         # idles HIGH as hardware failsafe
-        gpioset "${GPIO_CHIP}" "${GPIO_LINE}=1" &
+        gpioset -c "${GPIO_CHIP}" "${GPIO_LINE}=1" &
         sleep 0.2
     else
         bashio::log.info "Turning fan OFF (leave_on_at_shutdown=false)"
-        gpioset "${GPIO_CHIP}" "${GPIO_LINE}=0" &
+        gpioset -c "${GPIO_CHIP}" "${GPIO_LINE}=0" &
         sleep 0.2
     fi
 
@@ -72,7 +72,7 @@ set_fan() {
 
         # Start new gpioset to hold the line at the desired value
         # gpioset blocks while holding the line — run in background
-        gpioset "${GPIO_CHIP}" "${GPIO_LINE}=${new_state}" &
+        gpioset -c "${GPIO_CHIP}" "${GPIO_LINE}=${new_state}" &
         GPIOSET_PID=$!
 
         FAN_STATE=${new_state}

@@ -43,13 +43,17 @@ fi
 bashio::log.info "GPIO chip /dev/${GPIO_CHIP} found"
 
 # Validate the GPIO line exists on this chip
-if ! gpioinfo "${GPIO_CHIP}" 2>/dev/null | grep -q "line *${GPIO_LINE}"; then
-    # gpioinfo might format differently; just check the chip is readable
-    if ! gpioinfo "${GPIO_CHIP}" &>/dev/null; then
-        bashio::log.error "Cannot read GPIO chip ${GPIO_CHIP}!"
-        exit 1
+# libgpiod v2: gpioinfo with no args lists all chips; use grep to find our line
+CHIP_INFO=$(gpioinfo 2>/dev/null) || true
+if echo "${CHIP_INFO}" | grep -q "${GPIO_CHIP}"; then
+    LINE_INFO=$(echo "${CHIP_INFO}" | grep -A999 "^${GPIO_CHIP}" | grep "line *${GPIO_LINE}:" | head -1)
+    if [ -n "${LINE_INFO}" ]; then
+        bashio::log.info "GPIO line ${GPIO_LINE}: ${LINE_INFO}"
+    else
+        bashio::log.warning "GPIO line ${GPIO_LINE} not found in gpioinfo output — will validate on first use"
     fi
-    bashio::log.info "GPIO line ${GPIO_LINE} will be validated on first use"
+else
+    bashio::log.warning "Chip ${GPIO_CHIP} not found in gpioinfo output — will validate on first use"
 fi
 
 # Validate temperature sensor
