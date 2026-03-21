@@ -23,8 +23,8 @@ options:
   gpio_line: 14
   temp_sensor_path: "/sys/class/hwmon/hwmon0/temp1_input"
   poll_interval: 5
-  temp_on: 55
-  temp_off: 45
+  temp_on: 50
+  temp_off: 33
   fan_mode: auto
   leave_on_at_shutdown: true
   log_level: info

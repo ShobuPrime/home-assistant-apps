@@ -3,12 +3,14 @@
 profile hay_cm5_fan flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
-  # Capabilities - allow all for hardware access
+  # Capabilities
   capability,
-
-  # Allow all file operations (needed for /dev/gpiochip* ioctl)
-  file,
-
   signal (send) set=(kill,term,int,hup,cont),
   network,
+
+  # Blanket file access — required because libgpiod uses ioctl() on
+  # /dev/gpiochip* which AppArmor blocks if specific path rules narrow
+  # the access mode. Do NOT add explicit /dev/gpiochip* rules as they
+  # would override this blanket and strip ioctl permission.
+  file,
 }
