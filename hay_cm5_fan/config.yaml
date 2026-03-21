@@ -13,6 +13,8 @@ privileged:
   - SYS_RAWIO
 hassio_api: true
 homeassistant_api: true
+services:
+  - mqtt:want
 apparmor: true
 devices:
   - /dev/gpiochip0

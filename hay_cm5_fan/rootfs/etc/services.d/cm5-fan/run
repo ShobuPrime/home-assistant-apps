@@ -2,13 +2,14 @@
 # ==============================================================================
 # Home Assistant Add-on: HAY CM5 Fan Controller
 # Thermal monitoring daemon with hysteresis-based fan control
-# Uses libgpiod character device interface (/dev/gpiochip0)
-# Discovers and reports all system temperatures (CPU, NVMe, etc.)
+# Uses libgpiod (/dev/gpiochip0) + MQTT discovery for proper HA entities
 # ==============================================================================
 
 bashio::log.info "Starting HAY CM5 Fan Controller daemon..."
 
-# Read configuration
+# ==============================================================================
+# Configuration
+# ==============================================================================
 GPIO_CHIP=$(bashio::config 'gpio_chip')
 GPIO_LINE=$(bashio::config 'gpio_line')
 POLL_INTERVAL=$(bashio::config 'poll_interval')
@@ -16,21 +17,196 @@ TEMP_ON=$(bashio::config 'temp_on')
 TEMP_OFF=$(bashio::config 'temp_off')
 FAN_MODE=$(bashio::config 'fan_mode')
 TEMP_SENSOR=$(bashio::config 'temp_sensor_path')
+ADDON_HOSTNAME=$(hostname)
+ADDON_VERSION=$(bashio::addon.version)
 
-# Current fan state (1=on, 0=off)
+# State tracking
 FAN_STATE=""
-# PID of the background gpioset process holding the GPIO line
 GPIOSET_PID=""
-
-# Track last reported values to avoid redundant API calls
 LAST_REPORTED_STATE=""
 LAST_REPORTED_CPU_TEMP=""
-
-# Associative-style tracking for discovered sensors (using files for sh compat)
 SENSOR_CACHE_DIR="/tmp/hay_cm5_fan_cache"
 mkdir -p "${SENSOR_CACHE_DIR}"
 
-# Kill the background gpioset process if running
+# ==============================================================================
+# MQTT Setup — auto-detect via Supervisor API
+# ==============================================================================
+MQTT_AVAILABLE=false
+MQTT_HOST=""
+MQTT_PORT=""
+MQTT_USER=""
+MQTT_PASS=""
+
+setup_mqtt() {
+    bashio::log.info "Checking for MQTT service..."
+    local mqtt_info
+    mqtt_info=$(curl -s -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        http://supervisor/services/mqtt 2>/dev/null) || return
+
+    local result
+    result=$(echo "${mqtt_info}" | jq -r '.result' 2>/dev/null) || return
+
+    if [ "${result}" = "ok" ]; then
+        MQTT_HOST=$(echo "${mqtt_info}" | jq -r '.data.host')
+        MQTT_PORT=$(echo "${mqtt_info}" | jq -r '.data.port')
+        MQTT_USER=$(echo "${mqtt_info}" | jq -r '.data.username')
+        MQTT_PASS=$(echo "${mqtt_info}" | jq -r '.data.password')
+
+        # Test connection
+        if mosquitto_pub -h "${MQTT_HOST}" -p "${MQTT_PORT}" \
+            -u "${MQTT_USER}" -P "${MQTT_PASS}" \
+            -t "hay_cm5_fan/status" -m "online" 2>/dev/null; then
+            MQTT_AVAILABLE=true
+            bashio::log.info "MQTT connected: ${MQTT_HOST}:${MQTT_PORT}"
+            bashio::log.info "Entities will use MQTT discovery (unique IDs enabled)"
+        else
+            bashio::log.warning "MQTT credentials found but connection failed"
+        fi
+    else
+        bashio::log.info "MQTT not available — using REST API (entities won't have unique IDs)"
+    fi
+}
+
+mqtt_pub() {
+    local topic=$1
+    local payload=$2
+    local retain_flag=""
+    [ "${3}" = "retain" ] && retain_flag="-r"
+    mosquitto_pub -h "${MQTT_HOST}" -p "${MQTT_PORT}" \
+        -u "${MQTT_USER}" -P "${MQTT_PASS}" \
+        -t "${topic}" -m "${payload}" ${retain_flag} 2>/dev/null
+}
+
+# ==============================================================================
+# MQTT Discovery — register entities with HA (unique_id, device grouping)
+# ==============================================================================
+DEVICE_JSON="{\"identifiers\":[\"hay_cm5_fan_${ADDON_HOSTNAME}\"],\"name\":\"HAY CM5 Fan Controller\",\"model\":\"Raspberry Pi CM5 on HA Yellow\",\"manufacturer\":\"ShobuPrime\",\"sw_version\":\"${ADDON_VERSION}\"}"
+
+publish_sensor_discovery() {
+    local object_id=$1
+    local name=$2
+    local icon=${3:-"mdi:thermometer"}
+    local unit=${4:-"\u00b0C"}
+    local device_class=${5:-"temperature"}
+
+    local payload
+    payload=$(jq -cn \
+        --arg name "$name" \
+        --arg uid "hay_cm5_fan_${object_id}" \
+        --arg oid "hay_cm5_${object_id}" \
+        --arg st "hay_cm5_fan/${object_id}/state" \
+        --arg at "hay_cm5_fan/${object_id}/attributes" \
+        --arg unit "$unit" \
+        --arg icon "$icon" \
+        --arg dc "$device_class" \
+        --argjson dev "$DEVICE_JSON" \
+        '{
+            name: $name,
+            unique_id: $uid,
+            object_id: $oid,
+            state_topic: $st,
+            json_attributes_topic: $at,
+            unit_of_measurement: $unit,
+            device_class: $dc,
+            state_class: "measurement",
+            icon: $icon,
+            device: $dev
+        }')
+
+    mqtt_pub "homeassistant/sensor/hay_cm5_fan/${object_id}/config" "$payload" retain
+}
+
+publish_binary_sensor_discovery() {
+    local object_id=$1
+    local name=$2
+    local icon=$3
+
+    local payload
+    payload=$(jq -cn \
+        --arg name "$name" \
+        --arg uid "hay_cm5_fan_${object_id}" \
+        --arg oid "hay_cm5_${object_id}" \
+        --arg st "hay_cm5_fan/${object_id}/state" \
+        --arg at "hay_cm5_fan/${object_id}/attributes" \
+        --arg icon "$icon" \
+        --argjson dev "$DEVICE_JSON" \
+        '{
+            name: $name,
+            unique_id: $uid,
+            object_id: $oid,
+            state_topic: $st,
+            json_attributes_topic: $at,
+            device_class: "running",
+            payload_on: "ON",
+            payload_off: "OFF",
+            icon: $icon,
+            device: $dev
+        }')
+
+    mqtt_pub "homeassistant/binary_sensor/hay_cm5_fan/${object_id}/config" "$payload" retain
+}
+
+publish_text_sensor_discovery() {
+    local object_id=$1
+    local name=$2
+    local icon=$3
+
+    local payload
+    payload=$(jq -cn \
+        --arg name "$name" \
+        --arg uid "hay_cm5_fan_${object_id}" \
+        --arg oid "hay_cm5_${object_id}" \
+        --arg st "hay_cm5_fan/${object_id}/state" \
+        --arg at "hay_cm5_fan/${object_id}/attributes" \
+        --arg icon "$icon" \
+        --argjson dev "$DEVICE_JSON" \
+        '{
+            name: $name,
+            unique_id: $uid,
+            object_id: $oid,
+            state_topic: $st,
+            json_attributes_topic: $at,
+            icon: $icon,
+            device: $dev
+        }')
+
+    mqtt_pub "homeassistant/sensor/hay_cm5_fan/${object_id}/config" "$payload" retain
+}
+
+# ==============================================================================
+# Entity Publishing — MQTT or REST API fallback
+# ==============================================================================
+publish_state() {
+    local entity_type=$1   # sensor, binary_sensor
+    local object_id=$2     # processor_temperature
+    local state=$3         # 63.9 or ON/OFF
+    local friendly_name=$4 # CM5 Processor Temperature
+    local attrs_json=$5    # JSON string of attributes
+
+    if [ "${MQTT_AVAILABLE}" = "true" ]; then
+        mqtt_pub "hay_cm5_fan/${object_id}/state" "${state}"
+        [ -n "${attrs_json}" ] && \
+            mqtt_pub "hay_cm5_fan/${object_id}/attributes" "${attrs_json}"
+    else
+        # REST API fallback — must include all attributes in every POST
+        local full_attrs
+        if [ -n "${attrs_json}" ]; then
+            full_attrs=$(echo "${attrs_json}" | jq -c --arg fn "${friendly_name}" '. + {friendly_name: $fn}')
+        else
+            full_attrs="{\"friendly_name\": \"${friendly_name}\"}"
+        fi
+
+        curl -s -X POST \
+            -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"state\": \"${state}\", \"attributes\": ${full_attrs}}" \
+            "http://supervisor/core/api/states/${entity_type}.hay_cm5_${object_id}" > /dev/null 2>&1
+    fi
+}
+
+# ==============================================================================
+# GPIO Management
+# ==============================================================================
 kill_gpioset() {
     if [ -n "${GPIOSET_PID}" ] && kill -0 "${GPIOSET_PID}" 2>/dev/null; then
         kill "${GPIOSET_PID}" 2>/dev/null
@@ -39,42 +215,12 @@ kill_gpioset() {
     GPIOSET_PID=""
 }
 
-# Shutdown handler
-cleanup() {
-    bashio::log.info "Shutdown signal received..."
-    kill_gpioset
-
-    if bashio::config.true 'leave_on_at_shutdown'; then
-        bashio::log.info "Leaving fan ON for safety (leave_on_at_shutdown=true)"
-        # Start gpioset to hold line HIGH, then detach so it outlives us briefly
-        # On container exit all child processes die anyway, but GPIO14/UART TX
-        # idles HIGH as hardware failsafe
-        gpioset -c "${GPIO_CHIP}" "${GPIO_LINE}=1" &
-        sleep 0.2
-    else
-        bashio::log.info "Turning fan OFF (leave_on_at_shutdown=false)"
-        gpioset -c "${GPIO_CHIP}" "${GPIO_LINE}=0" &
-        sleep 0.2
-    fi
-
-    rm -rf "${SENSOR_CACHE_DIR}" 2>/dev/null
-    exit 0
-}
-
-trap cleanup SIGTERM SIGINT
-
-# Set fan state via libgpiod — manages background gpioset process
 set_fan() {
     local new_state=$1
     if [ "${new_state}" != "${FAN_STATE}" ]; then
-        # Kill existing gpioset holding the line
         kill_gpioset
-
-        # Start new gpioset to hold the line at the desired value
-        # gpioset blocks while holding the line — run in background
-        gpioset -c "${GPIO_CHIP}" "${GPIO_LINE}=${new_state}" &
+        gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=${new_state}" &
         GPIOSET_PID=$!
-
         FAN_STATE=${new_state}
         if [ "${new_state}" = "1" ]; then
             bashio::log.info "Fan turned ON (gpioset PID: ${GPIOSET_PID})"
@@ -84,7 +230,164 @@ set_fan() {
     fi
 }
 
-# Discover all hwmon temperature sensors and build a sensor list
+cleanup() {
+    bashio::log.info "Shutdown signal received..."
+    kill_gpioset
+
+    if bashio::config.true 'leave_on_at_shutdown'; then
+        bashio::log.info "Leaving fan ON for safety"
+        gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=1" &
+        sleep 0.2
+    else
+        bashio::log.info "Turning fan OFF"
+        gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=0" &
+        sleep 0.2
+    fi
+
+    # Publish offline status via MQTT
+    if [ "${MQTT_AVAILABLE}" = "true" ]; then
+        mqtt_pub "hay_cm5_fan/status" "offline" retain
+    fi
+
+    rm -rf "${SENSOR_CACHE_DIR}" 2>/dev/null
+    exit 0
+}
+
+trap cleanup SIGTERM SIGINT
+
+# ==============================================================================
+# GPIO Header Scanning — Yellow 10-pin header (J11)
+# ==============================================================================
+# Yellow header pin-to-GPIO mapping:
+#   Pin 1=3.3V  Pin 2=5V  Pin 3=GPIO2  Pin 4=5V  Pin 5=GPIO3
+#   Pin 6=GND   Pin 7=GPIO4  Pin 8=GPIO14  Pin 9=GND  Pin 10=GPIO15
+HEADER_PINS="2:3 3:5 4:7 14:8 15:10"  # gpio_line:header_pin
+
+scan_gpio_header() {
+    local gpio_output
+    gpio_output=$(gpioinfo 2>/dev/null | sed -n '/^gpiochip0/,/^gpiochip[1-9]/p' | grep "line") || return
+
+    bashio::log.info "=== Yellow 10-Pin GPIO Header (J11) ==="
+    bashio::log.info "  Pin 1 [3.3V]  Pin 2 [5V]"
+
+    local gpio_json="{"
+    local first=true
+    local floating_count=0
+    local active_count=0
+
+    for mapping in ${HEADER_PINS}; do
+        local gpio_num=${mapping%%:*}
+        local pin_num=${mapping##*:}
+
+        # Parse gpioinfo line for this GPIO
+        local line_info
+        line_info=$(echo "${gpio_output}" | grep "line *${gpio_num}:" | head -1)
+
+        local gpio_name direction consumer status flags
+        gpio_name=$(echo "${line_info}" | sed 's/.*"\([^"]*\)".*/\1/')
+        direction=$(echo "${line_info}" | awk '{for(i=1;i<=NF;i++) if($i=="input"||$i=="output") print $i}')
+        consumer=""
+        if echo "${line_info}" | grep -q 'consumer='; then
+            consumer=$(echo "${line_info}" | sed 's/.*consumer="\([^"]*\)".*/\1/')
+        fi
+
+        # Determine status
+        if [ -n "${consumer}" ]; then
+            status="active"
+            active_count=$((active_count + 1))
+        else
+            status="available"
+            floating_count=$((floating_count + 1))
+        fi
+
+        # Build display
+        local display="${direction}"
+        [ -n "${consumer}" ] && display="${display}, ${consumer}"
+
+        bashio::log.info "  Pin ${pin_num}  ${gpio_name}  [${display}] ${status}"
+
+        # Build JSON attributes
+        [ "${first}" = "true" ] && first=false || gpio_json="${gpio_json},"
+        gpio_json="${gpio_json}\"pin_${pin_num}_${gpio_name}\": {\"direction\": \"${direction}\", \"consumer\": \"${consumer:-none}\", \"status\": \"${status}\"}"
+    done
+
+    gpio_json="${gpio_json}}"
+
+    local state_summary="${active_count} active, ${floating_count} available"
+    bashio::log.info "  Summary: ${state_summary}"
+
+    # Publish GPIO header entity
+    local attrs
+    attrs=$(echo "${gpio_json}" | jq -c '.')
+    publish_state "sensor" "gpio_header" "${state_summary}" "CM5 GPIO Header" "${attrs}"
+}
+
+# ==============================================================================
+# Sensor Discovery — map hwmon names to friendly English names
+# ==============================================================================
+get_friendly_name() {
+    local hwmon_name=$1
+    local sensor_label=$2
+
+    case "${hwmon_name}" in
+        cpu_thermal)
+            echo "CM5 Processor Temperature"
+            ;;
+        rp1_adc)
+            # RP1 is the I/O controller chip on the Pi 5 / CM5
+            echo "CM5 I/O Controller Temperature"
+            ;;
+        nvme)
+            if [ "${sensor_label}" = "Composite" ] || [ -z "${sensor_label}" ]; then
+                echo "NVMe Temperature"
+            else
+                echo "NVMe ${sensor_label} Temperature"
+            fi
+            ;;
+        *)
+            if [ -n "${sensor_label}" ]; then
+                echo "${hwmon_name} ${sensor_label} Temperature"
+            else
+                echo "${hwmon_name} Temperature"
+            fi
+            ;;
+    esac
+}
+
+get_object_id() {
+    local hwmon_name=$1
+    local sensor_label=$2
+
+    case "${hwmon_name}" in
+        cpu_thermal)
+            echo "processor_temperature"
+            ;;
+        rp1_adc)
+            echo "io_controller_temperature"
+            ;;
+        nvme)
+            if [ "${sensor_label}" = "Composite" ] || [ -z "${sensor_label}" ]; then
+                echo "nvme_temperature"
+            else
+                local clean_label
+                clean_label=$(echo "${sensor_label}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+                echo "nvme_${clean_label}_temperature"
+            fi
+            ;;
+        *)
+            local clean_name
+            clean_name=$(echo "${hwmon_name}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g' | sed 's/__*/_/g')
+            if [ -n "${sensor_label}" ]; then
+                local clean_label
+                clean_label=$(echo "${sensor_label}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g' | sed 's/__*/_/g')
+                echo "${clean_name}_${clean_label}_temperature"
+            else
+                echo "${clean_name}_temperature"
+            fi
+            ;;
+    esac
+}
+
 discover_sensors() {
     bashio::log.info "Discovering hardware temperature sensors..."
     local sensor_count=0
@@ -92,163 +395,175 @@ discover_sensors() {
     for hwmon_dir in /sys/class/hwmon/hwmon*; do
         [ -d "${hwmon_dir}" ] || continue
 
-        # Get the hwmon device name
         local hwmon_name="unknown"
-        if [ -f "${hwmon_dir}/name" ]; then
-            hwmon_name=$(cat "${hwmon_dir}/name" 2>/dev/null || echo "unknown")
-        fi
+        [ -f "${hwmon_dir}/name" ] && hwmon_name=$(cat "${hwmon_dir}/name" 2>/dev/null || echo "unknown")
 
-        # Find all temp*_input files in this hwmon
         for temp_file in "${hwmon_dir}"/temp*_input; do
             [ -f "${temp_file}" ] || continue
 
-            # Extract temp index (e.g., temp1_input -> 1)
             local temp_idx
             temp_idx=$(basename "${temp_file}" | sed 's/temp\([0-9]*\)_input/\1/')
 
-            # Try to get the label for this specific sensor
-            local label_file="${hwmon_dir}/temp${temp_idx}_label"
             local sensor_label=""
-            if [ -f "${label_file}" ]; then
-                sensor_label=$(cat "${label_file}" 2>/dev/null || echo "")
-            fi
+            local label_file="${hwmon_dir}/temp${temp_idx}_label"
+            [ -f "${label_file}" ] && sensor_label=$(cat "${label_file}" 2>/dev/null || echo "")
 
-            # Build a clean entity name from the hwmon name
-            # Sanitize: lowercase, replace spaces/special chars with underscores
-            local clean_name
-            clean_name=$(echo "${hwmon_name}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g' | sed 's/__*/_/g' | sed 's/^_//;s/_$//')
+            local friendly_name object_id
+            friendly_name=$(get_friendly_name "${hwmon_name}" "${sensor_label}")
+            object_id=$(get_object_id "${hwmon_name}" "${sensor_label}")
 
-            # Build entity ID and friendly name
-            local entity_id="sensor.hay_${clean_name}_temperature"
-            local friendly_name="${hwmon_name}"
-
-            # If multiple temp inputs per hwmon, or if there's a label, append detail
-            if [ -n "${sensor_label}" ]; then
-                local clean_label
-                clean_label=$(echo "${sensor_label}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g' | sed 's/__*/_/g' | sed 's/^_//;s/_$//')
-                entity_id="sensor.hay_${clean_name}_${clean_label}_temperature"
-                friendly_name="${hwmon_name} ${sensor_label}"
-            elif [ "$(echo "${hwmon_dir}"/temp*_input | wc -w)" -gt 1 ]; then
-                entity_id="sensor.hay_${clean_name}_temp${temp_idx}_temperature"
-                friendly_name="${hwmon_name} Temp${temp_idx}"
-            fi
-
-            # Skip if this is the primary CPU sensor (we handle it separately)
+            # Primary CPU sensor handled separately but still needs discovery
             if [ "${temp_file}" = "${TEMP_SENSOR}" ]; then
-                bashio::log.info "  [CPU/fan control] ${temp_file} -> ${hwmon_name} (sensor.hay_cpu_temperature)"
+                bashio::log.info "  [CPU] ${temp_file} -> ${friendly_name} (${object_id})"
+                # Register MQTT discovery for CPU sensor
+                if [ "${MQTT_AVAILABLE}" = "true" ]; then
+                    publish_sensor_discovery "${object_id}" "${friendly_name}"
+                fi
+                # Store CPU object_id for the main loop
+                echo "${object_id}|${friendly_name}" > "${SENSOR_CACHE_DIR}/_cpu_info"
                 continue
             fi
 
-            # Store sensor info in cache directory (one file per sensor)
+            # Store sensor info
             local cache_key
             cache_key=$(echo "${temp_file}" | md5sum | cut -d' ' -f1)
-            echo "${temp_file}|${entity_id}|${friendly_name}" > "${SENSOR_CACHE_DIR}/${cache_key}"
+            echo "${temp_file}|${object_id}|${friendly_name}" > "${SENSOR_CACHE_DIR}/${cache_key}"
+
+            # Register MQTT discovery
+            if [ "${MQTT_AVAILABLE}" = "true" ]; then
+                publish_sensor_discovery "${object_id}" "${friendly_name}"
+            fi
 
             sensor_count=$((sensor_count + 1))
-            bashio::log.info "  [${sensor_count}] ${temp_file} -> ${friendly_name} (${entity_id})"
+            bashio::log.info "  [${sensor_count}] ${temp_file} -> ${friendly_name} (${object_id})"
         done
     done
 
     bashio::log.info "Discovered ${sensor_count} additional temperature sensor(s) beyond CPU"
 }
 
-# Update the primary CPU temperature and fan state entities
+# ==============================================================================
+# Entity Updates
+# ==============================================================================
 update_primary_entities() {
     local temp_display=$1
     local fan_on=$2
-    local fan_state_str="off"
-    [ "${fan_on}" = "1" ] && fan_state_str="on"
 
-    # Update CPU temperature sensor (only when value changes)
+    # Read CPU sensor info
+    local cpu_info cpu_object_id cpu_friendly_name
+    cpu_info=$(cat "${SENSOR_CACHE_DIR}/_cpu_info" 2>/dev/null || echo "processor_temperature|CM5 Processor Temperature")
+    cpu_object_id=$(echo "${cpu_info}" | cut -d'|' -f1)
+    cpu_friendly_name=$(echo "${cpu_info}" | cut -d'|' -f2)
+
+    # CPU temperature (only when changed)
     if [ "${temp_display}" != "${LAST_REPORTED_CPU_TEMP}" ]; then
-        curl -s -X POST \
-            -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{\"state\": \"${temp_display}\", \"attributes\": {\"friendly_name\": \"HAY CPU Temperature\", \"unit_of_measurement\": \"\u00b0C\", \"device_class\": \"temperature\", \"state_class\": \"measurement\", \"icon\": \"mdi:thermometer\", \"source\": \"${TEMP_SENSOR}\"}}" \
-            "http://supervisor/core/api/states/sensor.hay_cpu_temperature" > /dev/null 2>&1
+        local temp_attrs
+        temp_attrs=$(jq -cn \
+            --arg unit "°C" --arg src "${TEMP_SENSOR}" \
+            '{unit_of_measurement: $unit, device_class: "temperature", state_class: "measurement", icon: "mdi:thermometer", source: $src}')
+        publish_state "sensor" "${cpu_object_id}" "${temp_display}" "${cpu_friendly_name}" "${temp_attrs}"
         LAST_REPORTED_CPU_TEMP="${temp_display}"
     fi
 
-    # Update fan binary sensor (only when state changes)
+    # Fan state (only when changed)
+    local fan_state_str="OFF"
+    [ "${fan_on}" = "1" ] && fan_state_str="ON"
+
     if [ "${fan_state_str}" != "${LAST_REPORTED_STATE}" ]; then
-        curl -s -X POST \
-            -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{\"state\": \"${fan_state_str}\", \"attributes\": {\"friendly_name\": \"HAY CM5 CPU Fan\", \"device_class\": \"running\", \"icon\": \"mdi:fan\", \"temperature\": ${temp_display}, \"gpio_chip\": \"${GPIO_CHIP}\", \"gpio_line\": ${GPIO_LINE}, \"mode\": \"${FAN_MODE}\", \"temp_on_threshold\": ${TEMP_ON}, \"temp_off_threshold\": ${TEMP_OFF}}}" \
-            "http://supervisor/core/api/states/binary_sensor.hay_cm5_cpu_fan" > /dev/null 2>&1
+        local fan_attrs
+        fan_attrs=$(jq -cn \
+            --arg chip "${GPIO_CHIP}" --argjson line "${GPIO_LINE}" \
+            --arg mode "${FAN_MODE}" --argjson temp_on "${TEMP_ON}" --argjson temp_off "${TEMP_OFF}" \
+            --arg temp "${temp_display}" \
+            '{icon: "mdi:fan", temperature: $temp, gpio_chip: $chip, gpio_line: $line, mode: $mode, temp_on_threshold: $temp_on, temp_off_threshold: $temp_off}')
+        publish_state "binary_sensor" "fan" "${fan_state_str}" "CM5 Fan" "${fan_attrs}"
         LAST_REPORTED_STATE="${fan_state_str}"
     fi
 }
 
-# Update all discovered additional temperature sensors
 update_discovered_sensors() {
     for cache_file in "${SENSOR_CACHE_DIR}"/*; do
         [ -f "${cache_file}" ] || continue
+        # Skip internal files
+        local basename_file
+        basename_file=$(basename "${cache_file}")
+        case "${basename_file}" in _*|*.last) continue ;; esac
 
-        local line
+        local line sensor_path object_id friendly_name
         line=$(cat "${cache_file}")
-        local sensor_path
         sensor_path=$(echo "${line}" | cut -d'|' -f1)
-        local entity_id
-        entity_id=$(echo "${line}" | cut -d'|' -f2)
-        local friendly_name
+        object_id=$(echo "${line}" | cut -d'|' -f2)
         friendly_name=$(echo "${line}" | cut -d'|' -f3)
 
-        # Read temperature
         if [ -f "${sensor_path}" ]; then
-            local raw_temp
+            local raw_temp temp_c temp_frac temp_val
             raw_temp=$(cat "${sensor_path}" 2>/dev/null) || continue
-            local temp_c=$((raw_temp / 1000))
-            local temp_frac=$(( (raw_temp % 1000) / 100 ))
-            local temp_val="${temp_c}.${temp_frac}"
+            temp_c=$((raw_temp / 1000))
+            temp_frac=$(( (raw_temp % 1000) / 100 ))
+            temp_val="${temp_c}.${temp_frac}"
 
-            # Check if value changed (compare against last known value stored in cache)
             local last_file="${cache_file}.last"
             local last_val=""
             [ -f "${last_file}" ] && last_val=$(cat "${last_file}")
 
             if [ "${temp_val}" != "${last_val}" ]; then
-                curl -s -X POST \
-                    -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-                    -H "Content-Type: application/json" \
-                    -d "{\"state\": \"${temp_val}\", \"attributes\": {\"friendly_name\": \"HAY ${friendly_name} Temperature\", \"unit_of_measurement\": \"\u00b0C\", \"device_class\": \"temperature\", \"state_class\": \"measurement\", \"icon\": \"mdi:thermometer\", \"source\": \"${sensor_path}\"}}" \
-                    "http://supervisor/core/api/states/${entity_id}" > /dev/null 2>&1
+                local attrs
+                attrs=$(jq -cn \
+                    --arg unit "°C" --arg src "${sensor_path}" \
+                    '{unit_of_measurement: $unit, device_class: "temperature", state_class: "measurement", icon: "mdi:thermometer", source: $src}')
+                publish_state "sensor" "${object_id}" "${temp_val}" "${friendly_name}" "${attrs}"
                 echo "${temp_val}" > "${last_file}"
             fi
         fi
     done
 }
 
-# Validate thresholds (only matters in auto mode, but warn regardless)
+# ==============================================================================
+# Validate & Start
+# ==============================================================================
 if [ "${TEMP_OFF}" -ge "${TEMP_ON}" ]; then
     if [ "${FAN_MODE}" = "auto" ]; then
         bashio::log.error "temp_off (${TEMP_OFF}) must be less than temp_on (${TEMP_ON})!"
-        bashio::log.error "Fix your configuration and restart the addon."
         exit 1
     else
-        bashio::log.warning "temp_off (${TEMP_OFF}) >= temp_on (${TEMP_ON}) — ignored because fan_mode is '${FAN_MODE}'"
+        bashio::log.warning "temp_off (${TEMP_OFF}) >= temp_on (${TEMP_ON}) — ignored (fan_mode=${FAN_MODE})"
     fi
 fi
 
-# Discover all temperature sensors
+# Setup MQTT (optional)
+setup_mqtt
+
+# Register MQTT discovery entities
+if [ "${MQTT_AVAILABLE}" = "true" ]; then
+    bashio::log.info "Publishing MQTT discovery configs..."
+    publish_binary_sensor_discovery "fan" "CM5 Fan" "mdi:fan"
+    publish_text_sensor_discovery "gpio_header" "CM5 GPIO Header" "mdi:chip"
+    # Temperature sensors are registered during discover_sensors()
+fi
+
+# Discover temperature sensors
 discover_sensors
 
-# Log startup configuration
+# Log configuration
 bashio::log.info "Configuration:"
-bashio::log.info "  GPIO chip: ${GPIO_CHIP}"
-bashio::log.info "  GPIO line: ${GPIO_LINE}"
-bashio::log.info "  Poll interval: ${POLL_INTERVAL}s"
-bashio::log.info "  Fan ON threshold: ${TEMP_ON}C"
-bashio::log.info "  Fan OFF threshold: ${TEMP_OFF}C"
-bashio::log.info "  Fan mode: ${FAN_MODE}"
-bashio::log.info "  Leave on at shutdown: $(bashio::config 'leave_on_at_shutdown')"
-bashio::log.info "  CPU temp sensor: ${TEMP_SENSOR}"
+bashio::log.info "  GPIO: ${GPIO_CHIP} line ${GPIO_LINE}"
+bashio::log.info "  Poll: ${POLL_INTERVAL}s | Thresholds: ON=${TEMP_ON}C OFF=${TEMP_OFF}C"
+bashio::log.info "  Fan mode: ${FAN_MODE} | Leave on at shutdown: $(bashio::config 'leave_on_at_shutdown')"
+bashio::log.info "  MQTT: ${MQTT_AVAILABLE} | Hostname: ${ADDON_HOSTNAME}"
+
+# Scan and log GPIO header
+scan_gpio_header
 
 # Turn fan ON as initial safe state
 bashio::log.info "Turning fan ON (initial safe state)..."
 set_fan 1
 
-# Main polling loop
+# ==============================================================================
+# Main Loop
+# ==============================================================================
+GPIO_SCAN_COUNTER=0
+GPIO_SCAN_INTERVAL=12  # Every 12 cycles (60s at 5s poll)
+
 while true; do
     # Verify gpioset is still holding the line
     if [ -n "${GPIOSET_PID}" ] && ! kill -0 "${GPIOSET_PID}" 2>/dev/null; then
@@ -257,42 +572,42 @@ while true; do
         set_fan 1
     fi
 
-    # Read CPU temperature (millidegrees C) for fan control
+    # Read CPU temperature
     if [ -f "${TEMP_SENSOR}" ]; then
         TEMP_RAW=$(cat "${TEMP_SENSOR}")
         TEMP_C=$((TEMP_RAW / 1000))
         TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
         TEMP_DISPLAY="${TEMP_C}.${TEMP_FRAC}"
     else
-        bashio::log.warning "CPU temperature sensor not found: ${TEMP_SENSOR}"
-        # Safety: force fan on if temperature reading fails
+        bashio::log.warning "CPU temp sensor not found: ${TEMP_SENSOR}"
         set_fan 1
         sleep "${POLL_INTERVAL}"
         continue
     fi
 
-    # Apply fan control based on mode
+    # Apply fan control
     case "${FAN_MODE}" in
-        on)
-            set_fan 1
-            ;;
-        off)
-            set_fan 0
-            ;;
+        on)  set_fan 1 ;;
+        off) set_fan 0 ;;
         auto)
-            # Hysteresis-based control
             if [ "${TEMP_C}" -ge "${TEMP_ON}" ]; then
                 set_fan 1
             elif [ "${TEMP_C}" -le "${TEMP_OFF}" ]; then
                 set_fan 0
             fi
-            # Between thresholds: maintain current state (hysteresis)
             ;;
     esac
 
-    # Update Home Assistant entities
+    # Update entities
     update_primary_entities "${TEMP_DISPLAY}" "${FAN_STATE}"
     update_discovered_sensors
+
+    # Periodic GPIO header scan
+    GPIO_SCAN_COUNTER=$((GPIO_SCAN_COUNTER + 1))
+    if [ "${GPIO_SCAN_COUNTER}" -ge "${GPIO_SCAN_INTERVAL}" ]; then
+        scan_gpio_header
+        GPIO_SCAN_COUNTER=0
+    fi
 
     sleep "${POLL_INTERVAL}"
 done

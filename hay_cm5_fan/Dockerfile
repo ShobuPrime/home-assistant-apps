@@ -7,7 +7,8 @@ RUN apk upgrade --no-cache \
     && apk add --no-cache \
         curl \
         jq \
-        libgpiod
+        libgpiod \
+        mosquitto-clients
 
 # Copy root filesystem
 COPY rootfs /
