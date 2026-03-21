@@ -841,7 +841,6 @@ while true; do
 
     # ── Publish clock speed entity ──
     if [ -n "${CUR_FREQ_MHZ}" ] && [ "${CUR_FREQ_MHZ}" != "${LAST_REPORTED_FREQ}" ]; then
-        local freq_attrs
         freq_attrs=$(jq -cn \
             --arg unit "MHz" --argjson max "$((CPU_MAX_FREQ_KHZ / 1000))" --arg gov "${CPU_GOVERNOR}" \
             '{unit_of_measurement: $unit, icon: "mdi:speedometer", state_class: "measurement", max_frequency_mhz: $max, governor: $gov}')
@@ -851,14 +850,13 @@ while true; do
 
     # ── Publish throttle + undervoltage entities ──
     if [ "${CPU_THROTTLED}" != "${LAST_REPORTED_THROTTLE}" ]; then
-        local thr_attrs
         thr_attrs=$(jq -cn --arg freq "${CUR_FREQ_MHZ} MHz" --arg max "$((CPU_MAX_FREQ_KHZ / 1000)) MHz" --arg temp "${TEMP_DISPLAY}C" \
             '{icon: "mdi:alert-octagon", frequency: $freq, max_frequency: $max, temperature: $temp}')
         publish_state "binary_sensor" "cpu_throttled" "${CPU_THROTTLED}" "CM5 CPU Throttled" "${thr_attrs}"
         LAST_REPORTED_THROTTLE="${CPU_THROTTLED}"
     fi
     if [ "${CPU_UNDERVOLT}" != "${LAST_REPORTED_UNDERVOLT}" ]; then
-        local uv_attrs='{"icon": "mdi:flash-alert"}'
+        uv_attrs='{"icon": "mdi:flash-alert"}'
         publish_state "binary_sensor" "undervoltage" "${CPU_UNDERVOLT}" "CM5 Undervoltage" "${uv_attrs}"
         LAST_REPORTED_UNDERVOLT="${CPU_UNDERVOLT}"
     fi
