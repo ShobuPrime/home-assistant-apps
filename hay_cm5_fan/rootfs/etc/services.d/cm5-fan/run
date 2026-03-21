@@ -230,8 +230,18 @@ set_fan() {
     local new_state=$1
     if [ "${new_state}" != "${FAN_STATE}" ]; then
         kill_gpioset
-        gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=${new_state}" &
-        GPIOSET_PID=$!
+        # Retry up to 3 times if line is busy (previous container's gpioset may linger)
+        local attempt=0
+        while [ ${attempt} -lt 3 ]; do
+            gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=${new_state}" &
+            GPIOSET_PID=$!
+            sleep 0.3
+            if kill -0 "${GPIOSET_PID}" 2>/dev/null; then
+                break  # gpioset is running, line acquired
+            fi
+            attempt=$((attempt + 1))
+            [ ${attempt} -lt 3 ] && bashio::log.warning "GPIO line busy, retry ${attempt}/3..." && sleep 2
+        done
         FAN_STATE=${new_state}
         if [ "${new_state}" = "1" ]; then
             bashio::log.info "Fan turned ON (gpioset PID: ${GPIOSET_PID})"
@@ -802,7 +812,6 @@ while true; do
         CPU_GOVERNOR=$(cat "${CPUFREQ_DIR}/scaling_governor")
     fi
     if [ -f "${UNDERVOLT_PATH}" ]; then
-        local uv_val
         uv_val=$(cat "${UNDERVOLT_PATH}" 2>/dev/null || echo "0")
         [ "${uv_val}" = "1" ] && CPU_UNDERVOLT="ON"
     fi
