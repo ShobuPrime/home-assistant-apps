@@ -34,12 +34,11 @@ mkdir -p "${SENSOR_CACHE_DIR}"
 # CPU frequency + utilization tracking
 CPUFREQ_DIR="/sys/devices/system/cpu/cpu0/cpufreq"
 CPU_MAX_FREQ_KHZ=""
-UNDERVOLT_PATH="/sys/class/hwmon/hwmon3/in0_lcrit_alarm"
-THROTTLE_UTIL_THRESHOLD=80  # Consider CPU "busy" above this % utilization
 PREV_CPU_IDLE=0
 PREV_CPU_TOTAL=0
 CPU_UTIL_PCT=0
 LAST_REPORTED_UTIL=""
+VCGENCMD_AVAILABLE=false
 
 # ==============================================================================
 # MQTT Setup — auto-detect via Supervisor API
@@ -446,31 +445,24 @@ print_status_report() {
         [ -n "${CPU_MAX_FREQ_KHZ}" ] && rpt_max="$((CPU_MAX_FREQ_KHZ / 1000)) MHz"
     fi
     [ -f "${CPUFREQ_DIR}/scaling_governor" ] && rpt_gov=$(cat "${CPUFREQ_DIR}/scaling_governor")
-    if [ -f "${UNDERVOLT_PATH}" ]; then
-        local uv
-        uv=$(cat "${UNDERVOLT_PATH}" 2>/dev/null || echo "0")
-        [ "${uv}" = "1" ] && rpt_undervolt="ALERT"
-    fi
-    # Throttle: high utilization + freq below max
-    if [ -n "${rpt_freq}" ] && [ -n "${CPU_MAX_FREQ_KHZ}" ]; then
-        local ck
-        ck=$(cat "${CPUFREQ_DIR}/scaling_cur_freq" 2>/dev/null || echo "0")
-        if [ "${ck}" -lt "${CPU_MAX_FREQ_KHZ}" ] && [ "${CPU_UTIL_PCT}" -ge "${THROTTLE_UTIL_THRESHOLD}" ]; then
-            if [ "${rpt_undervolt}" = "ALERT" ]; then
-                rpt_throttle="YES (undervoltage)"
-            elif [ "${TEMP_C}" -ge 80 ]; then
-                rpt_throttle="YES (thermal)"
-            else
-                rpt_throttle="YES (unknown)"
-            fi
+    # Read firmware throttle flags for the report
+    local rpt_flags="N/A"
+    if [ "${VCGENCMD_AVAILABLE}" = "true" ]; then
+        rpt_flags=$(vcgencmd get_throttled 2>/dev/null | sed 's/throttled=//' || echo "N/A")
+        if [ "${rpt_flags}" != "0x0" ] && [ "${rpt_flags}" != "N/A" ]; then
+            local dec_flags=$((rpt_flags))
+            [ $((dec_flags & 0x1)) -ne 0 ] && rpt_undervolt="ALERT"
+            [ $((dec_flags & 0x4)) -ne 0 ] && rpt_throttle="YES"
+            [ $((dec_flags & 0x2)) -ne 0 ] && rpt_throttle="YES (freq-capped)"
+            [ $((dec_flags & 0x8)) -ne 0 ] && rpt_throttle="YES (soft-temp)"
         fi
     fi
 
     local freq_display="${rpt_freq}"
     [ -n "${rpt_max}" ] && freq_display="${rpt_freq} / ${rpt_max}"
 
-    local T_WN=$(max_len "Metric" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "CM5 Fan" "CPU Clock Speed" "CPU Utilization" "CPU Governor" "CPU Throttled" "Undervoltage")
-    local T_WV=$(max_len "Value" "${cpu_temp}C" "${rp1_temp}C" "${nvme_temp}C" "${fan_detail}" "${freq_display}" "${rpt_util}" "${rpt_gov}" "${rpt_throttle}" "${rpt_undervolt}")
+    local T_WN=$(max_len "Metric" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "CM5 Fan" "CPU Clock Speed" "CPU Utilization" "CPU Governor" "CPU Throttled" "Undervoltage" "Firmware Flags")
+    local T_WV=$(max_len "Value" "${cpu_temp}C" "${rp1_temp}C" "${nvme_temp}C" "${fan_detail}" "${freq_display}" "${rpt_util}" "${rpt_gov}" "${rpt_throttle}" "${rpt_undervolt}" "${rpt_flags}")
 
     bashio::log.info ""
     bashio::log.info "  System Status"
@@ -487,6 +479,7 @@ print_status_report() {
     bashio::log.info "$(tbl_row "CPU Governor" $T_WN "${rpt_gov}" $T_WV)"
     bashio::log.info "$(tbl_row "CPU Throttled" $T_WN "${rpt_throttle}" $T_WV)"
     bashio::log.info "$(tbl_row "Undervoltage" $T_WN "${rpt_undervolt}" $T_WV)"
+    bashio::log.info "$(tbl_row "Firmware Flags" $T_WN "${rpt_flags}" $T_WV)"
     bashio::log.info "$(tbl_border $T_WN $T_WV)"
     bashio::log.info "$(tbl_row "CM5 Fan" $T_WN "${fan_detail}" $T_WV)"
     bashio::log.info "$(tbl_border $T_WN $T_WV)"
@@ -748,6 +741,14 @@ if [ -f "${CPUFREQ_DIR}/scaling_max_freq" ]; then
     bashio::log.info "CPU max frequency: $((CPU_MAX_FREQ_KHZ / 1000)) MHz"
 fi
 
+# Detect vcgencmd for official firmware throttle flags
+if command -v vcgencmd &> /dev/null && vcgencmd get_throttled &>/dev/null; then
+    VCGENCMD_AVAILABLE=true
+    bashio::log.info "vcgencmd available — using firmware throttle flags"
+else
+    bashio::log.warning "vcgencmd not available — throttle detection uses utilization heuristic"
+fi
+
 # Log configuration
 bashio::log.info "Configuration:"
 bashio::log.info "  GPIO: ${GPIO_CHIP} line ${GPIO_LINE}"
@@ -836,13 +837,10 @@ while true; do
     PREV_CPU_TOTAL=${cpu_total}
     PREV_CPU_IDLE=${cpu_idle}
 
-    # ── CPU clock speed + throttle detection ──
+    # ── CPU clock speed ──
     CUR_FREQ_KHZ=""
     CUR_FREQ_MHZ=""
-    CPU_THROTTLED="OFF"
-    CPU_UNDERVOLT="OFF"
     CPU_GOVERNOR=""
-    THROTTLE_REASON=""
 
     if [ -f "${CPUFREQ_DIR}/scaling_cur_freq" ]; then
         CUR_FREQ_KHZ=$(cat "${CPUFREQ_DIR}/scaling_cur_freq")
@@ -851,43 +849,65 @@ while true; do
     if [ -f "${CPUFREQ_DIR}/scaling_governor" ]; then
         CPU_GOVERNOR=$(cat "${CPUFREQ_DIR}/scaling_governor")
     fi
-    if [ -f "${UNDERVOLT_PATH}" ]; then
-        uv_val=$(cat "${UNDERVOLT_PATH}" 2>/dev/null || echo "0")
-        [ "${uv_val}" = "1" ] && CPU_UNDERVOLT="ON"
-    fi
 
-    # Throttle detection: CPU wants to run fast (high utilization) but
-    # frequency is below max. This means something is capping it.
-    #   - If temp is high: thermal throttle
-    #   - If undervoltage: power throttle
-    #   - If neither: unknown cap (firmware/kernel limit)
-    # Low utilization + low freq = normal governor power saving (NOT throttle)
-    if [ -n "${CUR_FREQ_KHZ}" ] && [ -n "${CPU_MAX_FREQ_KHZ}" ]; then
-        if [ "${CUR_FREQ_KHZ}" -lt "${CPU_MAX_FREQ_KHZ}" ] && [ "${CPU_UTIL_PCT}" -ge "${THROTTLE_UTIL_THRESHOLD}" ]; then
-            CPU_THROTTLED="ON"
-            if [ "${CPU_UNDERVOLT}" = "ON" ]; then
-                THROTTLE_REASON="undervoltage"
-            elif [ "${TEMP_C}" -ge 80 ]; then
-                THROTTLE_REASON="thermal"
-            else
-                THROTTLE_REASON="unknown"
-            fi
+    # ── Official firmware throttle flags via vcgencmd ──
+    # get_throttled returns a hex bitmask:
+    #   Bit 0: Under-voltage detected (currently)
+    #   Bit 1: Arm frequency capped (currently)
+    #   Bit 2: Currently throttled
+    #   Bit 3: Soft temperature limit active (currently)
+    #   Bit 16: Under-voltage has occurred (since boot)
+    #   Bit 17: Arm frequency capping has occurred
+    #   Bit 18: Throttling has occurred
+    #   Bit 19: Soft temperature limit has occurred
+    CPU_THROTTLED="OFF"
+    CPU_UNDERVOLT="OFF"
+    THROTTLE_FLAGS=""
+    THROTTLE_REASONS=""
+
+    if [ "${VCGENCMD_AVAILABLE}" = "true" ]; then
+        THROTTLE_FLAGS=$(vcgencmd get_throttled 2>/dev/null | sed 's/throttled=//' || echo "0x0")
+        throttle_dec=$((THROTTLE_FLAGS))
+
+        # Current flags (bits 0-3)
+        if [ $((throttle_dec & 0x1)) -ne 0 ]; then
+            CPU_UNDERVOLT="ON"
+            THROTTLE_REASONS="${THROTTLE_REASONS}under-voltage "
         fi
+        if [ $((throttle_dec & 0x2)) -ne 0 ]; then
+            CPU_THROTTLED="ON"
+            THROTTLE_REASONS="${THROTTLE_REASONS}freq-capped "
+        fi
+        if [ $((throttle_dec & 0x4)) -ne 0 ]; then
+            CPU_THROTTLED="ON"
+            THROTTLE_REASONS="${THROTTLE_REASONS}throttled "
+        fi
+        if [ $((throttle_dec & 0x8)) -ne 0 ]; then
+            CPU_THROTTLED="ON"
+            THROTTLE_REASONS="${THROTTLE_REASONS}soft-temp-limit "
+        fi
+
+        # Historical flags (bits 16-19) — log once when they first appear
+        hist_reasons=""
+        [ $((throttle_dec & 0x10000)) -ne 0 ] && hist_reasons="${hist_reasons}under-voltage "
+        [ $((throttle_dec & 0x20000)) -ne 0 ] && hist_reasons="${hist_reasons}freq-capped "
+        [ $((throttle_dec & 0x40000)) -ne 0 ] && hist_reasons="${hist_reasons}throttled "
+        [ $((throttle_dec & 0x80000)) -ne 0 ] && hist_reasons="${hist_reasons}soft-temp-limit "
     fi
 
-    # Log throttle state changes with detailed context
+    # Log throttle state changes
     if [ "${CPU_THROTTLED}" != "${LAST_REPORTED_THROTTLE}" ]; then
         if [ "${CPU_THROTTLED}" = "ON" ]; then
-            bashio::log.warning "CPU THROTTLED (${THROTTLE_REASON}): ${CUR_FREQ_MHZ}/${CPU_MAX_FREQ_KHZ:+$((CPU_MAX_FREQ_KHZ / 1000))} MHz, ${CPU_UTIL_PCT}% util, ${TEMP_DISPLAY}C"
+            bashio::log.warning "CPU THROTTLED [${THROTTLE_FLAGS}]: ${THROTTLE_REASONS}| ${CUR_FREQ_MHZ} MHz, ${CPU_UTIL_PCT}% util, ${TEMP_DISPLAY}C"
         elif [ "${LAST_REPORTED_THROTTLE}" = "ON" ]; then
-            bashio::log.info "CPU throttle cleared: ${CUR_FREQ_MHZ} MHz, ${CPU_UTIL_PCT}% util, ${TEMP_DISPLAY}C"
+            bashio::log.info "CPU throttle cleared [${THROTTLE_FLAGS}]: ${CUR_FREQ_MHZ} MHz, ${TEMP_DISPLAY}C"
         fi
     fi
     if [ "${CPU_UNDERVOLT}" != "${LAST_REPORTED_UNDERVOLT}" ]; then
         if [ "${CPU_UNDERVOLT}" = "ON" ]; then
-            bashio::log.warning "UNDERVOLTAGE DETECTED -- check power supply!"
+            bashio::log.warning "UNDERVOLTAGE DETECTED [${THROTTLE_FLAGS}] -- check power supply!"
         elif [ "${LAST_REPORTED_UNDERVOLT}" = "ON" ]; then
-            bashio::log.info "Undervoltage cleared"
+            bashio::log.info "Undervoltage cleared [${THROTTLE_FLAGS}]"
         fi
     fi
 
@@ -913,13 +933,14 @@ while true; do
         thr_attrs=$(jq -cn \
             --arg freq "${CUR_FREQ_MHZ} MHz" --arg max "$((CPU_MAX_FREQ_KHZ / 1000)) MHz" \
             --arg temp "${TEMP_DISPLAY}C" --argjson util "${CPU_UTIL_PCT}" \
-            --arg reason "${THROTTLE_REASON}" \
-            '{icon: "mdi:alert-octagon", frequency: $freq, max_frequency: $max, temperature: $temp, cpu_utilization_pct: $util, reason: $reason}')
+            --arg flags "${THROTTLE_FLAGS}" --arg reasons "${THROTTLE_REASONS}" \
+            '{icon: "mdi:alert-octagon", frequency: $freq, max_frequency: $max, temperature: $temp, cpu_utilization_pct: $util, firmware_flags: $flags, reasons: $reasons}')
         publish_state "binary_sensor" "cpu_throttled" "${CPU_THROTTLED}" "CM5 CPU Throttled" "${thr_attrs}"
         LAST_REPORTED_THROTTLE="${CPU_THROTTLED}"
     fi
     if [ "${CPU_UNDERVOLT}" != "${LAST_REPORTED_UNDERVOLT}" ]; then
-        uv_attrs='{"icon": "mdi:flash-alert"}'
+        uv_attrs=$(jq -cn --arg flags "${THROTTLE_FLAGS}" \
+            '{icon: "mdi:flash-alert", firmware_flags: $flags}')
         publish_state "binary_sensor" "undervoltage" "${CPU_UNDERVOLT}" "CM5 Undervoltage" "${uv_attrs}"
         LAST_REPORTED_UNDERVOLT="${CPU_UNDERVOLT}"
     fi

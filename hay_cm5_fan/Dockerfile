@@ -8,7 +8,8 @@ RUN apk upgrade --no-cache \
         curl \
         jq \
         libgpiod \
-        mosquitto-clients
+        mosquitto-clients \
+        raspberrypi-utils-vcgencmd
 
 # Copy root filesystem
 COPY rootfs /
