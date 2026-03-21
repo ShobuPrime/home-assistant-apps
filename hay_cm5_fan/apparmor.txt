@@ -1,0 +1,63 @@
+#include <tunables/global>
+
+profile hay_cm5_fan flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Capabilities
+  capability,
+  file,
+  signal (send) set=(kill,term,int,hup,cont),
+  network,
+
+  # S6-Overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Bashio
+  /usr/lib/bashio/** ix,
+  /tmp/** rwk,
+
+  # Access to options.json and other addon data
+  /data/** rw,
+
+  # GPIO sysfs access (fan control)
+  /sys/class/gpio/export rw,
+  /sys/class/gpio/unexport rw,
+  /sys/class/gpio/gpio*/direction rw,
+  /sys/class/gpio/gpio*/value rw,
+  /sys/class/gpio/gpio*/edge rw,
+  /sys/class/gpio/gpio*/active_low rw,
+
+  # Hardware monitor (CPU temperature)
+  /sys/class/hwmon/hwmon*/temp*_input r,
+  /sys/class/hwmon/hwmon*/name r,
+
+  # DNS resolution
+  /etc/hosts r,
+  /etc/resolv.conf r,
+  /etc/nsswitch.conf r,
+  /etc/passwd r,
+  /etc/group r,
+
+  # Device access
+  /dev/null rw,
+  /dev/urandom r,
+  /dev/random r,
+
+  # Proc filesystem
+  /proc/*/mountinfo r,
+  /proc/*/stat r,
+  /proc/*/status r,
+
+  # CM5 Fan Controller data
+  owner /data/hay_cm5_fan/** rwk,
+}

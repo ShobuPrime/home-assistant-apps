@@ -1,0 +1,34 @@
+name: "HAY CM5 Fan Controller"
+description: "GPIO-based fan control with thermal management for Home Assistant Yellow with CM5"
+version: "1.0.0"
+slug: "hay_cm5_fan"
+url: "https://github.com/ShobuPrime/home-assistant-apps"
+init: false
+arch:
+  - aarch64
+startup: system
+boot: auto
+full_access: true
+hassio_api: true
+homeassistant_api: true
+apparmor: true
+map:
+  - data:rw
+options:
+  gpio_number: 583
+  temp_sensor_path: "/sys/class/hwmon/hwmon0/temp1_input"
+  poll_interval: 5
+  temp_on: 55
+  temp_off: 45
+  fan_mode: auto
+  leave_on_at_shutdown: true
+  log_level: info
+schema:
+  gpio_number: int
+  temp_sensor_path: str
+  poll_interval: int(1,60)
+  temp_on: int(30,90)
+  temp_off: int(25,85)
+  fan_mode: list(auto|on|off)
+  leave_on_at_shutdown: bool
+  log_level: list(trace|debug|info|warning|error|fatal)?

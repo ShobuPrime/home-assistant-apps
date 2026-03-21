@@ -14,7 +14,7 @@ BASE_IMAGE_REPO="hassio-addons/app-base"
 BASE_IMAGE_REGISTRY="ghcr.io/hassio-addons/base"
 
 # All addon directories that use the base image
-ADDON_DIRS="arcane dockge dockhand huly muninndb portainer_ee_lts portainer_ee_sts"
+ADDON_DIRS="arcane dockge dockhand hay_cm5_fan huly muninndb portainer_ee_lts portainer_ee_sts"
 
 # Colors for output
 RED='\033[0;31m'
