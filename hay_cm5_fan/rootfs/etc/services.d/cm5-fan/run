@@ -730,6 +730,16 @@ bashio::log.info "  Poll: ${POLL_INTERVAL}s | Thresholds: ON=${TEMP_ON}C OFF=${T
 bashio::log.info "  Fan mode: ${FAN_MODE} | Leave on at shutdown: $(bashio::config 'leave_on_at_shutdown')"
 bashio::log.info "  MQTT: ${MQTT_AVAILABLE} | Hostname: ${ADDON_HOSTNAME}"
 
+# Initialize temperature variables (needed by status report before main loop)
+TEMP_C=0
+TEMP_DISPLAY="0.0"
+if [ -f "${TEMP_SENSOR}" ]; then
+    TEMP_RAW=$(cat "${TEMP_SENSOR}")
+    TEMP_C=$((TEMP_RAW / 1000))
+    TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
+    TEMP_DISPLAY="${TEMP_C}.${TEMP_FRAC}"
+fi
+
 # Turn fan ON as initial safe state (before first report so GPIO14 shows active)
 bashio::log.info "Turning fan ON (initial safe state)..."
 set_fan 1
