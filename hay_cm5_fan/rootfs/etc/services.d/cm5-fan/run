@@ -373,18 +373,18 @@ print_status_report() {
 
     # ── Render GPIO table ──
     bashio::log.info ""
-    bashio::log.info "  Yellow 10-Pin GPIO Header (J11) -Pin 1 = square pad"
+    bashio::log.info "  Yellow 10-Pin GPIO Header (J11) -- Pin 1 = square pad"
     bashio::log.info ""
-    bashio::log.info "$(tbl_border$W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
+    bashio::log.info "$(tbl_border $W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
     bashio::log.info "$(tbl_row "Status" $W_LS "Name" $W_LN "Function" $W_LF "Pin" $W_LP "Pin" $W_RP "Function" $W_RF "Name" $W_RN "Status" $W_RS)"
-    bashio::log.info "$(tbl_border$W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
+    bashio::log.info "$(tbl_border $W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
     bashio::log.info "$(tbl_row "$R1_LS" $W_LS "$R1_LN" $W_LN "$R1_LF" $W_LF "$R1_LP" $W_LP "$R1_RP" $W_RP "$R1_RF" $W_RF "$R1_RN" $W_RN "$R1_RS" $W_RS)"
     bashio::log.info "$(tbl_row "$R2_LS" $W_LS "$R2_LN" $W_LN "$R2_LF" $W_LF "$R2_LP" $W_LP "$R2_RP" $W_RP "$R2_RF" $W_RF "$R2_RN" $W_RN "$R2_RS" $W_RS)"
     bashio::log.info "$(tbl_row "$R3_LS" $W_LS "$R3_LN" $W_LN "$R3_LF" $W_LF "$R3_LP" $W_LP "$R3_RP" $W_RP "$R3_RF" $W_RF "$R3_RN" $W_RN "$R3_RS" $W_RS)"
     bashio::log.info "$(tbl_row "$R4_LS" $W_LS "$R4_LN" $W_LN "$R4_LF" $W_LF "$R4_LP" $W_LP "$R4_RP" $W_RP "$R4_RF" $W_RF "$R4_RN" $W_RN "$R4_RS" $W_RS)"
     bashio::log.info "$(tbl_row "$R5_LS" $W_LS "$R5_LN" $W_LN "$R5_LF" $W_LF "$R5_LP" $W_LP "$R5_RP" $W_RP "$R5_RF" $W_RF "$R5_RN" $W_RN "$R5_RS" $W_RS)"
-    bashio::log.info "$(tbl_border$W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
-    bashio::log.info "  ${active} active -${avail} available"
+    bashio::log.info "$(tbl_border $W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
+    bashio::log.info "  ${active} active, ${avail} available"
 
     # ── Read all temperatures ──
     local cpu_temp="" nvme_temp="" rp1_temp=""
@@ -418,15 +418,15 @@ print_status_report() {
     bashio::log.info ""
     bashio::log.info "  System Thermal Status"
     bashio::log.info ""
-    bashio::log.info "$(tbl_border$T_WN $T_WV)"
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
     bashio::log.info "$(tbl_row "Sensor" $T_WN "Value" $T_WV)"
-    bashio::log.info "$(tbl_border$T_WN $T_WV)"
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
     [ -n "${cpu_temp}" ]  && bashio::log.info "$(tbl_row "CM5 Processor" $T_WN "${cpu_temp}C" $T_WV)"
     [ -n "${rp1_temp}" ]  && bashio::log.info "$(tbl_row "CM5 I/O Controller (RP1)" $T_WN "${rp1_temp}C" $T_WV)"
     [ -n "${nvme_temp}" ] && bashio::log.info "$(tbl_row "NVMe SSD" $T_WN "${nvme_temp}C" $T_WV)"
-    bashio::log.info "$(tbl_border$T_WN $T_WV)"
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
     bashio::log.info "$(tbl_row "CM5 Fan" $T_WN "${fan_detail}" $T_WV)"
-    bashio::log.info "$(tbl_border$T_WN $T_WV)"
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
     bashio::log.info ""
 
     # ── Publish GPIO header HA entity ──
