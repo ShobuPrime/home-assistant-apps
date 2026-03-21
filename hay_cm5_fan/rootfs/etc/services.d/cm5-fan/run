@@ -381,7 +381,8 @@ print_status_report() {
 
     # Compute widths for temperature table
     local T_WN=$(max_len "Sensor" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "CM5 Fan")
-    local T_WV=$(max_len "Value" "${cpu_temp}C" "${rp1_temp}C" "${nvme_temp}C" "${fan_str} (${FAN_MODE})")
+    local fan_detail="${fan_str} (${FAN_MODE}, on>=${TEMP_ON}C off<=${TEMP_OFF}C)"
+    local T_WV=$(max_len "Value" "${cpu_temp}C" "${rp1_temp}C" "${nvme_temp}C" "${fan_detail}")
 
     local tfmt="| %-${T_WN}s | %-${T_WV}s |"
     local tsep
@@ -396,7 +397,7 @@ print_status_report() {
     [ -n "${rp1_temp}" ]  && bashio::log.info "$(printf "${tfmt}" "CM5 I/O Controller (RP1)" "${rp1_temp}C")"
     [ -n "${nvme_temp}" ] && bashio::log.info "$(printf "${tfmt}" "NVMe SSD" "${nvme_temp}C")"
     bashio::log.info "${tsep}"
-    bashio::log.info "$(printf "${tfmt}" "CM5 Fan" "${fan_str} (${FAN_MODE}, on>=${TEMP_ON}C off<=${TEMP_OFF}C)")"
+    bashio::log.info "$(printf "${tfmt}" "CM5 Fan" "${fan_detail}")"
     bashio::log.info ""
 
     # ── Publish GPIO header HA entity ──
