@@ -256,20 +256,21 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 # ==============================================================================
-# GPIO Header Scanning — Yellow 10-pin header (J11)
+# GPIO Header + Temperature Status Report
 # ==============================================================================
-# Physical layout (Pin 1 = square pad on PCB):
-#   Pin 1 [3.3V]  |  Pin 2  [5V]
-#   Pin 3 [GPIO2] |  Pin 4  [5V]
-#   Pin 5 [GPIO3] |  Pin 6  [GND]
-#   Pin 7 [GPIO4] |  Pin 8  [GPIO14]  <-- fan
-#   Pin 9 [GND]   |  Pin 10 [GPIO15]
+# Yellow 10-Pin Header (J11) physical pinout:
+#   Odd pins (left)            Even pins (right)
+#   Pin 1  3.3V Power          Pin 2  5V Power
+#   Pin 3  GPIO2  I2C SDA      Pin 4  5V Power
+#   Pin 5  GPIO3  I2C SCL      Pin 6  GND
+#   Pin 7  GPIO4  GPCLK0       Pin 8  GPIO14 UART TX (fan)
+#   Pin 9  GND                 Pin 10 GPIO15 UART RX
 
 # Helper: parse a single GPIO line from gpioinfo output
-# Sets: _GPIO_NAME, _GPIO_DIR, _GPIO_CONSUMER, _GPIO_STATUS
+# Sets: _GPIO_DIR, _GPIO_CONSUMER, _GPIO_STATUS
 parse_gpio_line() {
     local gpio_num=$1
-    _GPIO_NAME="" ; _GPIO_DIR="input" ; _GPIO_CONSUMER="" ; _GPIO_STATUS="available"
+    _GPIO_DIR="input" ; _GPIO_CONSUMER="" ; _GPIO_STATUS=""
 
     echo "${_GPIOINFO}" > /tmp/hay_gpio_parse.tmp
     local line_info
@@ -277,97 +278,149 @@ parse_gpio_line() {
     rm -f /tmp/hay_gpio_parse.tmp
     [ -z "${line_info}" ] && return
 
-    _GPIO_NAME=$(echo "${line_info}" | sed 's/.*"\([^"]*\)".*/\1/' || true)
     echo "${line_info}" | grep -q "output" && _GPIO_DIR="output"
     if echo "${line_info}" | grep -q 'consumer=' 2>/dev/null; then
         _GPIO_CONSUMER=$(echo "${line_info}" | sed 's/.*consumer="\([^"]*\)".*/\1/' || true)
-        _GPIO_STATUS="active"
     fi
-}
 
-# Format a single pin cell for the table (fixed width)
-format_pin() {
-    local pin_num=$1
-    local label=$2      # GPIO2, 5V, GND, etc.
-    local extra=$3      # [out, fan] or [in] or empty
-
-    if [ -n "${extra}" ]; then
-        printf "Pin %-2s  %-7s %s" "${pin_num}" "${label}" "${extra}"
+    # Build status string: [dir] or [dir, consumer]
+    if [ -n "${_GPIO_CONSUMER}" ]; then
+        _GPIO_STATUS="[${_GPIO_DIR}, ${_GPIO_CONSUMER}]"
     else
-        printf "Pin %-2s  %-7s" "${pin_num}" "${label}"
+        _GPIO_STATUS="[${_GPIO_DIR}]"
     fi
 }
 
-scan_gpio_header() {
-    # Capture gpioinfo output safely
+# Helper: dynamically build and print a perfectly aligned table
+# Uses printf with computed column widths so alignment is always correct
+# regardless of content length (consumer names, temps, etc.)
+print_status_report() {
+    # ── Capture GPIO info ──
     _GPIOINFO=$(gpioinfo 2>/dev/null || true)
-    [ -z "${_GPIOINFO}" ] && return
 
-    local gpio_json="{"
-    local first=true
-    local active_count=0
-    local available_count=0
+    # Parse GPIO lines for the header pins
+    parse_gpio_line 2  ; local s2=${_GPIO_STATUS} c2=${_GPIO_CONSUMER}
+    parse_gpio_line 3  ; local s3=${_GPIO_STATUS} c3=${_GPIO_CONSUMER}
+    parse_gpio_line 4  ; local s4=${_GPIO_STATUS} c4=${_GPIO_CONSUMER}
+    parse_gpio_line 14 ; local s14=${_GPIO_STATUS} c14=${_GPIO_CONSUMER}
+    parse_gpio_line 15 ; local s15=${_GPIO_STATUS} c15=${_GPIO_CONSUMER}
 
-    # Parse all header GPIO pins first
-    parse_gpio_line 2  ; local g2_name=${_GPIO_NAME} g2_dir=${_GPIO_DIR} g2_con=${_GPIO_CONSUMER} g2_stat=${_GPIO_STATUS}
-    parse_gpio_line 3  ; local g3_name=${_GPIO_NAME} g3_dir=${_GPIO_DIR} g3_con=${_GPIO_CONSUMER} g3_stat=${_GPIO_STATUS}
-    parse_gpio_line 4  ; local g4_name=${_GPIO_NAME} g4_dir=${_GPIO_DIR} g4_con=${_GPIO_CONSUMER} g4_stat=${_GPIO_STATUS}
-    parse_gpio_line 14 ; local g14_name=${_GPIO_NAME} g14_dir=${_GPIO_DIR} g14_con=${_GPIO_CONSUMER} g14_stat=${_GPIO_STATUS}
-    parse_gpio_line 15 ; local g15_name=${_GPIO_NAME} g15_dir=${_GPIO_DIR} g15_con=${_GPIO_CONSUMER} g15_stat=${_GPIO_STATUS}
-
-    # Count active/available
-    for s in "${g2_stat}" "${g3_stat}" "${g4_stat}" "${g14_stat}" "${g15_stat}"; do
-        [ "${s}" = "active" ] && active_count=$((active_count + 1)) || available_count=$((available_count + 1))
+    local active=0 avail=0
+    for c in "${c2}" "${c3}" "${c4}" "${c14}" "${c15}"; do
+        [ -n "${c}" ] && active=$((active + 1)) || avail=$((avail + 1))
     done
 
-    # Format status tags: [in] or [out, consumer_name]
-    fmt_status() {
-        local dir=$1 consumer=$2
-        if [ -n "${consumer}" ]; then
-            echo "[${dir}, ${consumer}]"
-        else
-            echo "[${dir}]"
-        fi
+    # ── Define table rows as arrays ──
+    # Each row: left_status | left_name | left_func | left_pin | right_pin | right_func | right_name | right_status
+    # Power/GND pins have empty status columns
+    local R1_LS="" R1_LN="3v3"    R1_LF="Power"   R1_LP="Pin 1"  R1_RP="Pin 2"  R1_RF="Power"   R1_RN="5v"     R1_RS=""
+    local R2_LS="${s2}"  R2_LN="GPIO2"  R2_LF="I2C SDA"  R2_LP="Pin 3"  R2_RP="Pin 4"  R2_RF="Power"   R2_RN="5v"     R2_RS=""
+    local R3_LS="${s3}"  R3_LN="GPIO3"  R3_LF="I2C SCL"  R3_LP="Pin 5"  R3_RP="Pin 6"  R3_RF="Ground"  R3_RN="GND"    R3_RS=""
+    local R4_LS="${s4}"  R4_LN="GPIO4"  R4_LF="GPCLK0"   R4_LP="Pin 7"  R4_RP="Pin 8"  R4_RF="UART TX" R4_RN="GPIO14" R4_RS="${s14}"
+    local R5_LS="" R5_LN="GND"    R5_LF="Ground"  R5_LP="Pin 9"  R5_RP="Pin 10" R5_RF="UART RX" R5_RN="GPIO15" R5_RS="${s15}"
+
+    # ── Compute column widths from all rows for perfect alignment ──
+    max_len() {
+        local max=0
+        for s in "$@"; do [ ${#s} -gt ${max} ] && max=${#s}; done
+        echo ${max}
     }
 
-    local s2=$(fmt_status "${g2_dir}" "${g2_con}")
-    local s3=$(fmt_status "${g3_dir}" "${g3_con}")
-    local s4=$(fmt_status "${g4_dir}" "${g4_con}")
-    local s14=$(fmt_status "${g14_dir}" "${g14_con}")
-    local s15=$(fmt_status "${g15_dir}" "${g15_con}")
+    local W_LS=$(max_len "Status" "$R1_LS" "$R2_LS" "$R3_LS" "$R4_LS" "$R5_LS")
+    local W_LN=$(max_len "Name" "$R1_LN" "$R2_LN" "$R3_LN" "$R4_LN" "$R5_LN")
+    local W_LF=$(max_len "Function" "$R1_LF" "$R2_LF" "$R3_LF" "$R4_LF" "$R5_LF")
+    local W_LP=$(max_len "Pin" "$R1_LP" "$R2_LP" "$R3_LP" "$R4_LP" "$R5_LP")
+    local W_RP=$(max_len "Pin" "$R1_RP" "$R2_RP" "$R3_RP" "$R4_RP" "$R5_RP")
+    local W_RF=$(max_len "Function" "$R1_RF" "$R2_RF" "$R3_RF" "$R4_RF" "$R5_RF")
+    local W_RN=$(max_len "Name" "$R1_RN" "$R2_RN" "$R3_RN" "$R4_RN" "$R5_RN")
+    local W_RS=$(max_len "Status" "$R1_RS" "$R2_RS" "$R3_RS" "$R4_RS" "$R5_RS")
 
-    # Print visual header table matching physical pinout
-    bashio::log.info "=================================================="
-    bashio::log.info "       Yellow 10-Pin GPIO Header (J11)"
-    bashio::log.info "       Pin 1 = square pad on PCB"
-    bashio::log.info "=================================================="
-    bashio::log.info "  $(format_pin 1 '3.3V' '')        |  $(format_pin 2 '5V' '')"
-    bashio::log.info "  $(format_pin 3 "${g2_name}" "${s2}")  |  $(format_pin 4 '5V' '')"
-    bashio::log.info "  $(format_pin 5 "${g3_name}" "${s3}")  |  $(format_pin 6 'GND' '')"
-    bashio::log.info "  $(format_pin 7 "${g4_name}" "${s4}")  |  $(format_pin 8 "${g14_name}" "${s14}")"
-    bashio::log.info "  $(format_pin 9 'GND' '')        |  $(format_pin 10 "${g15_name}" "${s15}")"
-    bashio::log.info "=================================================="
-    bashio::log.info "  ${active_count} active, ${available_count} available"
-    bashio::log.info "=================================================="
+    # Build format string and separator dynamically
+    local fmt="| %-${W_LS}s | %-${W_LN}s | %-${W_LF}s | %-${W_LP}s | %-${W_RP}s | %-${W_RF}s | %-${W_RN}s | %-${W_RS}s |"
+    local sep
+    sep=$(printf "|-%${W_LS}s-|-%${W_LN}s-|-%${W_LF}s-|-%${W_LP}s-|-%${W_RP}s-|-%${W_RF}s-|-%${W_RN}s-|-%${W_RS}s-|" "" "" "" "" "" "" "" "" | tr ' ' '-')
 
-    # Build JSON attributes for HA entity
-    gpio_json="{\"pin_1\": \"3.3V\", \"pin_2\": \"5V\""
-    gpio_json="${gpio_json}, \"pin_3_${g2_name}\": {\"direction\": \"${g2_dir}\", \"consumer\": \"${g2_con:-none}\", \"status\": \"${g2_stat}\"}"
-    gpio_json="${gpio_json}, \"pin_4\": \"5V\""
-    gpio_json="${gpio_json}, \"pin_5_${g3_name}\": {\"direction\": \"${g3_dir}\", \"consumer\": \"${g3_con:-none}\", \"status\": \"${g3_stat}\"}"
-    gpio_json="${gpio_json}, \"pin_6\": \"GND\""
-    gpio_json="${gpio_json}, \"pin_7_${g4_name}\": {\"direction\": \"${g4_dir}\", \"consumer\": \"${g4_con:-none}\", \"status\": \"${g4_stat}\"}"
-    gpio_json="${gpio_json}, \"pin_8_${g14_name}\": {\"direction\": \"${g14_dir}\", \"consumer\": \"${g14_con:-none}\", \"status\": \"${g14_stat}\"}"
-    gpio_json="${gpio_json}, \"pin_9\": \"GND\""
-    gpio_json="${gpio_json}, \"pin_10_${g15_name}\": {\"direction\": \"${g15_dir}\", \"consumer\": \"${g15_con:-none}\", \"status\": \"${g15_stat}\"}"
-    gpio_json="${gpio_json}}"
+    # ── Print GPIO table ──
+    bashio::log.info ""
+    bashio::log.info "Yellow 10-Pin GPIO Header (J11) -- Pin 1 = square pad on PCB"
+    bashio::log.info ""
+    bashio::log.info "$(printf "${fmt}" "Status" "Name" "Function" "Pin" "Pin" "Function" "Name" "Status")"
+    bashio::log.info "${sep}"
+    bashio::log.info "$(printf "${fmt}" "$R1_LS" "$R1_LN" "$R1_LF" "$R1_LP" "$R1_RP" "$R1_RF" "$R1_RN" "$R1_RS")"
+    bashio::log.info "$(printf "${fmt}" "$R2_LS" "$R2_LN" "$R2_LF" "$R2_LP" "$R2_RP" "$R2_RF" "$R2_RN" "$R2_RS")"
+    bashio::log.info "$(printf "${fmt}" "$R3_LS" "$R3_LN" "$R3_LF" "$R3_LP" "$R3_RP" "$R3_RF" "$R3_RN" "$R3_RS")"
+    bashio::log.info "$(printf "${fmt}" "$R4_LS" "$R4_LN" "$R4_LF" "$R4_LP" "$R4_RP" "$R4_RF" "$R4_RN" "$R4_RS")"
+    bashio::log.info "$(printf "${fmt}" "$R5_LS" "$R5_LN" "$R5_LF" "$R5_LP" "$R5_RP" "$R5_RF" "$R5_RN" "$R5_RS")"
+    bashio::log.info "${sep}"
+    bashio::log.info "GPIO: ${active} active, ${avail} available"
 
-    local state_summary="${active_count} active, ${available_count} available"
+    # ── Read all temperatures for the report ──
+    local cpu_temp="" nvme_temp="" rp1_temp=""
+    for hwmon_dir in /sys/class/hwmon/hwmon*; do
+        [ -d "${hwmon_dir}" ] || continue
+        local hname
+        hname=$(cat "${hwmon_dir}/name" 2>/dev/null || true)
+        for tf in "${hwmon_dir}"/temp*_input; do
+            [ -f "${tf}" ] || continue
+            local raw
+            raw=$(cat "${tf}" 2>/dev/null || true)
+            [ -z "${raw}" ] && continue
+            local tc=$(( raw / 1000 )) tf2=$(( (raw % 1000) / 100 ))
+            local tval="${tc}.${tf2}"
+            case "${hname}" in
+                cpu_thermal) cpu_temp="${tval}" ;;
+                nvme)        nvme_temp="${tval}" ;;
+                rp1_adc)     rp1_temp="${tval}" ;;
+            esac
+        done
+    done
 
-    # Publish GPIO header entity
-    local attrs
-    attrs=$(echo "${gpio_json}" | jq -c '.' 2>/dev/null || echo "${gpio_json}")
-    publish_state "sensor" "gpio_header" "${state_summary}" "CM5 GPIO Header" "${attrs}"
+    # ── Print temperature table ──
+    local fan_str="OFF"
+    [ "${FAN_STATE}" = "1" ] && fan_str="ON"
+
+    # Compute widths for temperature table
+    local T_WN=$(max_len "Sensor" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "CM5 Fan")
+    local T_WV=$(max_len "Value" "${cpu_temp}C" "${rp1_temp}C" "${nvme_temp}C" "${fan_str} (${FAN_MODE})")
+
+    local tfmt="| %-${T_WN}s | %-${T_WV}s |"
+    local tsep
+    tsep=$(printf "|-%${T_WN}s-|-%${T_WV}s-|" "" "" | tr ' ' '-')
+
+    bashio::log.info ""
+    bashio::log.info "System Thermal Status"
+    bashio::log.info ""
+    bashio::log.info "$(printf "${tfmt}" "Sensor" "Value")"
+    bashio::log.info "${tsep}"
+    [ -n "${cpu_temp}" ]  && bashio::log.info "$(printf "${tfmt}" "CM5 Processor" "${cpu_temp}C")"
+    [ -n "${rp1_temp}" ]  && bashio::log.info "$(printf "${tfmt}" "CM5 I/O Controller (RP1)" "${rp1_temp}C")"
+    [ -n "${nvme_temp}" ] && bashio::log.info "$(printf "${tfmt}" "NVMe SSD" "${nvme_temp}C")"
+    bashio::log.info "${tsep}"
+    bashio::log.info "$(printf "${tfmt}" "CM5 Fan" "${fan_str} (${FAN_MODE}, on>=${TEMP_ON}C off<=${TEMP_OFF}C)")"
+    bashio::log.info ""
+
+    # ── Publish GPIO header HA entity ──
+    local gpio_json
+    gpio_json=$(jq -cn \
+        --arg s2 "${s2}" --arg c2 "${c2:-none}" \
+        --arg s3 "${s3}" --arg c3 "${c3:-none}" \
+        --arg s4 "${s4}" --arg c4 "${c4:-none}" \
+        --arg s14 "${s14}" --arg c14 "${c14:-none}" \
+        --arg s15 "${s15}" --arg c15 "${c15:-none}" \
+        '{
+            pin_1: "3.3V Power", pin_2: "5V Power",
+            pin_3_GPIO2: {function: "I2C SDA", status: $s2, consumer: $c2},
+            pin_4: "5V Power",
+            pin_5_GPIO3: {function: "I2C SCL", status: $s3, consumer: $c3},
+            pin_6: "GND",
+            pin_7_GPIO4: {function: "GPCLK0", status: $s4, consumer: $c4},
+            pin_8_GPIO14: {function: "UART TX / Fan", status: $s14, consumer: $c14},
+            pin_9: "GND",
+            pin_10_GPIO15: {function: "UART RX", status: $s15, consumer: $c15}
+        }' 2>/dev/null || echo '{}')
+
+    local state_summary="${active} active, ${avail} available"
+    publish_state "sensor" "gpio_header" "${state_summary}" "CM5 GPIO Header" "${gpio_json}"
 }
 
 # ==============================================================================
@@ -599,12 +652,12 @@ bashio::log.info "  Poll: ${POLL_INTERVAL}s | Thresholds: ON=${TEMP_ON}C OFF=${T
 bashio::log.info "  Fan mode: ${FAN_MODE} | Leave on at shutdown: $(bashio::config 'leave_on_at_shutdown')"
 bashio::log.info "  MQTT: ${MQTT_AVAILABLE} | Hostname: ${ADDON_HOSTNAME}"
 
-# Scan and log GPIO header
-scan_gpio_header
-
-# Turn fan ON as initial safe state
+# Turn fan ON as initial safe state (before first report so GPIO14 shows active)
 bashio::log.info "Turning fan ON (initial safe state)..."
 set_fan 1
+
+# Print initial status report (GPIO + temps)
+print_status_report
 
 # ==============================================================================
 # Main Loop
@@ -650,10 +703,10 @@ while true; do
     update_primary_entities "${TEMP_DISPLAY}" "${FAN_STATE}"
     update_discovered_sensors
 
-    # Periodic GPIO header scan
+    # Periodic status report (GPIO + temps)
     GPIO_SCAN_COUNTER=$((GPIO_SCAN_COUNTER + 1))
     if [ "${GPIO_SCAN_COUNTER}" -ge "${GPIO_SCAN_INTERVAL}" ]; then
-        scan_gpio_header
+        print_status_report
         GPIO_SCAN_COUNTER=0
     fi
 
