@@ -24,37 +24,17 @@ if ! command -v gpioset &> /dev/null; then
     exit 1
 fi
 
-if ! command -v gpioget &> /dev/null; then
-    bashio::log.error "gpioget not found! libgpiod package is missing."
-    exit 1
-fi
-
 bashio::log.info "libgpiod tools found: $(gpioset --version 2>&1 | head -1)"
 
 # Validate GPIO character device exists
 if [[ ! -c "/dev/${GPIO_CHIP}" ]]; then
     bashio::log.error "GPIO chip device /dev/${GPIO_CHIP} not found!"
     bashio::log.error "Ensure full_access: true is set and the host has the GPIO character device."
-    bashio::log.error "Available GPIO chips:"
-    ls -la /dev/gpiochip* 2>/dev/null || bashio::log.error "  (none found)"
+    ls -la /dev/gpiochip* 2>/dev/null || bashio::log.error "  No GPIO chips found"
     exit 1
 fi
 
 bashio::log.info "GPIO chip /dev/${GPIO_CHIP} found"
-
-# Validate the GPIO line exists on this chip
-# libgpiod v2: gpioinfo with no args lists all chips; use grep to find our line
-CHIP_INFO=$(gpioinfo 2>/dev/null) || true
-if echo "${CHIP_INFO}" | grep -q "${GPIO_CHIP}"; then
-    LINE_INFO=$(echo "${CHIP_INFO}" | grep -A999 "^${GPIO_CHIP}" | grep "line *${GPIO_LINE}:" | head -1)
-    if [ -n "${LINE_INFO}" ]; then
-        bashio::log.info "GPIO line ${GPIO_LINE}: ${LINE_INFO}"
-    else
-        bashio::log.warning "GPIO line ${GPIO_LINE} not found in gpioinfo output — will validate on first use"
-    fi
-else
-    bashio::log.warning "Chip ${GPIO_CHIP} not found in gpioinfo output — will validate on first use"
-fi
 
 # Validate temperature sensor
 if [[ -f "${TEMP_SENSOR}" ]]; then
