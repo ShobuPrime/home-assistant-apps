@@ -6,7 +6,7 @@ FROM $BUILD_FROM
 # Build arguments for version
 ARG DOCKGE_VERSION=1.5.0
 
-# Install requirements (NO nodejs/npm — we use upstream's Node.js)
+# Install runtime requirements
 # Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
 RUN \
     apk upgrade --no-cache \
@@ -15,26 +15,32 @@ RUN \
         ca-certificates \
         curl \
         jq \
-        # gcompat provides glibc compatibility layer for musl
-        # Required because upstream Dockge is built on Debian (glibc)
-        # and native Node.js modules (node-pty, better-sqlite3) are
-        # compiled against glibc
-        gcompat \
-        libstdc++
+        nodejs \
+        npm
 
-# Copy Node.js runtime from upstream (Debian glibc build, v22)
-# This ensures native modules match the Node.js ABI they were compiled for
-COPY --from=dockge /usr/local/bin/node /usr/local/bin/node
-COPY --from=dockge /usr/local/bin/npx /usr/local/bin/npx
-COPY --from=dockge /usr/local/bin/tsx /usr/local/bin/tsx
-COPY --from=dockge /usr/local/lib/node_modules /usr/local/lib/node_modules
-
-# Copy Dockge application from official image (includes native modules)
+# Copy Dockge application from official image
 COPY --from=dockge /app /app
+
+# Copy tsx from upstream (needed to run TypeScript backend)
+COPY --from=dockge /usr/local/bin/tsx /usr/local/bin/tsx
+
+# Rebuild ALL native Node.js modules for Alpine (musl + Node 24)
+# Upstream Dockge is Debian (glibc + Node 22) — native addons
+# (node-pty, better-sqlite3) must be recompiled from source.
+# nodejs-dev provides the Node.js headers needed by node-gyp.
+RUN apk add --no-cache --virtual .build-deps \
+        python3 make g++ linux-headers \
+    && cd /app \
+    && npm rebuild 2>&1 || true \
+    && apk del .build-deps
+
+# Install tsx globally (the copied binary needs its npm deps)
+RUN npm install -g tsx
+
 WORKDIR /app
 
 # Create required directories
-RUN mkdir -p /opt/dockhand/data /opt/dockhand/data/db /opt/dockhand/data/stacks
+RUN mkdir -p /app/data /app/data/db /app/data/stacks
 
 # Copy root filesystem
 COPY rootfs /
