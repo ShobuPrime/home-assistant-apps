@@ -6,36 +6,38 @@ FROM $BUILD_FROM
 # Build arguments for version
 ARG DOCKGE_VERSION=1.5.0
 
-# Install runtime requirements
-# Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
+# Install runtime requirements (NO nodejs — we install Node 22 LTS manually)
+# Upgrade first to resolve base image package version mismatches
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
         bash \
         ca-certificates \
         curl \
-        jq \
-        nodejs \
-        npm
+        jq
+
+# Install Node.js 22 LTS (musl build) to match upstream Dockge's ABI
+# Alpine 3.23 ships Node 24 which breaks native module compatibility.
+# Node 22 musl build from nodejs.org gives us ABI v127 on musl,
+# matching the prebuilt native modules (node-pty, better-sqlite3).
+ARG NODE_VERSION=22.14.0
+RUN ARCH="$(uname -m)" \
+    && if [ "${ARCH}" = "x86_64" ]; then NODE_ARCH="x64"; \
+    elif [ "${ARCH}" = "aarch64" ]; then NODE_ARCH="arm64"; \
+    else echo "Unsupported: ${ARCH}"; exit 1; fi \
+    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}-musl.tar.xz" \
+       | tar -xJ -C /usr/local --strip-components=1 \
+    && node --version && npm --version
 
 # Copy Dockge application from official image
 COPY --from=dockge /app /app
 
-# Copy tsx from upstream (needed to run TypeScript backend)
-COPY --from=dockge /usr/local/bin/tsx /usr/local/bin/tsx
-
-# Rebuild ALL native Node.js modules for Alpine (musl + Node 24)
-# Upstream Dockge is Debian (glibc + Node 22) — native addons
-# (node-pty, better-sqlite3) must be recompiled from source.
-# nodejs-dev provides the Node.js headers needed by node-gyp.
-RUN apk add --no-cache --virtual .build-deps \
-        python3 make g++ linux-headers \
+# Install tsx and rebuild native modules for musl
+RUN apk add --no-cache --virtual .build-deps python3 make g++ linux-headers \
+    && npm install -g tsx \
     && cd /app \
-    && npm rebuild 2>&1 || true \
+    && npm rebuild \
     && apk del .build-deps
-
-# Install tsx globally (the copied binary needs its npm deps)
-RUN npm install -g tsx
 
 WORKDIR /app
 
