@@ -75,6 +75,27 @@ Pattern:
 - Init scripts handle inter-service dependencies
 - See `references/multi-service.md` for detailed patterns
 
+### Hardware-Specific / Shell-Script Addons
+Best for: Custom daemon scripts that interact with host hardware (GPIO, sensors, firmware). No upstream binary to download.
+Example in this repo: `hay_cm5_fan`
+
+Pattern:
+- No binary download — the addon IS shell scripts in rootfs
+- May support only `aarch64` (hardware-specific)
+- `build.yaml` may only list one architecture
+- No `ARG <ADDON>_VERSION=` in Dockerfile (no upstream version to track)
+- No update script or workflow needed
+- Requires `full_access: true` for `/dev/` and `/sys/` access
+- Smoke test needs a dedicated case since hardware isn't available on CI runners
+- Init script should **warn** (not `exit 1`) on missing hardware so the container stays up for diagnostics
+- Packages like `libgpiod` (GPIO), `raspberrypi-utils-vcgencmd` (firmware), `mosquitto-clients` (MQTT) available in Alpine
+
+Key gotchas discovered building `hay_cm5_fan`:
+- **`local` only inside functions**: bashio uses `set -e`; `local` in a `while` loop body (outside a function) crashes the script
+- **Pipe SIGPIPE**: Piping commands through `grep -q` under bashio's `pipefail` causes SIGPIPE. Write to a temp file first, then grep
+- **MQTT discovery**: REST API entities (`POST /api/states/`) don't get `unique_id`. Add `services: ["mqtt:want"]` to config.yaml and use MQTT discovery with `mosquitto_pub` for proper entity registration with unique_id and device grouping
+- **`vcgencmd`**: Available inside addon containers via `raspberrypi-utils-vcgencmd` when `/dev/vcio` is accessible (`full_access: true`, Protection Mode off)
+
 ## Phase 3: Create the Addon Directory
 
 The addon slug should be lowercase, using underscores for word separation. Create all files in `<repo-root>/<addon-slug>/`.
@@ -336,6 +357,20 @@ Start with the standard template from `references/templates.md`. The profile nam
 - Any additional filesystem paths the addon needs
 - Docker socket access (if `docker_api: true`)
 
+**Critical: Character device access (GPIO, vcio, etc.)**: If the addon uses `ioctl()` on character devices (e.g., `/dev/gpiochip*`, `/dev/vcio`), do NOT add specific path rules like `/dev/gpiochip* rw,`. Specific path rules override the blanket `file,` rule and strip ioctl permission. Use only the blanket `file,` rule:
+
+```
+profile addon_slug flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  capability,
+  file,
+  signal (send) set=(kill,term,int,hup,cont),
+  network,
+}
+```
+
+If even this doesn't work (HAOS kernel AppArmor version may block ioctl regardless), Protection Mode must be disabled by the user in the HA UI.
+
 ### build.sh
 
 The build script follows an identical pattern across all addons. Read `references/templates.md` for the template. Customize:
@@ -409,11 +444,12 @@ Before choosing a cron slot, check the actual workflow files for the current sch
 grep -r "cron:" .github/workflows/update-*.yml .github/workflows/update-base-image.yml | sort
 ```
 
-As of skill creation, the occupied slots were:
+As of last update, the occupied slots were:
 - 1:00 AM UTC - Base image updates
 - 2:00 AM UTC - Portainer LTS + STS updates
 - 3:00 AM UTC - Arcane + Dockhand updates
 - 3:30 AM UTC - Huly updates
+- 4:00 AM UTC - MuninnDB updates
 
 Pick an unoccupied slot (e.g., 4:00, 4:30, 5:00 AM UTC). Always verify with the grep above since new addons may have claimed slots since this list was written.
 

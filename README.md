@@ -23,6 +23,7 @@ This repository contains custom Home Assistant apps.
 | [Arcane](arcane/) | Modern Docker management interface with a clean, intuitive UI |
 | [Dockge](dockge/) | Docker Compose stack-oriented manager with interactive YAML editor |
 | [Dockhand](dockhand/) | Node.js-based Docker management for monitoring and managing containers |
+| [HAY CM5 Fan Controller](hay_cm5_fan/) | GPIO fan control with thermal management for Home Assistant Yellow with CM5 |
 | [Huly](huly/) | All-in-one project management platform — alternative to Linear, Jira, Slack, and Notion |
 | [MuninnDB](muninndb/) | Local-first AI memory and knowledge base with ONNX embedder |
 | [Portainer EE (LTS)](portainer_ee_lts/) | Docker management with Portainer Enterprise Edition (Long Term Support) |
