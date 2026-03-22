@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.22] - 2026-03-22
+
+### Changed
+- Updated Dockhand to version 1.0.22
+
+Release date: Unknown date
+
+Changes:
+{
+  "type": "feature",
+  "text": "dashboard list view with inline search and connection filters (#740)"
+}
+{
+  "type": "feature",
+  "text": "custom environment icon (#754)"
+}
+{
+  "type": "feature",
+
+---
+
+
 ## [1.0.21] - 2026-03-14
 
 ### Changed
