@@ -178,10 +178,10 @@ jobs:
 
       - name: Set up QEMU
         if: steps.config.outputs.build_arch != 'amd64'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build ${{ matrix.addon }} (test mode)
         run: |
@@ -262,11 +262,11 @@ jobs:
 
       - name: Set up QEMU
         if: steps.config.outputs.build_arch != 'amd64'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         if: steps.config.outputs.build_arch != 'amd64'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build image for smoke test
         run: |
