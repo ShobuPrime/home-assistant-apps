@@ -1,5 +1,5 @@
 # Global ARGs must be declared before the first FROM
-ARG BUILD_FROM=ghcr.io/hassio-addons/base:20.0.1
+ARG BUILD_FROM
 ARG MUNINNDB_VERSION=0.4.6-alpha
 
 # ---------------------------------------------------------------------------

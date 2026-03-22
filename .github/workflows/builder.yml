@@ -154,16 +154,72 @@ jobs:
         with:
           ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.head_sha || '' }}
 
-      - name: Build ${{ matrix.addon }} add-on
-        uses: home-assistant/builder@master
-        with:
-          args: |
-            --test \
-            --target /data/${{ matrix.addon }} \
-            --docker-hub shobuprime \
-            --image ${{ matrix.addon }} \
-            --amd64 \
-            --aarch64
+      - name: Get build config
+        id: config
+        run: |
+          ADDON="${{ matrix.addon }}"
+          VERSION=$(grep "^version:" "${ADDON}/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+
+          # Read architectures from config.yaml
+          ARCHS=$(grep -A10 "^arch:" "${ADDON}/config.yaml" | grep "^\s*-" | sed 's/.*- //' | tr '\n' ' ')
+          echo "Architectures: ${ARCHS}"
+
+          # Try amd64 first (native on CI runner), fall back to aarch64
+          BASE_IMAGE=$(grep "amd64:" "${ADDON}/build.yaml" | head -1 | awk '{print $2}')
+          BUILD_ARCH="amd64"
+          if [ -z "${BASE_IMAGE}" ]; then
+            BASE_IMAGE=$(grep "aarch64:" "${ADDON}/build.yaml" | head -1 | awk '{print $2}')
+            BUILD_ARCH="aarch64"
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "base_image=${BASE_IMAGE}" >> $GITHUB_OUTPUT
+          echo "build_arch=${BUILD_ARCH}" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        if: steps.config.outputs.build_arch != 'amd64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.addon }} (test mode)
+        run: |
+          ADDON="${{ matrix.addon }}"
+
+          # Extract version ARG from build.yaml (e.g., DOCKHAND_VERSION, ARCANE_VERSION)
+          VERSION_ARG=$(grep -E '_VERSION:' "${ADDON}/build.yaml" | head -1 | awk -F: '{print $1}' | xargs)
+          VERSION_VAL=$(grep -E '_VERSION:' "${ADDON}/build.yaml" | head -1 | awk -F: '{print $2}' | xargs)
+
+          BUILD_ARGS=(
+            --build-arg "BUILD_FROM=${{ steps.config.outputs.base_image }}"
+            --build-arg "BUILD_ARCH=${{ steps.config.outputs.build_arch }}"
+            --build-arg "BUILD_VERSION=${{ steps.config.outputs.version }}"
+            --build-arg "BUILD_NAME=${ADDON}"
+            --build-arg "BUILD_DESCRIPTION=Test build"
+            --build-arg "BUILD_REF=$(git rev-parse --short HEAD)"
+            --build-arg "BUILD_REPOSITORY=${{ github.repository }}"
+            --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          )
+
+          if [ -n "${VERSION_ARG}" ] && [ -n "${VERSION_VAL}" ]; then
+            BUILD_ARGS+=(--build-arg "${VERSION_ARG}=${VERSION_VAL}")
+          fi
+
+          PLATFORM_ARGS=()
+          if [ "${{ steps.config.outputs.build_arch }}" != "amd64" ]; then
+            PLATFORM_ARGS=(--platform "linux/arm64")
+          fi
+
+          echo "Building ${ADDON} (${{ steps.config.outputs.build_arch }})..."
+          docker buildx build \
+            "${PLATFORM_ARGS[@]}" \
+            "${BUILD_ARGS[@]}" \
+            --load \
+            -t "test/${ADDON}:${{ steps.config.outputs.version }}" \
+            "./${ADDON}"
+
+          echo "Build successful: test/${ADDON}:${{ steps.config.outputs.version }}"
 
   smoke-test:
     needs: [init, build]

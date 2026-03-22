@@ -177,7 +177,7 @@ update_changelog() {
         cat > "$temp_file" << EOF
 # Changelog
 
-## [$new_version] - $(date +%Y-%m-%d)
+## Version $new_version ($(date +%Y-%m-%d))
 
 ### Changed
 - Updated Dockhand to version $new_version
@@ -194,7 +194,7 @@ EOF
         cat > "$addon_path/CHANGELOG.md" << EOF
 # Changelog
 
-## [$new_version] - $(date +%Y-%m-%d)
+## Version $new_version ($(date +%Y-%m-%d))
 
 ### Changed
 - Updated Dockhand to version $new_version
