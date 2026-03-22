@@ -24,6 +24,14 @@ COPY --from=dockge /app /app
 # Install tsx runtime (Dockge uses TypeScript, not compiled JS)
 RUN npm install -g tsx
 
+# Rebuild native Node.js modules for Alpine (musl)
+# Upstream Dockge image uses glibc — native addons (node-pty, better-sqlite3)
+# compiled against glibc won't load on Alpine's musl libc
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+    && cd /app \
+    && npm rebuild \
+    && apk del .build-deps
+
 WORKDIR /app
 
 # Copy root filesystem
