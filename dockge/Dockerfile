@@ -21,9 +21,8 @@ RUN \
 # Copy Dockge from official image
 COPY --from=dockge /app /app
 
-# Copy tsx runtime from upstream (Dockge uses TypeScript, not compiled JS)
-COPY --from=dockge /usr/local/bin/tsx /usr/local/bin/tsx
-COPY --from=dockge /usr/local/lib/node_modules /usr/local/lib/node_modules
+# Install tsx runtime (Dockge uses TypeScript, not compiled JS)
+RUN npm install -g tsx
 
 WORKDIR /app
 
