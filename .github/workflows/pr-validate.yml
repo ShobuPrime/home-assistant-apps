@@ -463,7 +463,7 @@ jobs:
                     builderFound = true;
                     builderComplete = recentRun.status === 'completed';
                     builderSuccess = recentRun.conclusion === 'success';
-                    builderDetails = [{name: `Builder run #${recentRun.run_number}`, conclusion: recentRun.conclusion}];
+                    builderDetails = [{name: `Builder run #${recentRun.run_number}`, conclusion: recentRun.conclusion, url: recentRun.html_url}];
                   }
                 }
               } else {
@@ -480,7 +480,7 @@ jobs:
                 builderFound = runs.length > 0;
                 builderComplete = runs.every(cr => cr.status === 'completed');
                 builderSuccess = runs.every(cr => cr.conclusion === 'success');
-                builderDetails = runs.map(cr => ({name: cr.name, conclusion: cr.conclusion}));
+                builderDetails = runs.map(cr => ({name: cr.name, conclusion: cr.conclusion, url: cr.html_url || cr.details_url || ''}));
               }
 
               if (!builderFound) {
@@ -509,7 +509,7 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: prNumber,
-                  body: `⚠️ Auto-merge skipped: Builder workflow failed.\n\nFailed checks:\n${builderDetails.map(d => `- **${d.name}**: ${d.conclusion}`).join('\n')}\n\nPlease investigate and merge manually if appropriate.`
+                  body: `⚠️ Auto-merge skipped: Builder workflow failed.\n\nFailed checks:\n${builderDetails.map(d => d.url ? `- [**${d.name}**](${d.url}): ${d.conclusion}` : `- **${d.name}**: ${d.conclusion}`).join('\n')}\n\nPlease investigate and merge manually if appropriate.`
                 });
                 return;
               }

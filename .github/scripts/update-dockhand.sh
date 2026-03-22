@@ -72,25 +72,42 @@ get_latest_version() {
 }
 
 # Function to get changelog for a specific version
+# Prefers GitHub release notes (richer content, security advisories) over changelog.json
 get_changelog() {
     local version="$1"
     local changelog=""
 
-    # Fetch changelog.json and find the entry for this version
-    local changelog_json=$(curl -s --connect-timeout 10 \
-        "https://raw.githubusercontent.com/Finsys/dockhand/main/src/lib/data/changelog.json" 2>/dev/null)
+    # Try GitHub release notes first (has security advisories, detailed descriptions)
+    local gh_release
+    gh_release=$(curl -s --connect-timeout 10 \
+        "https://api.github.com/repos/Finsys/dockhand/releases/tags/v${version}" 2>/dev/null)
 
-    if [ -n "$changelog_json" ]; then
-        # Extract the changelog entry for this version
-        local entry=$(echo "$changelog_json" | jq -r --arg v "$version" '.[] | select(.version == $v)' 2>/dev/null)
+    if [ -n "$gh_release" ] && echo "$gh_release" | jq -e '.body' >/dev/null 2>&1; then
+        changelog=$(echo "$gh_release" | jq -r '.body // empty' 2>/dev/null)
+        local pub_date=$(echo "$gh_release" | jq -r '.published_at // empty' 2>/dev/null | cut -dT -f1)
+        if [ -n "$pub_date" ] && [ -n "$changelog" ]; then
+            changelog="Released: ${pub_date}\n\n${changelog}"
+        fi
+    fi
 
-        if [ -n "$entry" ]; then
-            local date=$(echo "$entry" | jq -r '.date // "Unknown date"')
-            local changes=$(echo "$entry" | jq -r '.changes[]? // empty' 2>/dev/null | head -10)
+    # Fallback to changelog.json if no GitHub release
+    if [ -z "$changelog" ]; then
+        local changelog_json
+        changelog_json=$(curl -s --connect-timeout 10 \
+            "https://raw.githubusercontent.com/Finsys/dockhand/main/src/lib/data/changelog.json" 2>/dev/null)
 
-            changelog="Release date: $date"
-            if [ -n "$changes" ]; then
-                changelog="$changelog\n\nChanges:\n$changes"
+        if [ -n "$changelog_json" ]; then
+            local entry
+            entry=$(echo "$changelog_json" | jq -r --arg v "$version" '.[] | select(.version == $v)' 2>/dev/null)
+
+            if [ -n "$entry" ]; then
+                local date=$(echo "$entry" | jq -r '.date // "Unknown date"')
+                local changes=$(echo "$entry" | jq -r '.changes[]? | "- \(.type): \(.text)"' 2>/dev/null | head -20)
+
+                changelog="Release date: $date"
+                if [ -n "$changes" ]; then
+                    changelog="$changelog\n\n$changes"
+                fi
             fi
         fi
     fi
