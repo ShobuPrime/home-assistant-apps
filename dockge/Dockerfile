@@ -14,7 +14,9 @@ RUN \
         bash \
         ca-certificates \
         curl \
-        jq
+        jq \
+        libstdc++ \
+        libgcc
 
 # Install Node.js 22 LTS (musl build) to match upstream Dockge's ABI
 # Alpine 3.23 ships Node 24 which breaks native module compatibility.
