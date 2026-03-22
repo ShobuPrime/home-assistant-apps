@@ -1,5 +1,5 @@
 # Global ARGs must be declared before any FROM
-ARG DOCKHAND_VERSION=1.0.21
+ARG DOCKHAND_VERSION=1.0.22
 ARG BUILD_FROM
 
 # Stage 1: Extract Dockhand from official image
@@ -22,6 +22,7 @@ RUN \
         jq \
         docker-cli \
         nodejs \
+        npm \
         sqlite \
         git \
         openssh-client \
@@ -29,6 +30,14 @@ RUN \
 
 # Copy Dockhand application from source image
 COPY --from=dockhand-source /app /opt/dockhand
+
+# Rebuild native Node.js modules for Alpine (musl)
+# Upstream Dockhand uses Wolfi (glibc) — better-sqlite3 native addon
+# compiled against glibc won't load on Alpine's musl libc
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+    && cd /opt/dockhand \
+    && npm rebuild better-sqlite3 \
+    && apk del .build-deps
 
 # Create required directories
 RUN mkdir -p /opt/dockhand/data /opt/dockhand/data/db /opt/dockhand/data/stacks
