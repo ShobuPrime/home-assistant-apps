@@ -64,7 +64,8 @@ cd /app || exit 1
 # Check if package.json exists (from official image)
 if [[ -f /app/package.json ]]; then
     bashio::log.info "Running Dockge from /app"
-    exec node /app/backend/index.js
+    # Dockge uses TypeScript — run with tsx (copied from upstream image)
+    exec tsx /app/backend/index.ts
 else
     bashio::log.error "Dockge application files not found!"
     exit 1
