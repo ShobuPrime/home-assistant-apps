@@ -25,7 +25,7 @@ RUN ARCH="$(uname -m)" \
     && if [ "${ARCH}" = "x86_64" ]; then NODE_ARCH="x64"; \
     elif [ "${ARCH}" = "aarch64" ]; then NODE_ARCH="arm64"; \
     else echo "Unsupported: ${ARCH}"; exit 1; fi \
-    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}-musl.tar.xz" \
+    && curl -fsSL "https://unofficial-builds.nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}-musl.tar.xz" \
        | tar -xJ -C /usr/local --strip-components=1 \
     && node --version && npm --version
 
