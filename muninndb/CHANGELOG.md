@@ -1,5 +1,22 @@
 # Changelog
 
+## Version 0.4.6-alpha (2026-03-22)
+
+## What's Changed
+* fix(plugin): apply MUNINN_OPENAI_URL to openai:// enrichment provider by `scrypster` in https://github.com/scrypster/muninndb/pull/278
+* docs(plugins): clarify MUNINN_ENRICH_API_KEY vs MUNINN_OPENAI_KEY separation by `scrypster` in https://github.com/scrypster/muninndb/pull/280
+* fix(cluster): retry lobe/observer join with exponential backoff (#281) by `scrypster` in https://github.com/scrypster/muninndb/pull/284
+* fix(rest): return 400 for malformed engram IDs in URL paths (#282) by `scrypster` in https://github.com/scrypster/muninndb/pull/285
+* fix(import): repair 4 bugs in vault import/reembed pipeline by `scrypster` in https://github.com/scrypster/muninndb/pull/288
+* feat(enrich): add Google Gemini as enrichment provider by `scrypster` in https://github.com/scrypster/muninndb/pull/289
+* release: merge develop into main by `scrypster` in https://github.com/scrypster/muninndb/pull/290
+
+
+**Full Changelog**: https://github.com/scrypster/muninndb/compare/v0.4.5-alpha...v0.4
+
+---
+
+
 ## Version 0.4.4-alpha (2026-03-17)
 
 ## What's Changed
