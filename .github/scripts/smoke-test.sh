@@ -35,6 +35,8 @@ cleanup() {
     docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm -f "${SUPERVISOR_NAME}" 2>/dev/null || true
     docker network rm "${NETWORK_NAME}" 2>/dev/null || true
+    # Clean up host-side data directory for Docker-in-Docker addons
+    [ -n "${SMOKE_DATA_DIR}" ] && rm -rf "${SMOKE_DATA_DIR}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -109,7 +111,12 @@ DOCKER_ARGS=(
 )
 
 if [ "${NEEDS_DOCKER}" = "true" ]; then
-    DOCKER_ARGS+=("--privileged" "-v" "/var/run/docker.sock:/var/run/docker.sock")
+    # Create a host-side data directory for Docker-in-Docker bind mounts
+    # Addons like Huly run docker-compose inside the container, which needs
+    # host-side paths for volume mounts (container /data != host /data)
+    SMOKE_DATA_DIR=$(mktemp -d "/tmp/smoke-test-data-XXXXXX")
+    chmod 777 "${SMOKE_DATA_DIR}"
+    DOCKER_ARGS+=("--privileged" "-v" "/var/run/docker.sock:/var/run/docker.sock" "-v" "${SMOKE_DATA_DIR}:/data")
 fi
 
 echo "==> Starting addon container..."
