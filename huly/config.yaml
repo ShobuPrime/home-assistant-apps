@@ -27,6 +27,7 @@ hassio_role: admin
 map:
   - ssl:ro
   - data:rw
+  - share:rw
 options:
   log_level: info
   host_address: ""
@@ -37,6 +38,10 @@ options:
   cockroachdb_password: ""
   minio_root_user: "minioadmin"
   minio_root_password: "minioadmin"
+  traefik_enable: false
+  traefik_domain: ""
+  traefik_entrypoints: "websecure"
+  traefik_certresolver: "cloudflare"
 schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
   host_address: str
@@ -47,3 +52,7 @@ schema:
   cockroachdb_password: password?
   minio_root_user: str?
   minio_root_password: password?
+  traefik_enable: bool?
+  traefik_domain: str?
+  traefik_entrypoints: str?
+  traefik_certresolver: str?

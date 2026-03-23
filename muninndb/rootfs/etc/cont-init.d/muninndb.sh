@@ -41,4 +41,26 @@ if [[ -d "${BACKUP_BASE}" ]]; then
     fi
 fi
 
+# Generate Traefik reverse proxy configuration
+if bashio::config.true 'traefik_enable'; then
+    # Primary WebUI
+    TRAEFIK_PORT=8476 /usr/local/bin/generate-traefik-config.sh
+    # Extra routes for API, gRPC, MCP (if domains configured)
+    EXTRA_ROUTES=""
+    if bashio::config.has_value 'traefik_api_domain'; then
+        EXTRA_ROUTES="${EXTRA_ROUTES} api:8475:$(bashio::config 'traefik_api_domain')"
+    fi
+    if bashio::config.has_value 'traefik_grpc_domain'; then
+        EXTRA_ROUTES="${EXTRA_ROUTES} grpc:8477:$(bashio::config 'traefik_grpc_domain')"
+    fi
+    if bashio::config.has_value 'traefik_mcp_domain'; then
+        EXTRA_ROUTES="${EXTRA_ROUTES} mcp:8750:$(bashio::config 'traefik_mcp_domain')"
+    fi
+    if [ -n "${EXTRA_ROUTES}" ]; then
+        TRAEFIK_EXTRA_ROUTES="${EXTRA_ROUTES}" TRAEFIK_PORT=8476 /usr/local/bin/generate-traefik-config.sh
+    fi
+else
+    rm -f /share/traefik/dynamic/muninndb.yml
+fi
+
 bashio::log.info "MuninnDB initialization complete"

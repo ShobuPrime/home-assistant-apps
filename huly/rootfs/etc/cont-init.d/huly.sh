@@ -464,4 +464,11 @@ server {
 }
 NGINXEOF
 
+# Generate Traefik reverse proxy configuration
+if bashio::config.true 'traefik_enable'; then
+    /usr/local/bin/generate-traefik-config.sh
+else
+    rm -f /share/traefik/dynamic/huly.yml
+fi
+
 bashio::log.info "Huly initialization complete"

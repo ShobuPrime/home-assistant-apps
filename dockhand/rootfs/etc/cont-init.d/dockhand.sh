@@ -40,4 +40,11 @@ if [[ -d /opt/dockhand/data ]]; then
 fi
 ln -sf /data/dockhand /opt/dockhand/data
 
+# Generate Traefik reverse proxy configuration
+if bashio::config.true 'traefik_enable'; then
+    /usr/local/bin/generate-traefik-config.sh
+else
+    rm -f /share/traefik/dynamic/dockhand.yml
+fi
+
 bashio::log.info "Dockhand initialization complete"

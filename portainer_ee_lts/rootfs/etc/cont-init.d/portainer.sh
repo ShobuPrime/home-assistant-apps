@@ -59,5 +59,16 @@ fi
 
 echo "${CURRENT_SETTING}" > "${HIDE_SETTING_FILE}"
 
-bashio::log.info "Portainer EE initialization complete"
+# Generate Traefik reverse proxy configuration
+if bashio::config.true 'traefik_enable'; then
+    # Use HTTPS backend if ssl is configured
+    if bashio::config.true 'ssl'; then
+        TRAEFIK_PORT=9443 TRAEFIK_SCHEME=https /usr/local/bin/generate-traefik-config.sh
+    else
+        TRAEFIK_PORT=9000 /usr/local/bin/generate-traefik-config.sh
+    fi
+else
+    rm -f /share/traefik/dynamic/portainer_ee_lts.yml
+fi
 
+bashio::log.info "Portainer EE initialization complete"

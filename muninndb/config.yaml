@@ -56,6 +56,13 @@ options:
   openai_key: ""
   openai_url: ""
   voyage_key: ""
+  traefik_enable: false
+  traefik_domain: ""
+  traefik_api_domain: ""
+  traefik_grpc_domain: ""
+  traefik_mcp_domain: ""
+  traefik_entrypoints: "websecure"
+  traefik_certresolver: "cloudflare"
 schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
   admin_password: password?
@@ -78,3 +85,10 @@ schema:
   openai_key: password?
   openai_url: str?
   voyage_key: password?
+  traefik_enable: bool?
+  traefik_domain: str?
+  traefik_api_domain: str?
+  traefik_grpc_domain: str?
+  traefik_mcp_domain: str?
+  traefik_entrypoints: str?
+  traefik_certresolver: str?

@@ -33,8 +33,16 @@ options:
   port: 3000
   puid: 0
   pgid: 0
+  traefik_enable: false
+  traefik_domain: ""
+  traefik_entrypoints: "websecure"
+  traefik_certresolver: "cloudflare"
 schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
   port: port?
   puid: int?
   pgid: int?
+  traefik_enable: bool?
+  traefik_domain: str?
+  traefik_entrypoints: str?
+  traefik_certresolver: str?

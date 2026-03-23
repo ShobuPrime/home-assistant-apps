@@ -36,9 +36,17 @@ options:
   puid: 1000
   pgid: 1000
   hide_hassio_containers: true
+  traefik_enable: false
+  traefik_domain: ""
+  traefik_entrypoints: "websecure"
+  traefik_certresolver: "cloudflare"
 schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
   app_url: str?
   puid: int?
   pgid: int?
   hide_hassio_containers: bool?
+  traefik_enable: bool?
+  traefik_domain: str?
+  traefik_entrypoints: str?
+  traefik_certresolver: str?

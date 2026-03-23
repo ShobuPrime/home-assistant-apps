@@ -38,10 +38,17 @@ options:
   agent_secret: ""
   license_key: ""
   hide_hassio_containers: true
+  traefik_enable: false
+  traefik_domain: ""
+  traefik_entrypoints: "websecure"
+  traefik_certresolver: "cloudflare"
 schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
   ssl: bool?
   agent_secret: password?
   license_key: password?
   hide_hassio_containers: bool?
-
+  traefik_enable: bool?
+  traefik_domain: str?
+  traefik_entrypoints: str?
+  traefik_certresolver: str?

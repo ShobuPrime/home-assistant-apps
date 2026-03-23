@@ -58,4 +58,11 @@ else
     bashio::log.info "Using existing encryption keys"
 fi
 
+# Generate Traefik reverse proxy configuration
+if bashio::config.true 'traefik_enable'; then
+    /usr/local/bin/generate-traefik-config.sh
+else
+    rm -f /share/traefik/dynamic/arcane.yml
+fi
+
 bashio::log.info "Arcane initialization complete"

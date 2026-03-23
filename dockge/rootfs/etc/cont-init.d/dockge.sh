@@ -46,4 +46,11 @@ else
     bashio::log.warning "Node.js not found in PATH, but Dockge should have it"
 fi
 
+# Generate Traefik reverse proxy configuration
+if bashio::config.true 'traefik_enable'; then
+    /usr/local/bin/generate-traefik-config.sh
+else
+    rm -f /share/traefik/dynamic/dockge.yml
+fi
+
 bashio::log.info "Dockge initialization complete"
