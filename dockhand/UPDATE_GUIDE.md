@@ -1,6 +1,6 @@
 # Dockhand Update Guide
 
-This document describes how to update the Dockhand add-on to a new version.
+This document describes how to update the Dockhand app to a new version.
 
 ## Automatic Updates (Recommended)
 
@@ -74,7 +74,7 @@ Run the built image locally to verify:
 ## Version Compatibility
 
 - Dockhand requires Docker Engine 20.10+ / Docker API 1.41+
-- This add-on supports amd64 and aarch64 architectures only
+- This app supports amd64 and aarch64 architectures only
 - Home Assistant Core 2023.6.0 or later recommended
 
 ## Rollback
@@ -83,4 +83,4 @@ If an update causes issues:
 
 1. Revert the version numbers in config.yaml, build.yaml, and Dockerfile
 2. Rebuild: `./build.sh`
-3. Reinstall the add-on in Home Assistant
+3. Reinstall the app in Home Assistant

@@ -4,7 +4,7 @@
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon:
+The `log_level` option controls the level of log output by the app:
 - `trace`: Show every detail
 - `debug`: Shows detailed debug information
 - `info`: Normal (usually) interesting events (default)
@@ -52,7 +52,7 @@ All data is stored in `/data/portainer` and included in Home Assistant backups.
 
 ## Updating
 
-The addon automatically tracks LTS releases. Updates appear in the Home Assistant UI when available.
+The app automatically tracks LTS releases. Updates appear in the Home Assistant UI when available.
 
 To manually check for updates:
 ```bash

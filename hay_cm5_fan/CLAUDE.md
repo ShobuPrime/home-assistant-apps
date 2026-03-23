@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant Add-on for controlling a GPIO-connected fan on the Home Assistant Yellow with a Raspberry Pi CM5 compute module. Unlike other addons in this repo, this addon has no upstream binary — it is a pure shell-script daemon that reads CPU temperature and controls a fan via the libgpiod character device interface (`/dev/gpiochip0`).
+This is a Home Assistant App for controlling a GPIO-connected fan on the Home Assistant Yellow with a Raspberry Pi CM5 compute module. Unlike other apps in this repo, this app has no upstream binary — it is a pure shell-script daemon that reads CPU temperature and controls a fan via the libgpiod character device interface (`/dev/gpiochip0`).
 
 ## Essential Commands
 
 ### Building and Testing
 ```bash
-# Build the add-on locally (must be on aarch64 or use buildx)
+# Build the app locally (must be on aarch64 or use buildx)
 ./build.sh
 
 # Test locally (limited without GPIO hardware)
@@ -27,7 +27,7 @@ docker run --rm -it --privileged local/aarch64-addon-local_hay_cm5_fan:1.0.0
 
 ### GPIO Control via libgpiod
 
-The addon uses `gpioset` from the libgpiod tools to control GPIO14 on `gpiochip0` (pinctrl-rp1).
+The app uses `gpioset` from the libgpiod tools to control GPIO14 on `gpiochip0` (pinctrl-rp1).
 
 **Why libgpiod instead of sysfs?** Modern HAOS mounts `/sys/class/gpio/` read-only. The sysfs GPIO interface cannot be used even with `full_access: true`. The libgpiod character device interface (`/dev/gpiochip0`) works correctly.
 
@@ -48,24 +48,24 @@ Entities are created via the Supervisor REST API (`POST /core/api/states/`):
 - `binary_sensor.hay_cm5_cpu_fan` — fan on/off state with attributes
 - `sensor.hay_<hwmon_name>_temperature` — auto-discovered sensors (NVMe, RP1, etc.)
 
-All temperature sensors include `state_class: measurement` and `device_class: temperature` for full history/LTS support. These are "virtual" entities — they show state but don't support service calls. Fan control is via addon config (fan_mode: auto/on/off).
+All temperature sensors include `state_class: measurement` and `device_class: temperature` for full history/LTS support. These are "virtual" entities — they show state but don't support service calls. Fan control is via app config (fan_mode: auto/on/off).
 
 ### Directory Structure
 - **`/rootfs/etc/cont-init.d/cm5-fan.sh`**: S6 initialization (validate libgpiod, check `/dev/gpiochip0`)
 - **`/rootfs/etc/services.d/cm5-fan/`**: Service definition with `run` (daemon) and `finish` (crash handler)
 
 ### Critical Files
-- **`config.yaml`**: Add-on configuration (version, options schema, full_access)
+- **`config.yaml`**: App configuration (version, options schema, full_access)
 - **`build.yaml`**: Build configuration — **aarch64 only** (CM5 hardware)
 - **`Dockerfile`**: Minimal — curl, jq, libgpiod, and shell scripts (no binary download)
 - **`apparmor.txt`**: Security profile with `/dev/gpiochip*` and hwmon sysfs paths
 
 ### Architecture Support
-- `aarch64` only — this addon is hardware-specific to the Raspberry Pi CM5
+- `aarch64` only — this app is hardware-specific to the Raspberry Pi CM5
 
 ### No Upstream Version Tracking
 
-This addon has no upstream software to track. The addon IS the software. Version bumps are manual. There is no update script or automated update workflow.
+This app has no upstream software to track. The app IS the software. Version bumps are manual. There is no update script or automated update workflow.
 
 ## Development Guidelines
 
@@ -84,7 +84,7 @@ This addon has no upstream software to track. The addon IS the software. Version
 - Fan MUST be forced ON if temperature sensor becomes unavailable
 - Fan MUST be forced ON if the `gpioset` background process dies unexpectedly
 - `leave_on_at_shutdown: true` is the recommended and default setting
-- The addon requires `full_access: true` for `/dev/gpiochip0` access
+- The app requires `full_access: true` for `/dev/gpiochip0` access
 
 ### Hardware Constraints (Do NOT violate)
 - GPIO14 is on/off only — no hardware PWM
@@ -118,7 +118,7 @@ When updating version:
 - **Never commit changes** to version numbers without testing on actual Yellow hardware
 - **full_access: true** is required — there is no lesser privilege that allows `/dev/gpiochip0` access
 - **AppArmor profile** must include `/dev/gpiochip*` and `/sys/class/hwmon/**` paths
-- The addon creates entities via REST API, not via an integration — they don't survive HA restarts unless the addon is running
+- The app creates entities via REST API, not via an integration — they don't survive HA restarts unless the app is running
 
 ## Common Issues and Troubleshooting
 
@@ -141,4 +141,4 @@ When updating version:
 
 **Cause:** Supervisor API entities are not persistent — they exist only while being actively updated
 
-**Solution:** This is expected. The addon re-creates them on startup. Ensure the addon is set to `boot: auto`.
+**Solution:** This is expected. The app re-creates them on startup. Ensure the app is set to `boot: auto`.

@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant Add-on for Portainer Enterprise Edition (EE) that provides Docker container management through the Home Assistant interface. The add-on uses Home Assistant's S6-overlay init system and follows standard HA add-on conventions.
+This is a Home Assistant App for Portainer Enterprise Edition (EE) that provides Docker container management through the Home Assistant interface. The app uses Home Assistant's S6-overlay init system and follows standard HA app conventions.
 
 ## Essential Commands
 
 ### Building and Testing
 ```bash
-# Build the add-on locally (auto-detects architecture)
+# Build the app locally (auto-detects architecture)
 ./build.sh
 
-# Test the add-on locally
+# Test the app locally
 docker run --rm -it -p 8000:8000 -p 9000:9000 -p 9443:9443 -v /var/run/docker.sock:/var/run/docker.sock local/{arch}-addon-local_portainer_ee:{version}
 ```
 
@@ -46,13 +46,13 @@ The update script filters for STS releases by checking the GitHub release name f
 - **`/homeassistant/packages/`**: Home Assistant integration package for automatic update checking
 
 ### Critical Files
-- **`config.yaml`**: Add-on configuration (version, ports, ingress, options schema)
+- **`config.yaml`**: App configuration (version, ports, ingress, options schema)
 - **`build.yaml`**: Build configuration with base images per architecture
 - **`Dockerfile`**: Downloads Portainer binary, verifies checksum, sets up environment
 - **`apparmor.txt`**: Security profile for Docker socket access
 
 ### Architecture Mapping
-The add-on supports multiple architectures with naming differences from Portainer:
+The app supports multiple architectures with naming differences from Portainer:
 - `aarch64` → `arm64` (Portainer binary)
 - `armhf`/`armv7` → `arm` (Portainer binary)
 - Other architectures use the same name
@@ -79,7 +79,7 @@ The add-on supports multiple architectures with naming differences from Portaine
 
 **Portainer 2.33.0+ Breaking Change**: Portainer introduced Content-Security-Policy headers with `frame-ancestors 'none'` that block iframe embedding, breaking Home Assistant ingress integration.
 
-**Solution**: The add-on sets `export CSP=false` in `/rootfs/etc/services.d/portainer/run` to disable restrictive CSP headers and restore ingress functionality.
+**Solution**: The app sets `export CSP=false` in `/rootfs/etc/services.d/portainer/run` to disable restrictive CSP headers and restore ingress functionality.
 
 **Location**: `/addons/portainer_ee/rootfs/etc/services.d/portainer/run:9`
 
@@ -87,7 +87,7 @@ The add-on supports multiple architectures with naming differences from Portaine
 export CSP=false
 ```
 
-**NEVER remove this environment variable** for Portainer versions 2.33.0 or later, as it will break Home Assistant ingress access. Users experiencing "refused to display in a frame" errors after updating need to rebuild the add-on with this fix.
+**NEVER remove this environment variable** for Portainer versions 2.33.0 or later, as it will break Home Assistant ingress access. Users experiencing "refused to display in a frame" errors after updating need to rebuild the app with this fix.
 
 ### Version Updates
 When updating Portainer version:
@@ -98,7 +98,7 @@ When updating Portainer version:
 
 ### Home Assistant Integration Package
 
-The add-on includes a Home Assistant integration package for automatic update detection and management:
+The app includes a Home Assistant integration package for automatic update detection and management:
 
 **Setup Instructions:**
 1. Copy package to Home Assistant config:
@@ -122,7 +122,7 @@ The add-on includes a Home Assistant integration package for automatic update de
 - One-click update application via `script.apply_portainer_update`
 - Manual update check via `script.check_portainer_updates`
 
-**Important**: The integration relies on the update script being accessible at `/addons/portainer_ee/update-portainer-version.sh`. This typically requires the SSH add-on or Terminal add-on to be installed.
+**Important**: The integration relies on the update script being accessible at `/addons/portainer_ee/update-portainer-version.sh`. This typically requires the SSH app or Terminal app to be installed.
 
 ### Testing Checklist
 - Build completes successfully
@@ -138,7 +138,7 @@ The add-on includes a Home Assistant integration package for automatic update de
 ## Important Notes
 
 - **Never commit changes** to version numbers without testing
-- **Protection mode** must be disabled for the add-on to function
+- **Protection mode** must be disabled for the app to function
 - **Ingress** integration requires specific port configuration (9443 for HTTPS)
 - **AppArmor profile** is critical for security - modifications require careful testing
 - **Hidden containers** feature requires manual cache clearing in Portainer UI if changed
@@ -157,9 +157,9 @@ The add-on includes a Home Assistant integration package for automatic update de
 
 **Solution:**
 1. Verify `CSP=false` is set in `/rootfs/etc/services.d/portainer/run:9`
-2. Rebuild the add-on: `./build.sh`
-3. Update the add-on in Home Assistant Supervisor
-4. Restart the add-on
+2. Rebuild the app: `./build.sh`
+3. Update the app in Home Assistant Supervisor
+4. Restart the app
 
 ### Issue: Update Script Selects Wrong Version Type
 
@@ -180,7 +180,7 @@ curl -s https://api.github.com/repos/portainer/portainer/releases | \
 
 **Note:** The script determines release type by checking for "STS" or "LTS" in the GitHub release name, not by version number patterns.
 
-### Issue: Home Assistant Not Detecting Add-on Updates Automatically
+### Issue: Home Assistant Not Detecting App Updates Automatically
 
 **Symptoms:**
 - Manual updates work, but HA doesn't show update notifications

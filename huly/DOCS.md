@@ -2,13 +2,13 @@
 
 ## About
 
-Huly is an open-source, all-in-one project management platform that serves as a self-hosted alternative to Linear, Jira, Slack, and Notion. It combines project management, issue tracking, team chat, collaborative documents, and video meetings into a single application. This add-on deploys the complete Huly stack within Home Assistant, orchestrating 14 Docker services via Docker Compose internally.
+Huly is an open-source, all-in-one project management platform that serves as a self-hosted alternative to Linear, Jira, Slack, and Notion. It combines project management, issue tracking, team chat, collaborative documents, and video meetings into a single application. This app deploys the complete Huly stack within Home Assistant, orchestrating 14 Docker services via Docker Compose internally.
 
 ## Configuration
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon:
+The `log_level` option controls the level of log output by the app:
 - `trace`: Show every detail
 - `debug`: Shows detailed debug information
 - `info`: Normal (usually) interesting events (default)
@@ -19,7 +19,7 @@ The `log_level` option controls the level of log output by the addon:
 ### Option: `host_address`
 
 The domain name or IP address used to access your Huly instance.
-- **Required**: Must be set before starting the add-on
+- **Required**: Must be set before starting the app
 - Examples: `huly.example.com`, `192.168.1.100`
 - Used to configure internal service endpoints and generate external URLs
 
@@ -43,9 +43,9 @@ Controls name display ordering across the platform.
 
 ### Credentials
 
-All credential fields are optional. Leave them blank and the add-on will auto-generate secure random values on first startup.
+All credential fields are optional. Leave them blank and the app will auto-generate secure random values on first startup.
 
-Set these values if you want credentials to survive an add-on reinstall without losing data. Home Assistant Supervisor stores config values independently of `/data`, so they persist even when the add-on is removed and re-installed — whereas auto-generated secrets stored in `/data` may be lost.
+Set these values if you want credentials to survive an app reinstall without losing data. Home Assistant Supervisor stores config values independently of `/data`, so they persist even when the app is removed and re-installed — whereas auto-generated secrets stored in `/data` may be lost.
 
 | Option | Description |
 |---|---|
@@ -54,7 +54,7 @@ Set these values if you want credentials to survive an add-on reinstall without 
 | `minio_root_user` | MinIO root access key |
 | `minio_root_password` | MinIO root secret key |
 
-> **Warning**: Changing a credential after the initial setup will cause an authentication mismatch with the existing data. If you need to change passwords after data has been created, you must stop the add-on, wipe the corresponding service data directory under `/data/huly/`, and restart.
+> **Warning**: Changing a credential after the initial setup will cause an authentication mismatch with the existing data. If you need to change passwords after data has been created, you must stop the app, wipe the corresponding service data directory under `/data/huly/`, and restart.
 
 ## Access Methods
 
@@ -67,7 +67,7 @@ Set these values if you want credentials to survive an add-on reinstall without 
 
 ## System Requirements
 
-Huly runs 14 internal Docker services and is significantly more resource-intensive than most Home Assistant add-ons.
+Huly runs 14 internal Docker services and is significantly more resource-intensive than most Home Assistant apps.
 
 ### Minimum Requirements
 - **CPU**: 2 vCPUs
@@ -138,13 +138,13 @@ Huly supports email notifications for workspace invitations and updates. Email c
 ## Security Considerations
 
 ### Docker Socket Access
-This add-on requires full Docker socket access to orchestrate the internal service stack. This grants the add-on control over your Docker environment.
+This app requires full Docker socket access to orchestrate the internal service stack. This grants the app control over your Docker environment.
 
 ### Protection Mode
-Protection mode must be disabled in the add-on configuration for the Docker socket to be accessible.
+Protection mode must be disabled in the app configuration for the Docker socket to be accessible.
 
 ### Automatic Secrets
-On first startup, the add-on automatically generates secure random secrets for inter-service authentication. These are stored persistently in `/data/huly/secrets`.
+On first startup, the app automatically generates secure random secrets for inter-service authentication. These are stored persistently in `/data/huly/secrets`.
 
 ### Network Isolation
 All 14 internal services communicate over a private Docker network. Only the nginx reverse proxy is exposed on the configured port.
@@ -153,11 +153,11 @@ All 14 internal services communicate over a private Docker network. Only the ngi
 
 ### Services fail to start
 - Check that your system meets the minimum requirements (2 vCPUs, 8 GB RAM)
-- Review the add-on logs for specific service errors
+- Review the app logs for specific service errors
 - Ensure there is sufficient free disk space
 
 ### Cannot access Docker socket
-Ensure protection mode is disabled in the addon configuration.
+Ensure protection mode is disabled in the app configuration.
 
 ### Ingress not working
 Ensure the ingress port is set to 4859 (the default Huly proxy port).
@@ -168,7 +168,7 @@ Ensure the ingress port is set to 4859 (the default Huly proxy port).
 - Review Elasticsearch and CockroachDB logs for memory pressure warnings
 
 ### Database errors after update
-- Stop the add-on, wait 30 seconds, then restart
+- Stop the app, wait 30 seconds, then restart
 - Check CockroachDB logs for migration status
 - If persistent, restore from a backup taken before the update
 
@@ -177,6 +177,6 @@ Ensure `ingress_stream: true` is configured (this should be set automatically). 
 
 ## Updating
 
-The addon tracks Huly self-hosted releases. Updates appear in the Home Assistant UI when available. The Huly version is tracked based on the `.template.huly.conf` file in the `huly-selfhost` repository, not GitHub Releases.
+The app tracks Huly self-hosted releases. Updates appear in the Home Assistant UI when available. The Huly version is tracked based on the `.template.huly.conf` file in the `huly-selfhost` repository, not GitHub Releases.
 
 > **Important**: Always create a backup before updating. Database migrations may occur during updates.

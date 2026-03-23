@@ -1,6 +1,6 @@
 # Repository Automation
 
-This repository uses GitHub Actions to automate addon updates, validation, and merging.
+This repository uses GitHub Actions to automate app updates, validation, and merging.
 
 ## Workflows
 
@@ -38,7 +38,7 @@ This repository uses GitHub Actions to automate addon updates, validation, and m
 - Checks Dockerfile has FROM instruction
 
 #### Changelog Validation
-- Ensures CHANGELOG.md is updated when addon files are modified
+- Ensures CHANGELOG.md is updated when app files are modified
 - Verifies CHANGELOG.md contains an entry for the current version
 
 #### YAML Linting
@@ -46,7 +46,7 @@ This repository uses GitHub Actions to automate addon updates, validation, and m
 - Enforces consistent formatting
 
 #### Build Testing
-- Validates Dockerfile syntax for changed addons
+- Validates Dockerfile syntax for changed apps
 
 **On success:** Adds `validation-passed` label, then attempts auto-merge if eligible
 
@@ -179,6 +179,6 @@ If the update script fails:
 
 - Auto-merge only works for PRs created by `github-actions[bot]`
 - Both Builder and PR Validation must pass before merge
-- Validation checks prevent malformed addons from being merged
+- Validation checks prevent malformed apps from being merged
 - Manual review can be forced with the `needs-review` label
 - All workflows use `GITHUB_TOKEN` with minimal required permissions

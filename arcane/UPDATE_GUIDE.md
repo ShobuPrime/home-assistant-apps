@@ -1,11 +1,11 @@
-# Update Guide for Arcane Local Addon
+# Update Guide for Arcane Local App
 
-## Understanding Local Addon Updates
+## Understanding Local App Updates
 
-Local addons in Home Assistant don't have automatic update detection like repository addons. Updates only appear when:
+Local apps in Home Assistant don't have automatic update detection like repository apps. Updates only appear when:
 1. The `version` field in `config.yaml` changes
-2. You rebuild the addon
-3. You click "Check for updates" in the addon store
+2. You rebuild the app
+3. You click "Check for updates" in the app store
 
 ## Update Methods
 
@@ -22,7 +22,7 @@ cd /addons/arcane
 ./update-arcane-version.sh --yes
 ./build.sh
 
-# Go to Supervisor -> Add-on Store -> Check for updates
+# Go to Supervisor -> App Store -> Check for updates
 # Install the update when it appears
 ```
 
@@ -37,10 +37,10 @@ See `.github/workflows/update-arcane.yml` for details.
 
 ### Method 3: Convert to GitHub Repository
 
-Convert this local addon to a GitHub repository for automatic updates:
+Convert this local app to a GitHub repository for automatic updates:
 
 1. Create a GitHub repository
-2. Structure it as a Home Assistant addon repository:
+2. Structure it as a Home Assistant app repository:
    ```
    arcane/
    ├── config.yaml
@@ -60,11 +60,11 @@ Convert this local addon to a GitHub repository for automatic updates:
    ```
 
 4. Users add your repository URL to Home Assistant
-5. Updates appear automatically in the addon store
+5. Updates appear automatically in the app store
 
 ## Current Limitations
 
-- **Local addons** require manual intervention for updates
+- **Local apps** require manual intervention for updates
 - **Version detection** only happens when config.yaml changes
 - **No push notifications** for available updates
 - **Manual rebuild** required after version updates
@@ -72,7 +72,7 @@ Convert this local addon to a GitHub repository for automatic updates:
 ## Checking Current Version
 
 ```bash
-# Check current addon version
+# Check current app version
 grep "version:" /addons/arcane/config.yaml
 
 # Check latest Arcane version from GitHub
@@ -85,7 +85,7 @@ curl -s https://api.github.com/repos/getarcaneapp/arcane/releases/latest | \
 1. **Regular Checks**: Run update checks weekly/monthly
 2. **Test First**: Always test updates in a non-production environment
 3. **Backup**: Create a Home Assistant backup before updating
-4. **Monitor Logs**: Check addon logs after updates for any issues
+4. **Monitor Logs**: Check app logs after updates for any issues
 
 ## Troubleshooting
 
@@ -100,7 +100,7 @@ curl -s https://api.github.com/repos/getarcaneapp/arcane/releases/latest | \
 3. Ensure all files have correct permissions
 4. Verify architecture support (amd64/aarch64 only)
 
-### Addon won't start after update
+### App won't start after update
 1. Check logs for specific errors
 2. Verify Docker socket access
 3. Ensure protection mode is disabled

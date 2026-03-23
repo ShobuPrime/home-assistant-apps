@@ -8,7 +8,7 @@ Dockge is a fancy, easy-to-use and reactive self-hosted docker compose.yaml stac
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon:
+The `log_level` option controls the level of log output by the app:
 - `trace`: Show every detail
 - `debug`: Shows detailed debug information
 - `info`: Normal (usually) interesting events (default)
@@ -56,19 +56,19 @@ All data is automatically included in Home Assistant backups.
 
 ### Console Feature
 
-As of Dockge 1.5.0, the console/terminal feature is disabled by default for security. Since this addon uses the official Docker image, the console is not available unless you build a custom image with `DOCKGE_ENABLE_CONSOLE=true`.
+As of Dockge 1.5.0, the console/terminal feature is disabled by default for security. Since this app uses the official Docker image, the console is not available unless you build a custom image with `DOCKGE_ENABLE_CONSOLE=true`.
 
 ### Docker Socket Access
 
-This add-on requires access to the Docker socket to manage containers. This grants the addon full control over your Docker environment.
+This app requires access to the Docker socket to manage containers. This grants the app full control over your Docker environment.
 
 ### Protection Mode
 
-For security reasons, this addon requires protection mode to be disabled in the addon configuration.
+For security reasons, this app requires protection mode to be disabled in the app configuration.
 
 ## Updating
 
-The addon automatically tracks official Dockge releases. Updates appear in the Home Assistant UI when available.
+The app automatically tracks official Dockge releases. Updates appear in the Home Assistant UI when available.
 
 To manually check for updates, run:
 ```bash
@@ -78,7 +78,7 @@ To manually check for updates, run:
 ## Troubleshooting
 
 ### Cannot access Docker socket
-Ensure protection mode is disabled in the addon configuration.
+Ensure protection mode is disabled in the app configuration.
 
 ### Stacks not persisting after restart
 Check that `/opt/stacks` is correctly mapped and has write permissions.

@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant Add-on for MuninnDB that provides a cognitive database with memory primitives (Ebbinghaus decay, Hebbian learning, Bayesian confidence, semantic triggers) through the Home Assistant interface. The add-on uses Home Assistant's S6-overlay init system and follows standard HA add-on conventions.
+This is a Home Assistant App for MuninnDB that provides a cognitive database with memory primitives (Ebbinghaus decay, Hebbian learning, Bayesian confidence, semantic triggers) through the Home Assistant interface. The app uses Home Assistant's S6-overlay init system and follows standard HA app conventions.
 
 ## Essential Commands
 
 ### Building and Testing
 ```bash
-# Build the add-on locally (auto-detects architecture)
+# Build the app locally (auto-detects architecture)
 ./build.sh
 
-# Test the add-on locally
+# Test the app locally
 docker run --rm -it -p 8474:8474 -p 8475:8475 -p 8476:8476 -p 8477:8477 -p 8750:8750 local/{arch}-addon-local_muninndb:{version}
 ```
 
@@ -36,7 +36,7 @@ MuninnDB is currently in alpha. Versions follow the pattern `X.Y.Z-alpha` (e.g.,
 - **`/rootfs/etc/services.d/muninndb/`**: Service definition with `run` script and `finish` handler
 
 ### Critical Files
-- **`config.yaml`**: Add-on configuration (version, ports, ingress, options schema)
+- **`config.yaml`**: App configuration (version, ports, ingress, options schema)
 - **`build.yaml`**: Build configuration with base images per architecture
 - **`Dockerfile`**: Downloads MuninnDB binary from GitHub releases
 - **`apparmor.txt`**: Security profile (no Docker socket access needed)
@@ -127,7 +127,7 @@ When updating version:
 ### Issue: MuninnDB Not Starting
 
 **Symptoms:**
-- Add-on starts but service crashes
+- App starts but service crashes
 - Logs show "permission denied" or "exec format error"
 
 **Cause:** Architecture mismatch or corrupted binary

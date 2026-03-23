@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant Add-on for Arcane Docker Manager that provides modern Docker container management through the Home Assistant interface. The add-on uses Home Assistant's S6-overlay init system and follows standard HA add-on conventions.
+This is a Home Assistant App for Arcane Docker Manager that provides modern Docker container management through the Home Assistant interface. The app uses Home Assistant's S6-overlay init system and follows standard HA app conventions.
 
 ## Essential Commands
 
 ### Building and Testing
 ```bash
-# Build the add-on locally (auto-detects architecture)
+# Build the app locally (auto-detects architecture)
 ./build.sh
 
-# Test the add-on locally
+# Test the app locally
 docker run --rm -it -p 3552:3552 -p 3553:3553 -v /var/run/docker.sock:/var/run/docker.sock local/{arch}-addon-local_arcane:{version}
 ```
 
@@ -42,7 +42,7 @@ The update script fetches the latest release from GitHub and updates all relevan
 - **`/rootfs/etc/services.d/arcane/`**: Service definition with `run` script and `finish` handler
 
 ### Critical Files
-- **`config.yaml`**: Add-on configuration (version, ports, ingress, options schema)
+- **`config.yaml`**: App configuration (version, ports, ingress, options schema)
 - **`build.yaml`**: Build configuration with base images per architecture
 - **`Dockerfile`**: Downloads Arcane binary and sets up environment
 - **`apparmor.txt`**: Security profile for Docker socket access
@@ -92,7 +92,7 @@ Arcane requires these environment variables:
 ## Important Notes
 
 - **Never commit changes** to version numbers without testing
-- **Protection mode** must be disabled for the add-on to function
+- **Protection mode** must be disabled for the app to function
 - **Ingress** integration requires WebSocket support (ingress_stream: true)
 - **AppArmor profile** is critical for security - modifications require careful testing
 - **Default credentials** are `arcane`/`arcane-admin` - users must change on first login
@@ -103,7 +103,7 @@ Arcane requires these environment variables:
 ### Issue: Arcane Not Starting
 
 **Symptoms:**
-- Add-on fails to start
+- App fails to start
 - Logs show binary not found or permission errors
 
 **Solution:**

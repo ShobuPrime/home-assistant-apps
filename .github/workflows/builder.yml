@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       addon:
-        description: 'Addon to build (or "all")'
+        description: 'App to build (or "all")'
         required: true
         type: string
 
@@ -33,37 +33,37 @@ jobs:
           ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.head_sha || '' }}
           fetch-depth: 0
 
-      - name: Discover all add-ons
+      - name: Discover all apps
         id: all_addons
         run: |
-          # Dynamically find all addon directories (those with config.yaml)
+          # Dynamically find all app directories (those with config.yaml)
           declare -a all_addons
           for config in */config.yaml; do
             addon_dir=$(dirname "$config")
-            # Skip hidden directories and non-addon directories
+            # Skip hidden directories and non-app directories
             if [[ ! "$addon_dir" =~ ^\. ]]; then
               all_addons+=("$addon_dir")
-              echo "Found addon: $addon_dir"
+              echo "Found app: $addon_dir"
             fi
           done
 
-          # Create JSON array of all addons
+          # Create JSON array of all apps
           addons_json=$(printf '%s\n' "${all_addons[@]}" | jq -R . | jq -sc '.')
           echo "addons=${addons_json}" >> "$GITHUB_OUTPUT"
-          echo "All addons: ${addons_json}"
+          echo "All apps: ${addons_json}"
 
-      - name: Find changed add-ons
+      - name: Find changed apps
         id: changed_addons
         run: |
           declare -a changed_addons
 
-          # For manual dispatch or repository_dispatch, use the specified addon
+          # For manual dispatch or repository_dispatch, use the specified app
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             DISPATCH_ADDON="${{ github.event.inputs.addon }}"
-            echo "Triggered manually for addon: ${DISPATCH_ADDON}"
+            echo "Triggered manually for app: ${DISPATCH_ADDON}"
           elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
             DISPATCH_ADDON="${{ github.event.client_payload.addon }}"
-            echo "Triggered via repository_dispatch for addon: ${DISPATCH_ADDON}"
+            echo "Triggered via repository_dispatch for app: ${DISPATCH_ADDON}"
           fi
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "repository_dispatch" ]; then
@@ -73,12 +73,12 @@ jobs:
                 addon_dir=$(dirname "$config")
                 if [[ ! "$addon_dir" =~ ^\. ]]; then
                   changed_addons+=("\"${addon_dir}\"")
-                  echo "Building addon: $addon_dir"
+                  echo "Building app: $addon_dir"
                 fi
               done
             else
               changed_addons+=("\"${DISPATCH_ADDON}\"")
-              echo "Building addon: ${DISPATCH_ADDON}"
+              echo "Building app: ${DISPATCH_ADDON}"
             fi
 
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -94,7 +94,7 @@ jobs:
               if [[ ! "$addon_dir" =~ ^\. ]]; then
                 if echo "$CHANGED_FILES" | grep -q "^${addon_dir}/"; then
                   changed_addons+=("\"${addon_dir}\"")
-                  echo "Addon changed: $addon_dir"
+                  echo "App changed: $addon_dir"
                 fi
               fi
             done
@@ -103,7 +103,7 @@ jobs:
             # For pushes to main/master, diff against the previous commit
             BEFORE="${{ github.event.before }}"
             if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-              echo "Initial push, building all addons"
+              echo "Initial push, building all apps"
               for config in */config.yaml; do
                 addon_dir=$(dirname "$config")
                 if [[ ! "$addon_dir" =~ ^\. ]]; then
@@ -120,16 +120,16 @@ jobs:
                 if [[ ! "$addon_dir" =~ ^\. ]]; then
                   if echo "$CHANGED_FILES" | grep -q "^${addon_dir}/"; then
                     changed_addons+=("\"${addon_dir}\"")
-                    echo "Addon changed: $addon_dir"
+                    echo "App changed: $addon_dir"
                   fi
                 fi
               done
             fi
           fi
 
-          # Fallback: if no addon-specific changes detected, skip building
+          # Fallback: if no app-specific changes detected, skip building
           if [[ ${#changed_addons[@]} -eq 0 ]]; then
-            echo "No addon-specific changes detected, skipping builds"
+            echo "No app-specific changes detected, skipping builds"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo 'addons=[]' >> "$GITHUB_OUTPUT"
           else
@@ -138,13 +138,13 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "Changed addons: $(echo ${changed_addons[@]} | jq -sc '.')"
+          echo "Changed apps: $(echo ${changed_addons[@]} | jq -sc '.')"
 
   build:
     needs: init
     runs-on: ubuntu-latest
     if: needs.init.outputs.changed == 'true'
-    name: Build ${{ matrix.addon }} add-on
+    name: Build ${{ matrix.addon }} app
     strategy:
       matrix:
         addon: ${{ fromJson(needs.init.outputs.changed_addons) }}

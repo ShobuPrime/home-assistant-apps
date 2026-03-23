@@ -2,7 +2,7 @@
 
 ## Overview
 
-MuninnDB is a cognitive database that stores engrams — memory traces with built-in decay, association learning, and confidence scoring. This add-on runs MuninnDB as a Home Assistant service, providing persistent cognitive memory accessible via multiple protocols.
+MuninnDB is a cognitive database that stores engrams — memory traces with built-in decay, association learning, and confidence scoring. This app runs MuninnDB as a Home Assistant service, providing persistent cognitive memory accessible via multiple protocols.
 
 ---
 
@@ -10,7 +10,7 @@ MuninnDB is a cognitive database that stores engrams — memory traces with buil
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon:
+The `log_level` option controls the level of log output by the app:
 - `trace`: Show every detail
 - `debug`: Shows detailed debug information
 - `info`: Normal (usually) interesting events (default)
@@ -22,11 +22,11 @@ The `log_level` option controls the level of log output by the addon:
 
 ### Option: `admin_password`
 
-Sets the admin password for the MuninnDB web UI. On first startup, MuninnDB creates a default `root` / `password` account. When this option is set, the addon automatically changes the admin password via the REST API after MuninnDB starts. The password must be at least 8 characters.
+Sets the admin password for the MuninnDB web UI. On first startup, MuninnDB creates a default `root` / `password` account. When this option is set, the app automatically changes the admin password via the REST API after MuninnDB starts. The password must be at least 8 characters.
 
 Leave empty to keep the default credentials. **Strongly recommended to set this** before exposing MuninnDB to the network.
 
-The password change is tracked in `/data/muninndb/.admin_pass_set` — if you change the option value, the addon will update the password on the next restart.
+The password change is tracked in `/data/muninndb/.admin_pass_set` — if you change the option value, the app will update the password on the next restart.
 
 ---
 
@@ -42,11 +42,11 @@ Set to empty to skip vault creation. Additional vaults can be created via the We
 
 MuninnDB supports two layers of backup:
 
-- **Shutdown backups** (`backup_on_shutdown`, default: `true`) — Before the addon stops (for updates, restarts, or HA backups), a native MuninnDB point-in-time backup is triggered via the REST API. This creates a verified Pebble checkpoint plus WAL and auth_secret copies. Stored in `/data/muninndb/backups/shutdown-YYYYMMDD-HHMMSS/`. The last 3 shutdown backups are retained automatically.
+- **Shutdown backups** (`backup_on_shutdown`, default: `true`) — Before the app stops (for updates, restarts, or HA backups), a native MuninnDB point-in-time backup is triggered via the REST API. This creates a verified Pebble checkpoint plus WAL and auth_secret copies. Stored in `/data/muninndb/backups/shutdown-YYYYMMDD-HHMMSS/`. The last 3 shutdown backups are retained automatically.
 
 - **Automated periodic backups** (`backup_interval`) — MuninnDB's built-in backup system runs on a schedule (e.g., `6h`, `30m`). Set `backup_retain` to control how many are kept (default: `5`). Stored in `/data/muninndb/backups/`.
 
-Both backup types are stored within `/data/muninndb/` and are included when Home Assistant creates an addon backup, giving you both a native database-consistent snapshot and HA's full addon state.
+Both backup types are stored within `/data/muninndb/` and are included when Home Assistant creates an app backup, giving you both a native database-consistent snapshot and HA's full app state.
 
 ---
 
@@ -56,7 +56,7 @@ To enable HTTPS on all MuninnDB ports:
 - `ssl_certfile` — Certificate filename in `/ssl/` (e.g., `fullchain.pem`)
 - `ssl_keyfile` — Private key filename in `/ssl/` (e.g., `privkey.pem`)
 
-Both must be set for TLS to activate. When enabled, all ports (REST, Web UI, gRPC, MCP) serve over TLS. If the files are not found at the specified paths, the addon falls back to plain HTTP with a log error.
+Both must be set for TLS to activate. When enabled, all ports (REST, Web UI, gRPC, MCP) serve over TLS. If the files are not found at the specified paths, the app falls back to plain HTTP with a log error.
 
 ---
 
@@ -146,10 +146,10 @@ The primary query mechanism. Accepts a context string and returns the N most cog
 
 ## First Time Setup
 
-1. Set `admin_password` in the addon configuration (at least 8 characters)
+1. Set `admin_password` in the app configuration (at least 8 characters)
 2. Optionally change `default_vault` (defaults to `homeassistant`)
 3. Optionally configure embedding providers for semantic search
-4. Start the add-on — it will automatically set your password and create the vault
+4. Start the app — it will automatically set your password and create the vault
 5. Open the Web UI and log in with `root` and your configured password
 6. Connect AI tools via the MCP endpoint at port 8750
 
@@ -158,7 +158,7 @@ The primary query mechanism. Accepts a context string and returns the N most cog
 ## Security Considerations
 
 - **Default Credentials**: The default login is `root`/`password` — change this immediately
-- **AppArmor**: Custom profile restricts addon permissions appropriately
+- **AppArmor**: Custom profile restricts app permissions appropriately
 - **API Keys**: Embedding provider keys are stored as password fields and not displayed in the UI
 - **Network Access**: All ports are exposed on the host — consider firewall rules if needed
 
@@ -169,13 +169,13 @@ The primary query mechanism. Accepts a context string and returns the N most cog
 ### MuninnDB Not Starting
 
 **Symptoms:**
-- Add-on fails to start
+- App fails to start
 - Logs show binary not found or permission errors
 
 **Solution:**
-1. Check addon logs for specific error messages
+1. Check app logs for specific error messages
 2. Verify architecture compatibility (amd64/aarch64 only)
-3. Try reinstalling the addon
+3. Try reinstalling the app
 
 ---
 
@@ -186,9 +186,9 @@ The primary query mechanism. Accepts a context string and returns the N most cog
 - Ingress shows blank page
 
 **Solution:**
-1. Check that the addon is running (green status)
+1. Check that the app is running (green status)
 2. Try direct access via `http://[your-ip]:8476`
-3. Check addon logs for binding errors
+3. Check app logs for binding errors
 
 ---
 
@@ -207,7 +207,7 @@ The primary query mechanism. Accepts a context string and returns the N most cog
 
 ## Updating
 
-The addon automatically tracks releases. Updates appear in the Home Assistant UI when available.
+The app automatically tracks releases. Updates appear in the Home Assistant UI when available.
 
 ---
 

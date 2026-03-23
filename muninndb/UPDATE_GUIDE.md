@@ -1,17 +1,17 @@
-# Update Guide for MuninnDB Add-on
+# Update Guide for MuninnDB App
 
-## Understanding Local Addon Updates
+## Understanding Local App Updates
 
-Local addons in Home Assistant don't have automatic update detection like repository addons. Updates only appear when:
+Local apps in Home Assistant don't have automatic update detection like repository apps. Updates only appear when:
 1. The `version` field in `config.yaml` changes
-2. You rebuild the addon
-3. You click "Check for updates" in the addon store
+2. You rebuild the app
+3. You click "Check for updates" in the app store
 
 ## Update Methods
 
 ### Method 1: Automatic (GitHub Actions)
 
-This addon has automated update detection via GitHub Actions. When a new version is available:
+This app has automated update detection via GitHub Actions. When a new version is available:
 1. A PR is automatically created with the version bump
 2. The PR is validated and auto-merged if all checks pass
 3. Pull the latest changes and rebuild
@@ -28,7 +28,7 @@ git pull
 # Rebuild
 ./build.sh
 
-# Go to Supervisor -> Add-on Store -> Check for updates
+# Go to Supervisor -> App Store -> Check for updates
 ```
 
 ## Checking Current Version
@@ -42,7 +42,7 @@ grep "version:" /addons/muninndb/config.yaml
 1. **Regular Checks**: Pull latest changes regularly
 2. **Test First**: Always test updates in a non-production environment
 3. **Backup**: Create a Home Assistant backup before updating
-4. **Monitor Logs**: Check addon logs after updates for any issues
+4. **Monitor Logs**: Check app logs after updates for any issues
 
 ## Troubleshooting
 

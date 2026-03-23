@@ -10,7 +10,7 @@ This repository contains custom Home Assistant apps.
 
 ## Installation
 
-1. Navigate in your Home Assistant frontend to **Settings** → **Add-ons** → **Add-on Store**
+1. Navigate in your Home Assistant frontend to **Settings** → **Apps** → **App Store**
 2. Click the menu icon (three dots) in the top right corner
 3. Select **Repositories**
 4. Add the URL of this repository: `https://github.com/shobuprime/home-assistant-apps`

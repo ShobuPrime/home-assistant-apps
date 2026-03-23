@@ -4,7 +4,7 @@ This repository was created and is maintained with assistance from Claude, an AI
 
 ## Repository Setup
 
-This Home Assistant add-ons repository was initialized using Claude Code with the following structure:
+This Home Assistant apps repository was initialized using Claude Code with the following structure:
 
 - Git repository initialization
 - GitHub Actions workflows for automated building and testing
@@ -16,20 +16,20 @@ This Home Assistant add-ons repository was initialized using Claude Code with th
 
 The repository structure was modeled after: https://github.com/boomam/home-assistant-addons
 
-## Adding New Add-ons
+## Adding New Apps
 
-Each add-on should be created in its own directory with the following files:
+Each app should be created in its own directory with the following files:
 
-- `config.yaml` - Main configuration file defining the add-on metadata
+- `config.yaml` - Main configuration file defining the app metadata
 - `Dockerfile` - Container build instructions
-- `README.md` - Add-on overview and quick start
+- `README.md` - App overview and quick start
 - `DOCS.md` - Detailed documentation and configuration options
 - `CHANGELOG.md` - Version history
-- `icon.png` - Addon icon (PNG, minimum 256x256)
+- `icon.png` - App icon (PNG, minimum 256x256)
 
 ## Maintenance
 
-When updating add-ons or adding new features, you can use Claude to:
+When updating apps or adding new features, you can use Claude to:
 
 - Review and improve Dockerfiles
 - Update documentation
@@ -39,12 +39,12 @@ When updating add-ons or adding new features, you can use Claude to:
 
 ## GitHub Actions Builder Configuration
 
-The repository uses the `home-assistant/builder` action for automated addon builds. Key configuration requirements:
+The repository uses the `home-assistant/builder` action for automated app builds. Key configuration requirements:
 
 - **Docker Hub username**: Use `--docker-hub <username>` flag to set the image repository
-- **Image naming**: Use `--image <addon-name>` flag to specify the image name
+- **Image naming**: Use `--image <app-name>` flag to specify the image name
 - **Test mode**: Use `--test` flag to build without pushing to registry
-- **Target directory**: Use `--target /data/<addon>` to specify which addon to build
+- **Target directory**: Use `--target /data/<app>` to specify which app to build
 
 Without proper `--docker-hub` and `--image` flags, the builder will generate invalid image tags like `/:version` instead of `username/image:version`.
 
@@ -64,7 +64,7 @@ The repository includes comprehensive automation for managing pull requests:
 
 ### Automatic Base Image Updates
 - Daily checks for new `ghcr.io/hassio-addons/base` releases from `hassio-addons/app-base`
-- Updates all addon `build.yaml` files and Dockerfiles with inline `BUILD_FROM` defaults
+- Updates all app `build.yaml` files and Dockerfiles with inline `BUILD_FROM` defaults
 - **Major version bumps** automatically get a `needs-review` label to prevent auto-merge (may contain breaking changes like architecture drops)
 - The base image only supports **aarch64 and amd64** architectures (armhf/armv7/i386 dropped in v19.0.0)
 
@@ -108,11 +108,11 @@ See [`.github/AUTOMATION.md`](.github/AUTOMATION.md) for complete documentation.
 
 - **Always run `apk upgrade --no-cache` before `apk add`** in Dockerfiles to resolve base image package version mismatches (e.g. libcrypto3/libssl3 conflicts with openssl)
 - **Use `ARG BUILD_FROM` with no default** — the base image version is defined in `build.yaml` and passed at build time by the HA builder and `build.sh`. Do not add inline defaults as they drift out of sync.
-- **Architecture support**: All addons support only `aarch64` and `amd64` (hassio-addons base v19+ dropped armhf/armv7/i386)
+- **Architecture support**: All apps support only `aarch64` and `amd64` (hassio-addons base v19+ dropped armhf/armv7/i386)
 
 ## Notes
 
-- Always test add-ons locally before pushing to the repository
-- Follow Home Assistant add-on best practices
+- Always test apps locally before pushing to the repository
+- Follow Home Assistant app best practices
 - Keep dependencies up to date
 - Document all configuration options clearly

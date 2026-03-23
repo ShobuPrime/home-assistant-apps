@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant Add-on for Huly, an open-source all-in-one project management platform. The add-on deploys the complete Huly self-hosted stack (14 Docker services) within a single Home Assistant add-on container, using Docker Compose for internal orchestration.
+This is a Home Assistant App for Huly, an open-source all-in-one project management platform. The app deploys the complete Huly self-hosted stack (14 Docker services) within a single Home Assistant app container, using Docker Compose for internal orchestration.
 
 ### What Huly Provides
 - Project management with issue tracking, kanban boards, and sprints
@@ -16,7 +16,7 @@ This is a Home Assistant Add-on for Huly, an open-source all-in-one project mana
 ## Architecture
 
 ### Internal Services (14 total)
-The add-on orchestrates these services via Docker Compose:
+The app orchestrates these services via Docker Compose:
 
 1. **nginx** - Reverse proxy (only externally exposed service, port 4859)
 2. **CockroachDB** - Distributed SQL database
@@ -34,7 +34,7 @@ The add-on orchestrates these services via Docker Compose:
 14. **Stats** - Analytics/telemetry
 
 ### Docker Compose Orchestration
-Unlike simpler add-ons that use a single Docker image, this add-on:
+Unlike simpler apps that use a single Docker image, this app:
 - Uses the hassio-addons base image with S6-overlay
 - Installs Docker Compose inside the container
 - Generates a `docker-compose.yaml` from templates based on user configuration
@@ -42,7 +42,7 @@ Unlike simpler add-ons that use a single Docker image, this add-on:
 
 ## Key File Locations
 
-- **`config.yaml`** - Add-on metadata, architecture support, configuration schema
+- **`config.yaml`** - App metadata, architecture support, configuration schema
 - **`build.yaml`** - Build configuration with base image and architecture args
 - **`Dockerfile`** - Container build instructions (installs Docker Compose, copies rootfs)
 - **`apparmor.txt`** - AppArmor security profile allowing Docker socket access
@@ -64,16 +64,16 @@ Huly version tracking is based on the `.template.huly.conf` file in the [huly-se
 
 ## Testing Checklist
 
-- [ ] Add-on installs without errors
+- [ ] App installs without errors
 - [ ] Protection mode is disabled and Docker socket is accessible
 - [ ] All 14 services start successfully (check logs)
 - [ ] Web UI is accessible on port 4859
 - [ ] Ingress integration works from HA sidebar
 - [ ] WebSocket connections work (real-time updates in UI)
 - [ ] Can create a workspace and user account
-- [ ] Data persists across add-on restarts
+- [ ] Data persists across app restarts
 - [ ] Secrets are generated on first run and reused on subsequent starts
-- [ ] Add-on stops cleanly (all services shut down via Docker Compose)
+- [ ] App stops cleanly (all services shut down via Docker Compose)
 
 ## Common Pitfalls
 

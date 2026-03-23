@@ -1,11 +1,11 @@
-# Update Guide for Portainer EE Local Addon
+# Update Guide for Portainer EE Local App
 
-## Understanding Local Addon Updates
+## Understanding Local App Updates
 
-Local addons in Home Assistant don't have automatic update detection like repository addons. Updates only appear when:
+Local apps in Home Assistant don't have automatic update detection like repository apps. Updates only appear when:
 1. The `version` field in `config.yaml` changes
-2. You rebuild the addon
-3. You click "Check for updates" in the addon store
+2. You rebuild the app
+3. You click "Check for updates" in the app store
 
 ## Update Methods
 
@@ -48,16 +48,16 @@ cd /addons/portainer_ee
 ./update-portainer-version.sh --yes
 ./build.sh
 
-# Go to Supervisor → Add-on Store → Check for updates
+# Go to Supervisor → App Store → Check for updates
 # Install the update when it appears
 ```
 
 ### Method 3: GitHub Repository (Best for Auto-Updates)
 
-Convert this local addon to a GitHub repository:
+Convert this local app to a GitHub repository:
 
 1. Create a GitHub repository
-2. Structure it as a Home Assistant addon repository:
+2. Structure it as a Home Assistant app repository:
    ```
    portainer-ee/
    ├── config.yaml
@@ -79,15 +79,15 @@ Convert this local addon to a GitHub repository:
 4. Set up GitHub Actions to:
    - Check for Portainer updates daily
    - Update version numbers automatically
-   - Build and test the addon
+   - Build and test the app
    - Create releases
 
 5. Users add your repository URL to Home Assistant
-6. Updates appear automatically in the addon store
+6. Updates appear automatically in the app store
 
 ## Current Limitations
 
-- **Local addons** require manual intervention for updates
+- **Local apps** require manual intervention for updates
 - **Version detection** only happens when config.yaml changes
 - **No push notifications** for available updates
 - **Manual rebuild** required after version updates
@@ -95,7 +95,7 @@ Convert this local addon to a GitHub repository:
 ## Checking Current Version
 
 ```bash
-# Check current addon version
+# Check current app version
 grep "version:" /addons/portainer_ee/config.yaml
 
 # Check latest Portainer LTS version
@@ -109,7 +109,7 @@ curl -s https://api.github.com/repos/portainer/portainer/releases | \
 1. **Regular Checks**: Run update checks weekly/monthly
 2. **Test First**: Always test updates in a non-production environment
 3. **Backup**: Create a Home Assistant backup before updating
-4. **Monitor Logs**: Check addon logs after updates for any issues
+4. **Monitor Logs**: Check app logs after updates for any issues
 
 ## Troubleshooting
 
@@ -123,7 +123,7 @@ curl -s https://api.github.com/repos/portainer/portainer/releases | \
 2. Review build logs for errors
 3. Ensure all files have correct permissions
 
-### Addon won't start after update
+### App won't start after update
 1. Check logs for specific errors
 2. Verify Docker socket access
 3. Ensure protection mode is disabled

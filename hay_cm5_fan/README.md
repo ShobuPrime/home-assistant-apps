@@ -6,7 +6,7 @@ GPIO-based fan control with thermal management for Home Assistant Yellow with Ra
 
 ## About
 
-This addon controls a fan connected to the Home Assistant Yellow's 10-pin GPIO header (connector J11) via libgpiod (`/dev/gpiochip0`). It provides hysteresis-based thermal management to keep the CM5 cool while avoiding rapid fan cycling. Fan state and all system temperatures (CPU, NVMe, etc.) are exposed as Home Assistant entities with full history and long-term statistics support.
+This app controls a fan connected to the Home Assistant Yellow's 10-pin GPIO header (connector J11) via libgpiod (`/dev/gpiochip0`). It provides hysteresis-based thermal management to keep the CM5 cool while avoiding rapid fan cycling. Fan state and all system temperatures (CPU, NVMe, etc.) are exposed as Home Assistant entities with full history and long-term statistics support.
 
 ## Features
 
@@ -30,15 +30,15 @@ This addon controls a fan connected to the Home Assistant Yellow's 10-pin GPIO h
 
 ### Tested Fan
 
-This addon has been tested and verified compatible with the [Seeed Studio Aluminum Alloy CNC Heat Sink with Fan for Raspberry Pi CM4](https://www.electromaker.io/shop/product/aluminum-alloy-cnc-heat-sink-with-fan-for-raspberry-pi-cm4-module) (SKU: 114070161) installed on the Home Assistant Yellow. Despite being marketed for CM4, the fan is physically and electrically compatible with the CM5 on the Yellow board when wired to the 10-pin GPIO header as described above.
+This app has been tested and verified compatible with the [Seeed Studio Aluminum Alloy CNC Heat Sink with Fan for Raspberry Pi CM4](https://www.electromaker.io/shop/product/aluminum-alloy-cnc-heat-sink-with-fan-for-raspberry-pi-cm4-module) (SKU: 114070161) installed on the Home Assistant Yellow. Despite being marketed for CM4, the fan is physically and electrically compatible with the CM5 on the Yellow board when wired to the 10-pin GPIO header as described above.
 
 ## Installation
 
 1. Add this repository to your Home Assistant instance
-2. Search for "HAY CM5 Fan Controller" in the add-on store
+2. Search for "HAY CM5 Fan Controller" in the app store
 3. Click Install
 4. Configure temperature thresholds if desired (defaults work well for most setups)
-5. Start the add-on
+5. Start the app
 
 ## Configuration
 
@@ -74,7 +74,7 @@ Temperature threshold (Celsius) to turn the fan OFF. Default: `45`
 
 ### Option: `leave_on_at_shutdown`
 
-Whether to leave the fan running when the addon stops. Default: `true` (recommended for safety).
+Whether to leave the fan running when the app stops. Default: `true` (recommended for safety).
 
 ### Option: `log_level`
 

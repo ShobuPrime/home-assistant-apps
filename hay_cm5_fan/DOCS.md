@@ -2,9 +2,9 @@
 
 ## Overview
 
-This addon provides GPIO-based fan control for the Home Assistant Yellow with a Raspberry Pi CM5 compute module. It uses the libgpiod character device interface (`/dev/gpiochip0`) to control a fan connected to the Yellow's 10-pin GPIO header, with hysteresis-based thermal management to prevent rapid cycling. This avoids the legacy sysfs GPIO interface which is mounted read-only on modern HAOS.
+This app provides GPIO-based fan control for the Home Assistant Yellow with a Raspberry Pi CM5 compute module. It uses the libgpiod character device interface (`/dev/gpiochip0`) to control a fan connected to the Yellow's 10-pin GPIO header, with hysteresis-based thermal management to prevent rapid cycling. This avoids the legacy sysfs GPIO interface which is mounted read-only on modern HAOS.
 
-In addition to fan control, the addon automatically discovers and exposes **all hardware temperature sensors** (CPU, NVMe SSD, board sensors, etc.) as Home Assistant entities with full long-term statistics support for history graphs and dashboards.
+In addition to fan control, the app automatically discovers and exposes **all hardware temperature sensors** (CPU, NVMe SSD, board sensors, etc.) as Home Assistant entities with full long-term statistics support for history graphs and dashboards.
 
 ## Hardware Wiring
 
@@ -25,7 +25,7 @@ Connect your fan:
 
 ### Tested Fan
 
-This addon has been tested and verified compatible with the [Seeed Studio Aluminum Alloy CNC Heat Sink with Fan for Raspberry Pi CM4](https://www.electromaker.io/shop/product/aluminum-alloy-cnc-heat-sink-with-fan-for-raspberry-pi-cm4-module) (SKU: 114070161) installed on the Home Assistant Yellow. Despite being marketed for CM4, this fan is physically and electrically compatible with the CM5 on the Yellow board when connected to the 10-pin GPIO header.
+This app has been tested and verified compatible with the [Seeed Studio Aluminum Alloy CNC Heat Sink with Fan for Raspberry Pi CM4](https://www.electromaker.io/shop/product/aluminum-alloy-cnc-heat-sink-with-fan-for-raspberry-pi-cm4-module) (SKU: 114070161) installed on the Home Assistant Yellow. Despite being marketed for CM4, this fan is physically and electrically compatible with the CM5 on the Yellow board when connected to the 10-pin GPIO header.
 
 ### GPIO Details
 
@@ -33,7 +33,7 @@ This addon has been tested and verified compatible with the [Seeed Studio Alumin
 - Controlled via libgpiod character device (`/dev/gpiochip0`) — NOT the legacy sysfs interface
 - The sysfs GPIO interface (`/sys/class/gpio/`) is mounted read-only on modern HAOS and cannot be used
 - Control is on/off only (no hardware PWM on GPIO14)
-- UART TX idles HIGH, so the fan runs by default as a failsafe even without this addon
+- UART TX idles HIGH, so the fan runs by default as a failsafe even without this app
 
 ## Configuration
 
@@ -82,9 +82,9 @@ Controls fan behavior:
 
 ### Option: `leave_on_at_shutdown`
 
-Whether to leave the fan running when the addon stops or restarts. Default: `true`
+Whether to leave the fan running when the app stops or restarts. Default: `true`
 
-Recommended to leave this enabled. If set to `false`, the fan will turn off when the addon stops, which could allow the CPU to overheat if the addon isn't restarted promptly.
+Recommended to leave this enabled. If set to `false`, the fan will turn off when the app stops, which could allow the CPU to overheat if the app isn't restarted promptly.
 
 ### Option: `log_level`
 
@@ -130,7 +130,7 @@ All entities are created with `state_class: measurement` and proper `device_clas
 
 ### Auto-Discovered Temperature Sensors
 
-The addon scans all `/sys/class/hwmon/` devices at startup and creates additional entities for every temperature sensor found. Common sensors on the Yellow with CM5:
+The app scans all `/sys/class/hwmon/` devices at startup and creates additional entities for every temperature sensor found. Common sensors on the Yellow with CM5:
 
 - `sensor.hay_nvme_temperature` — NVMe SSD temperature (if present)
 - `sensor.hay_rp1_temperature` — RP1 I/O controller temperature
@@ -142,7 +142,7 @@ Each discovered sensor has:
 - **Unit**: C
 - **Source attribute**: Shows the hwmon path for identification
 
-Check the addon logs at startup to see which sensors were discovered and their entity IDs.
+Check the app logs at startup to see which sensors were discovered and their entity IDs.
 
 ## Dashboard Examples
 
@@ -322,15 +322,15 @@ Based on testing with the CM5 on Home Assistant Yellow:
 
 ## Safety Features
 
-- Fan starts ON at addon startup (before thermal monitoring begins)
+- Fan starts ON at app startup (before thermal monitoring begins)
 - Fan forced ON if temperature sensor file becomes unavailable
-- Configurable option to leave fan ON at addon shutdown
-- UART TX pin idles HIGH, so the fan runs even without this addon as a hardware failsafe
+- Configurable option to leave fan ON at app shutdown
+- UART TX pin idles HIGH, so the fan runs even without this app as a hardware failsafe
 - Configuration validation prevents `temp_off >= temp_on` (would disable hysteresis)
 
 ## Security Considerations
 
-- **Full access**: This addon requires `full_access: true` to access `/dev/gpiochip0`. This gives the addon container elevated privileges.
+- **Full access**: This app requires `full_access: true` to access `/dev/gpiochip0`. This gives the app container elevated privileges.
 - **AppArmor**: Custom profile restricts access to only GPIO character devices and hwmon sysfs paths
 
 ## Troubleshooting
@@ -338,14 +338,14 @@ Based on testing with the CM5 on Home Assistant Yellow:
 ### Fan Not Starting
 
 **Symptoms:**
-- Addon starts but fan doesn't spin
+- App starts but fan doesn't spin
 - Logs show gpioset errors or "GPIO chip device not found"
 
 **Solutions:**
 1. Verify wiring (Pin 4=5V, Pin 6=GND, Pin 8=GPIO14)
 2. Check that `/dev/gpiochip0` exists: `ls -la /dev/gpiochip*`
 3. Verify `gpio_chip` and `gpio_line` config values (default: `gpiochip0`, line `14`)
-4. Check addon logs for specific error messages
+4. Check app logs for specific error messages
 5. Ensure `full_access: true` is set in config.yaml
 
 ### Temperature Sensor Not Found
@@ -357,7 +357,7 @@ Based on testing with the CM5 on Home Assistant Yellow:
 **Solutions:**
 1. Check the hwmon path: `cat /sys/class/hwmon/hwmon0/temp1_input`
 2. Try other hwmon indices: `ls /sys/class/hwmon/`
-3. Update `temp_sensor_path` in addon config if needed
+3. Update `temp_sensor_path` in app config if needed
 
 ### NVMe or Other Sensors Not Appearing
 
@@ -365,7 +365,7 @@ Based on testing with the CM5 on Home Assistant Yellow:
 - Only CPU temperature entity created
 
 **Solutions:**
-1. Check addon startup logs — all discovered sensors are listed
+1. Check app startup logs — all discovered sensors are listed
 2. Verify hwmon devices exist: `ls /sys/class/hwmon/*/name`
 3. Some devices may not expose temperature sensors via hwmon
 
@@ -380,13 +380,13 @@ Based on testing with the CM5 on Home Assistant Yellow:
 
 ### Entities Disappear After HA Restart
 
-**Cause:** Supervisor API entities exist only while being actively updated by the addon.
+**Cause:** Supervisor API entities exist only while being actively updated by the app.
 
-**Solution:** This is expected. The addon re-creates them on startup. Ensure the addon is set to `boot: auto`. Historical data in HA's recorder is preserved even when entities temporarily disappear.
+**Solution:** This is expected. The app re-creates them on startup. Ensure the app is set to `boot: auto`. Historical data in HA's recorder is preserved even when entities temporarily disappear.
 
 ## Important Notes
 
-- This addon is specific to the **Raspberry Pi CM5** on **Home Assistant Yellow**
+- This app is specific to the **Raspberry Pi CM5** on **Home Assistant Yellow**
 - GPIO14's dedicated fan header (GPIO45 / `dtparam=cooling_fan`) is NOT used — it's not routed to the Yellow's 10-pin header
 - Hardware PWM is not available on GPIO14 — control is on/off only
 - Do NOT use the legacy sysfs GPIO interface (`/sys/class/gpio/`) — it is mounted read-only on modern HAOS

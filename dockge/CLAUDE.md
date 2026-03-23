@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant Add-on for Dockge, a self-hosted Docker Compose stack manager. The add-on provides a web interface for managing Docker Compose stacks through Home Assistant.
+This is a Home Assistant App for Dockge, a self-hosted Docker Compose stack manager. The app provides a web interface for managing Docker Compose stacks through Home Assistant.
 
 ### Development History
 - Initially created with full custom build (Dockerfile, S6 scripts, etc.)
@@ -12,7 +12,7 @@ This is a Home Assistant Add-on for Dockge, a self-hosted Docker Compose stack m
 - Removed all user configuration options for simplicity
 - Data automatically persists in `/data/stacks`
 
-## Lessons Learned from Home Assistant Addon Development
+## Lessons Learned from Home Assistant App Development
 
 ### Critical Base Image Selection
 - **ALWAYS** use `ghcr.io/hassio-addons/base:18.0.3` or latest
@@ -32,7 +32,7 @@ This is a Home Assistant Add-on for Dockge, a self-hosted Docker Compose stack m
 - Always make scripts executable with `chmod +x`
 - Use Bashio functions for all logging and config reading
 
-### Essential config.yaml Settings for Privileged Addons
+### Essential config.yaml Settings for Privileged Apps
 ```yaml
 hassio_api: true
 hassio_role: manager
@@ -61,7 +61,7 @@ privileged:
 - Without this, ingress will fail with "websocket error" messages
 
 ### Data Persistence in HAOS
-- ALWAYS store persistent data under `/data/` in Home Assistant addons
+- ALWAYS store persistent data under `/data/` in Home Assistant apps
 - Don't provide user options for paths if they must be under `/data/` anyway
 - Use environment variables in config.yaml to pass hardcoded paths to the container
 - If you must allow custom paths, validate they start with `/data/`
@@ -86,7 +86,7 @@ privileged:
 ## Essential Commands
 
 ### Testing
-Since this addon uses the official Dockge Docker image, no building is required. To test locally:
+Since this app uses the official Dockge Docker image, no building is required. To test locally:
 ```bash
 # Test with docker directly
 docker run --rm -it -p 5001:5001 -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/data:/app/data louislam/dockge:1
@@ -95,10 +95,10 @@ docker run --rm -it -p 5001:5001 -v /var/run/docker.sock:/var/run/docker.sock -v
 ## Architecture and Key Components
 
 ### Simplified Structure (using official image)
-This addon now uses the official `louislam/dockge:1` Docker image directly, which greatly simplifies the addon:
+This app now uses the official `louislam/dockge:1` Docker image directly, which greatly simplifies the app:
 
 ### Critical Files
-- **`config.yaml`**: Add-on configuration with image reference, ports, ingress settings
+- **`config.yaml`**: App configuration with image reference, ports, ingress settings
 - **`apparmor.txt`**: Security profile for Docker socket access
 - **No build files needed**: Uses official Docker image directly
 
@@ -124,7 +124,7 @@ When updating Dockge version:
 - Would require custom Dockerfile to enable (trade-off: lose automatic updates)
 
 ### Testing Checklist
-- Addon installs successfully
+- App installs successfully
 - Service starts without errors
 - Web UI accessible on port 5001
 - Docker socket is accessible
@@ -134,7 +134,7 @@ When updating Dockge version:
 
 ## Important Notes
 
-- **Official Image**: This addon uses the official `louislam/dockge` image
+- **Official Image**: This app uses the official `louislam/dockge` image
 - **Protection mode** must be disabled for Docker socket access
 - **Ingress** integration uses port 5001
 - **AppArmor profile** is critical for security

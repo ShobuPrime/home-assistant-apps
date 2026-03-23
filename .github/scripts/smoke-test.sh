@@ -1,9 +1,9 @@
 #!/bin/bash
-# Smoke test for Home Assistant addons
-# Usage: smoke-test.sh <addon-directory> <image-name>
+# Smoke test for Home Assistant apps
+# Usage: smoke-test.sh <app-directory> <image-name>
 #
-# Spins up a mock HA Supervisor so the addon's S6 init boots normally,
-# then checks health and runs addon-specific validations.
+# Spins up a mock HA Supervisor so the app's S6 init boots normally,
+# then checks health and runs app-specific validations.
 
 set -e
 
@@ -26,7 +26,7 @@ fail() { echo -e "  ${RED}FAIL${NC}: $1"; echo "--- Container logs ---"; docker 
 info() { echo -e "  ${YELLOW}INFO${NC}: $1"; }
 
 cleanup() {
-    # Clean up compose containers if this is a compose-based addon
+    # Clean up compose containers if this is a compose-based app
     if [ "${NEEDS_DOCKER}" = "true" ]; then
         docker ps -a --filter "label=com.docker.compose.project=huly_ha" \
             --format '{{.ID}}' 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
@@ -35,13 +35,13 @@ cleanup() {
     docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm -f "${SUPERVISOR_NAME}" 2>/dev/null || true
     docker network rm "${NETWORK_NAME}" 2>/dev/null || true
-    # Clean up host-side data directory for Docker-in-Docker addons
+    # Clean up host-side data directory for Docker-in-Docker apps
     [ -n "${SMOKE_DATA_DIR}" ] && rm -rf "${SMOKE_DATA_DIR}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
-# Parse addon config
+# Parse app config
 # ---------------------------------------------------------------------------
 CONFIG="${ADDON_DIR}/config.yaml"
 if [ ! -f "${CONFIG}" ]; then
@@ -103,7 +103,7 @@ fi
 pass "Mock Supervisor running"
 
 # ---------------------------------------------------------------------------
-# Start the addon container
+# Start the app container
 # ---------------------------------------------------------------------------
 DOCKER_ARGS=(
     "--network" "${NETWORK_NAME}"
@@ -112,14 +112,14 @@ DOCKER_ARGS=(
 
 if [ "${NEEDS_DOCKER}" = "true" ]; then
     # Create a host-side data directory for Docker-in-Docker bind mounts
-    # Addons like Huly run docker-compose inside the container, which needs
+    # Apps like Huly run docker-compose inside the container, which needs
     # host-side paths for volume mounts (container /data != host /data)
     SMOKE_DATA_DIR=$(mktemp -d "/tmp/smoke-test-data-XXXXXX")
     chmod 777 "${SMOKE_DATA_DIR}"
     DOCKER_ARGS+=("--privileged" "-v" "/var/run/docker.sock:/var/run/docker.sock" "-v" "${SMOKE_DATA_DIR}:/data")
 fi
 
-echo "==> Starting addon container..."
+echo "==> Starting app container..."
 docker run -d \
     --name "${CONTAINER_NAME}" \
     "${DOCKER_ARGS[@]}" \
@@ -171,7 +171,7 @@ wait_for_health() {
 }
 
 # ---------------------------------------------------------------------------
-# Addon-specific test flow
+# App-specific test flow
 # ---------------------------------------------------------------------------
 case "${SLUG}" in
     huly)
@@ -196,7 +196,7 @@ case "${SLUG}" in
         PEAK_RUNNING=0
         while [ ${WAITED} -lt ${COMPOSE_TIMEOUT} ]; do
             if ! docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
-                fail "Addon container exited while waiting for compose stack"
+                fail "App container exited while waiting for compose stack"
             fi
 
             RUNNING=$(docker ps --filter "label=com.docker.compose.project=huly_ha" \
@@ -309,7 +309,7 @@ case "${SLUG}" in
         ;;
 
     hay_cm5_fan)
-        # Hardware-specific addon — no /dev/gpiochip0 on CI runners.
+        # Hardware-specific app — no /dev/gpiochip0 on CI runners.
         # Verify the image built successfully and the init script runs
         # (it will fail at GPIO check, which is expected).
         sleep 5
@@ -336,7 +336,7 @@ case "${SLUG}" in
 
     *)
         wait_for_health "${HEALTH_PORT}" 120
-        info "No addon-specific tests for '${SLUG}'"
+        info "No app-specific tests for '${SLUG}'"
         ;;
 esac
 
@@ -354,7 +354,7 @@ EXIT_CODE=$(docker inspect "${CONTAINER_NAME}" --format='{{.State.ExitCode}}' 2>
 if [ "${EXIT_CODE}" = "0" ]; then
     pass "Clean shutdown (exit code 0)"
 else
-    info "Exit code ${EXIT_CODE} (SIGTERM exit is normal for some addons)"
+    info "Exit code ${EXIT_CODE} (SIGTERM exit is normal for some apps)"
 fi
 
 echo ""

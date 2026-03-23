@@ -8,7 +8,7 @@ Arcane is a modern, open-source Docker management platform that provides an intu
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon:
+The `log_level` option controls the level of log output by the app:
 - `trace`: Show every detail
 - `debug`: Shows detailed debug information
 - `info`: Normal (usually) interesting events (default)
@@ -33,7 +33,7 @@ User ID and Group ID for file permissions when Arcane creates files.
 ### Option: `hide_hassio_containers`
 
 When enabled (default), hides Home Assistant system containers from the Arcane interface.
-- `true`: Hide supervisor, core, audio, dns, multicast, cli, observer, and addon containers
+- `true`: Hide supervisor, core, audio, dns, multicast, cli, observer, and app containers
 - `false`: Show all containers
 
 ## Access Methods
@@ -118,7 +118,7 @@ Arcane supports managing multiple Docker hosts using agents:
 - **Protection Mode**: Must be disabled for Docker socket access
 - **Default Credentials**: Change immediately after first login
 - **Encryption Keys**: Auto-generated and stored in `/data/arcane/.secrets`
-- **AppArmor**: Custom profile restricts addon permissions appropriately
+- **AppArmor**: Custom profile restricts app permissions appropriately
 
 ### Optional: Socket Proxy
 
@@ -141,15 +141,15 @@ For enhanced security, you can use a Docker Socket Proxy:
 
 1. Verify Docker socket permissions
 2. Check if containers have labels that hide them
-3. Restart the addon
+3. Restart the app
 
 ### Database Issues
 
 If the database becomes corrupted:
 
-1. Stop the addon
+1. Stop the app
 2. Delete `/data/arcane/arcane.db`
-3. Restart the addon (you'll need to reconfigure)
+3. Restart the app (you'll need to reconfigure)
 
 ### WebSocket Connection Issues
 
@@ -161,7 +161,7 @@ If real-time updates aren't working:
 
 ## Updating
 
-The addon automatically tracks Arcane releases. Updates appear in the Home Assistant UI when available.
+The app automatically tracks Arcane releases. Updates appear in the Home Assistant UI when available.
 
 ## Known Limitations
 

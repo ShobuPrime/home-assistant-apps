@@ -4,7 +4,7 @@
 
 ### Option: `log_level`
 
-The `log_level` option controls the level of log output by the addon:
+The `log_level` option controls the level of log output by the app:
 - `trace`: Show every detail
 - `debug`: Shows detailed debug information
 - `info`: Normal (usually) interesting events (default)
@@ -73,7 +73,7 @@ Dockhand authentication is **disabled by default** on first launch. You can enab
 
 ## Updating
 
-The addon tracks Dockhand releases via the upstream [changelog.json](https://github.com/Finsys/dockhand/blob/main/src/lib/data/changelog.json). GitHub Actions automatically check for new versions daily and create PRs when updates are available.
+The app tracks Dockhand releases via the upstream [changelog.json](https://github.com/Finsys/dockhand/blob/main/src/lib/data/changelog.json). GitHub Actions automatically check for new versions daily and create PRs when updates are available.
 
 To manually check for updates:
 ```bash

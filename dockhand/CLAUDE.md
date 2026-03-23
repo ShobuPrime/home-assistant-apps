@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant Add-on for Dockhand Docker Manager that provides modern Docker container management through the Home Assistant interface. The add-on uses Home Assistant's S6-overlay init system and follows standard HA add-on conventions.
+This is a Home Assistant App for Dockhand Docker Manager that provides modern Docker container management through the Home Assistant interface. The app uses Home Assistant's S6-overlay init system and follows standard HA app conventions.
 
 ## Essential Commands
 
 ### Building and Testing
 ```bash
-# Build the add-on locally (auto-detects architecture)
+# Build the app locally (auto-detects architecture)
 ./build.sh
 
-# Test the add-on locally
+# Test the app locally
 docker run --rm -it -p 3000:3000 -v /var/run/docker.sock:/var/run/docker.sock local/{arch}-addon-local_dockhand:{version}
 ```
 
@@ -36,7 +36,7 @@ Dockhand uses semantic versioning: `[MAJOR].[MINOR].[PATCH]`
 **Version Source**: Dockhand publishes version information in their changelog.json file:
 - https://raw.githubusercontent.com/Finsys/dockhand/main/src/lib/data/changelog.json
 
-**Note**: While Dockhand uses semantic versioning internally, the Docker Hub image (`fnsys/dockhand`) only has a `latest` tag - no version-specific tags exist. The add-on version tracks the Dockhand version from changelog.json.
+**Note**: While Dockhand uses semantic versioning internally, the Docker Hub image (`fnsys/dockhand`) only has a `latest` tag - no version-specific tags exist. The app version tracks the Dockhand version from changelog.json.
 
 The update script fetches the latest version from changelog.json and updates all relevant files. The GitHub Actions workflow runs daily to check for updates.
 
@@ -47,7 +47,7 @@ The update script fetches the latest version from changelog.json and updates all
 - **`/rootfs/etc/services.d/dockhand/`**: Service definition with `run` script and `finish` handler
 
 ### Critical Files
-- **`config.yaml`**: Add-on configuration (version, ports, ingress, options schema)
+- **`config.yaml`**: App configuration (version, ports, ingress, options schema)
 - **`build.yaml`**: Build configuration with base images per architecture
 - **`Dockerfile`**: Multi-stage build that extracts Dockhand from official Docker image
 - **`apparmor.txt`**: Security profile for Docker socket access
@@ -95,13 +95,13 @@ Dockhand uses these environment variables:
 ## Important Notes
 
 - **Never commit changes** to version numbers without testing
-- **Protection mode** must be disabled for the add-on to function
+- **Protection mode** must be disabled for the app to function
 - **Ingress** integration requires WebSocket support (ingress_stream: true)
 - **AppArmor profile** is critical for security - modifications require careful testing
 - **No CSP configuration** - Unlike Portainer 2.33+, Dockhand does not set restrictive CSP headers, so no CSP workaround is needed
 - **No label filtering** - Dockhand does NOT support hiding containers by labels like Portainer's `--hide-label` flag
 
-## Key Differences from Portainer Addon
+## Key Differences from Portainer App
 
 ### CSP (Content Security Policy)
 - **Portainer**: Requires `CSP=false` environment variable for versions 2.33.0+ to work with ingress
@@ -124,7 +124,7 @@ Dockhand uses these environment variables:
 ### Issue: Dockhand Not Starting
 
 **Symptoms:**
-- Add-on fails to start
+- App fails to start
 - Logs show application not found or permission errors
 
 **Solution:**
