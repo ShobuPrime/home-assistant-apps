@@ -1,5 +1,18 @@
 # Changelog
 
+## Version 1.16.4 (2026-03-24)
+
+### Bug fixes
+
+* pin and enforce trivy scanner digest([7975270](https://github.com/getarcaneapp/arcane/commit/7975270059a36e40eb6a2a7fc1d7203f90198bf4) by `kmendell` )
+
+
+
+**Full Changelog**: https://github.com/getarcaneapp/arcane/compare/v1.16.3...v1.16.4
+
+---
+
+
 ## Version 1.16.3 (2026-03-16)
 
 
