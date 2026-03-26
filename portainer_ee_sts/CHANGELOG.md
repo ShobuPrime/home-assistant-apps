@@ -1,5 +1,31 @@
 # Changelog
 
+## Version 2.40.0 (2026-03-26)
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+### New and improved features
+
+- Added an information panel showing current and planned GitOps deployment details when a Git URL or config path is changed
+- Docker Compose GitOps stacks can now have their Git URL, config path, and entry point edited after creation
+- Cleaned up Git authentication token handling — GitHub tokens can now be entered directly in the Token field rather than the Basic auth field
+- Added a -remove-orphans / prune option when deploying Docker Compose stacks
+- Added support for -security-opt when creating Docker containers
+- Upgraded Helm Go SDK to
+
+---
+
+
 ## Version 2.38.1 (2026-02-14)
 
 ## Known issues
