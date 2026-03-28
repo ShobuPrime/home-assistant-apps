@@ -1,5 +1,20 @@
 # Changelog
 
+## Version 0.4.7-alpha (2026-03-28)
+
+## What's Changed
+* fix(build): add -tags localassets and fix Docker publish trigger by `scrypster` in https://github.com/scrypster/muninndb/pull/292
+* docs: proactive agent prompting guide (credit cmdillon, #293) by `scrypster` in https://github.com/scrypster/muninndb/pull/295
+* fix(enrich): handle duplicate JSON output from local LLMs (llama3.2) by `scrypster` in https://github.com/scrypster/muninndb/pull/296
+* fix(ui): map created_at to createdAt — fix "Created: unknown" for all memories by `scrypster` in https://github.com/scrypster/muninndb/pull/297
+* fix(entity): normalize inline entity types in engine Write path by `scrypster` in https://github.com/scrypster/muninndb/pull/300
+* feat(recall): hint on empty results + session-start guidance in muninn_guide by `scrypster` in https://github.com/scrypster/muninndb/pull/301
+* docs(integrations): Traefik guide for Claude.com/ChatGPT cloud-hosted MCP by `scrypster` in https://github.com/scrypster/muninndb/pull/302
+* feat(ui): add flow diagram
+
+---
+
+
 ## Version 0.4.6-alpha (2026-03-22)
 
 ## What's Changed
