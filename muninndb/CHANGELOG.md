@@ -1,5 +1,19 @@
 # Changelog
 
+## Version 0.4.8-alpha (2026-03-30)
+
+## What's Changed
+* feat(dream): memories accumulate but never consolidate -- add dream engine foundation by `5queezer` in https://github.com/scrypster/muninndb/pull/306
+* feat(dream): dream engine foundation by `scrypster` in https://github.com/scrypster/muninndb/pull/307
+
+## New Contributors
+* `5queezer` made their first contribution in https://github.com/scrypster/muninndb/pull/306
+
+**Full Changelog**: https://github.com/scrypster/muninndb/compare/v0.4.7-alpha...v0.4.8-alpha
+
+---
+
+
 ## Version 0.4.7-alpha (2026-03-28)
 
 ## What's Changed
