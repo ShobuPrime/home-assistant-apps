@@ -1,5 +1,15 @@
 # Changelog
 
+## Version 0.4.9-alpha (2026-03-31)
+
+## What's Changed
+- **fix(mcp):** order JSON Schema properties required-first in `tools/list` (#310)
+  - Fixes Python MCP SDK clients crashing with `TypeError: non-default argument follows default argument`
+  - Affects 17 tools — unblocks the Python client ecosystem
+
+---
+
+
 ## Version 0.4.8-alpha (2026-03-30)
 
 ## What's Changed
