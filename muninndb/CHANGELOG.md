@@ -1,5 +1,24 @@
 # Changelog
 
+## Version 0.4.10 (2026-04-03)
+
+## What's new
+
+### Added
+- **Dashboard activity panel** — selectable timeframe presets (7d–180d), end-date picker, dynamic x-axis tick grouping, raw data table toggle with copy-to-clipboard. Full loading/error/empty-state feedback.
+- **`GET /api/activity-counts`** — per-day engram creation counts for a vault. Accepts `days` (1–180, default 7) and optional `until` (YYYY-MM-DD). Backed by an efficient ULID key-header scan.
+
+### Changed
+- **Public vault auth** — unauthenticated requests to an open vault now run as `full` instead of `observe`. Public vaults are genuinely open; callers get `full` access unless they present an explicit `observe` key.
+- **Web UI tab navigation** — unified bordered-tab style across Memories, Graph, and Settings, replacing the previous mix of underline/button/pill patterns.
+
+### Fixed
+- **ACT-R score saturation** — `bLevelCap` prevents base-level overflow in fresh vaults; two-pass normalization keeps all scores in [0, 1].
+- **Archived engram leaka
+
+---
+
+
 ## Version 0.4.9-alpha (2026-03-31)
 
 ## What's Changed
