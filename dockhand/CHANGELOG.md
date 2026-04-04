@@ -1,5 +1,30 @@
 # Changelog
 
+## Version 1.0.24 (2026-04-04)
+
+### Changed
+- Updated Dockhand to version 1.0.24
+
+Released: 2026-04-03
+
+## What's new in v1.0.24
+
+- 🐛 browsing HTTP registries fails with SSL error (#868)
+- 🐛 git stack deploy options (build, re-pull, force redeploy) not persisted in edit dialog
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.24
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## [1.0.21] - 2026-03-14
 
 ### Changed
