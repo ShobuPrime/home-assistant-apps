@@ -2,7 +2,7 @@ ARG BUILD_FROM
 FROM $BUILD_FROM
 
 # Build arguments for version
-ARG ARCANE_VERSION=1.16.4
+ARG ARCANE_VERSION=1.17.0
 
 # Install requirements
 # Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
