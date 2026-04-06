@@ -1,5 +1,23 @@
 # Changelog
 
+## Version 1.17.0 (2026-04-06)
+
+
+### New features
+
+* ecr registry support ([#2078](https://github.com/getarcaneapp/arcane/pull/2078) by `paulonnn`)
+* Add per-container redeploy button ([#2034](https://github.com/getarcaneapp/arcane/pull/2034) by `mkaltner`)
+* support for symlink (stow) project directories ([#2084](https://github.com/getarcaneapp/arcane/pull/2084) by `kmendell`)
+* static admin api key support ([#2088](https://github.com/getarcaneapp/arcane/pull/2088) by `kmendell`)
+* show document title for Project detail pages ([#2091](https://github.com/getarcaneapp/arcane/pull/2091) by `blfpd`)
+* add additional theme variants ([#2096](https://github.com/getarcaneapp/arcane/pull/2096) by `newhinton`)
+* collapse containers ports ([#2094](https://github.com/getarcaneapp/arcane/pull/2094) by `paulonnn`)
+* compose editor + compose tab improvements ([#2052](https://github.com/getarcaneapp/arcane/pull/2052) by `mkaltner`)
+* implement docker compose aware update logic ([#1875](https://github.com/getarcaneapp/arcane/pull/1875) by ``
+
+---
+
+
 ## Version 1.16.4 (2026-03-24)
 
 ### Bug fixes
