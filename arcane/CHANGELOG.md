@@ -1,5 +1,22 @@
 # Changelog
 
+## Version 1.17.2 (2026-04-09)
+
+
+### Bug fixes
+
+* gitsync SyncDirectory toggle not being passed correctly ([#2265](https://github.com/getarcaneapp/arcane/pull/2265) by `kmendell`)
+* stop project discovery descent once a compose file is found ([#2255](https://github.com/getarcaneapp/arcane/pull/2255) by `mkaltner`)
+* preserve webhook URL query params for generic notifications ([#2276](https://github.com/getarcaneapp/arcane/pull/2276) by `GiulioSavini`)
+* prevent unnecessary container recreation when image is already up to date ([#2275](https://github.com/getarcaneapp/arcane/pull/2275) by `GiulioSavini`)
+* only sync on project file changes, not bare directory events ([#2271](https://github.com/getarcaneapp/arcane/pull/2271) by `mkaltner`)
+* include files incorrectly identified as its own compose file and labeled as such ([#2270](https://github.com/getarcaneapp/arcane/pull/2270) by `kmendell`)
+* lazy load project file contents on demand ([#2259](https://github.com/getarcaneapp/arcane/pull/2259) by `jt196`)
+* use global .ssh/kn
+
+---
+
+
 ## Version 1.16.4 (2026-03-24)
 
 ### Bug fixes
