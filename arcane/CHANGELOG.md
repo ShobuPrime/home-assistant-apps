@@ -1,5 +1,27 @@
 # Changelog
 
+## Version 1.17.3 (2026-04-12)
+
+
+### Bug fixes
+
+* show custom device path for type=none volumes ([#2290](https://github.com/getarcaneapp/arcane/pull/2290) by `GiulioSavini`)
+* pass enriched project to query cache after save to prevent editor revert ([#2295](https://github.com/getarcaneapp/arcane/pull/2295) by `mkaltner`)
+* lazy-fetch include file content for container compose tab ([#2291](https://github.com/getarcaneapp/arcane/pull/2291) by `mkaltner`)
+* validate and secure remote template registry fetching ([#2299](https://github.com/getarcaneapp/arcane/pull/2299) by `kmendell`)
+* route per-container Redeploy through compose-aware path ([#2269](https://github.com/getarcaneapp/arcane/pull/2269) by `mkaltner`)
+
+### CLI - Bug fixes
+
+* pagination not working correctly via arcane-cli ([#2286](https://github.com/getarcaneapp/arcane/pull/2286) by `kmendell`)
+
+### Dependencies
+
+* bump compose to 5.1.2 and docker/cli to 29.4.0([4687f81](https://github.com/getarcaneapp/arcane/commit/4687f81db4bec93b729a20ec8809a48fa273f5a2) by `kme`
+
+---
+
+
 ## Version 1.16.4 (2026-03-24)
 
 ### Bug fixes
