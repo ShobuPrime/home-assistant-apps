@@ -1,5 +1,41 @@
 # Changelog
 
+## Version 1.0.25 (2026-04-19)
+
+### Changed
+- Updated Dockhand to version 1.0.25
+
+Released: 2026-04-18
+
+## What's new in v1.0.25
+
+- ✨ API token authentication — Bearer tokens for CI/CD pipelines and scripts
+- ✨ Telegram topic support — send notifications to supergroup topics (#855)
+- 🐛 allow removing healthcheck, ports, and honor startAfterUpdate=false during container edit (#892)
+- 🐛 validate stack names and prevent broken DB entries on invalid input (#876)
+- 🐛 use per-environment timezone for schedule execution log timestamps (#882)
+- 🐛 "Pull image before update" and "Start after update" settings ignored (#909)
+- 🐛 image prune timeout on hawser-standard when pruning many images (#905)
+- 🐛 bump Docker Compose to 5.1.3
+- 🐛 mask secret environment variables in container inspect modal (#924)
+- 🐛 viewer role can toggle, delete, and run schedules (#923)
+- 🐛 settings show defaults instead of saved values after login until page refresh (#921)
+- 🐛 settings toggle notifications show wrong state (#931)
+- 🐛 stack memory tooltip shows inflated total on multi-container stacks (#936)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.25
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## Version 1.0.24 (2026-04-04)
 
 ### Changed
