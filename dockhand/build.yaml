@@ -3,4 +3,4 @@ build_from:
   amd64: ghcr.io/hassio-addons/base:20.0.4
 args:
   # Dockhand publishes versioned tags as fnsys/dockhand:vX.Y.Z
-  DOCKHAND_VERSION: 1.0.24
+  DOCKHAND_VERSION: 1.0.25
