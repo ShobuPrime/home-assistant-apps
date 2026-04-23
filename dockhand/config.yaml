@@ -1,6 +1,6 @@
 name: "Dockhand"
 description: "Modern Docker management UI with real-time container orchestration and Compose stack management"
-version: "1.0.24"
+version: "1.0.25"
 slug: "dockhand"
 init: false
 ingress: true
