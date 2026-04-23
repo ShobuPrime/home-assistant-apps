@@ -1,5 +1,25 @@
 # Changelog
 
+## Version 1.18.0 (2026-04-23)
+
+
+### New features
+
+* full control over prune options ([#2372](https://github.com/getarcaneapp/arcane/pull/2372) by `kmendell`)
+* add UI to create and edit custom templates ([#2351](https://github.com/getarcaneapp/arcane/pull/2351) by `mohamedhagag`)
+* add raw inspect tab to container detail view ([#2368](https://github.com/getarcaneapp/arcane/pull/2368) by `GiulioSavini`)
+* universal environment dashboard ([#2241](https://github.com/getarcaneapp/arcane/pull/2241) by `kmendell`)
+* add dedicated healthcheck tab for containers ([#2384](https://github.com/getarcaneapp/arcane/pull/2384) by `kmendell`)
+* resource updates overview page ([#2204](https://github.com/getarcaneapp/arcane/pull/2204) by `kmendell`)
+* add ability to deploy Docker Swarm stacks from Git repo with GitOps updates  ([#2412](https://github.com/getarcaneapp/arcane/pull/2412) by `SplinterHead`)
+
+### Bug fixes
+
+* handle deferred file close errors in docker build copy helper([3cdc1dd](https://github.com/getarcaneapp/arcane/commit/3cd
+
+---
+
+
 ## Version 1.16.4 (2026-03-24)
 
 ### Bug fixes
