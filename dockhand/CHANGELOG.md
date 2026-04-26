@@ -1,5 +1,38 @@
 # Changelog
 
+## Version 1.0.26 (2026-04-26)
+
+### Changed
+- Updated Dockhand to version 1.0.26
+
+Released: 2026-04-19
+
+## What's new in v1.0.26
+
+- ✨ persist sort order across page navigation for all data grids (#861, #912)
+- ✨ show git repository URL and branch in git stack edit modal (#856)
+- ✨ show memory limit alongside usage in containers and stacks views (#893)
+- ✨ option to delete associated volumes when removing a stack (#655)
+- ✨ collapse consecutive port mappings into ranges in container list (#821)
+- 🐛 bearer token authentication fails with enterprise license active
+- 🐛 clicking stack name toggles stats accordion instead of just opening editor (#628)
+- 🐛 scheduled image prune notifications missing environment name (#770)
+- 🐛 Gotify, ntfy, Pushover, and webhook notifications missing environment name (#943)
+- 🐛 MFA code field not recognized by Bitwarden and other password managers (#566)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.26
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## Version 1.0.24 (2026-04-04)
 
 ### Changed
