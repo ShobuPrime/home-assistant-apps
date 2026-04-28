@@ -1,5 +1,27 @@
 # Changelog
 
+## Version 0.5.0 (2026-04-28)
+
+## What's New
+
+### feat: per-engram trust/taint labels (#387)
+- `TrustLevel` enum (`verified`, `inferred`, `external`, `untrusted`) stored at ERF byte offset 71 — zero-migration, backward-compatible with all existing records
+- All writes auto-stamp `TrustInferred`; trust is visible in all `muninn_read` and `muninn_recall` responses
+- New `muninn_trust` MCP tool for post-write trust mutation
+- New `ExcludeUntrusted` per-vault plasticity config to hard-filter untrusted engrams from ACTIVATE results
+
+### feat: enrichment candidates cursor pagination (#362)
+- `muninn_get_enrichment_candidates` now supports cursor-based pagination via `after_cursor` / `next_cursor` — large vaults no longer miss candidates
+
+## Bug Fixes
+- `fix(engine)`: return 400 for invalid inline association target IDs (#399)
+- `fix(rest)`: return 400 instead of 500 for invalid engram IDs in `/api/link` (#395)
+- `fix(enrich)`: prevent infinite retry loops that deadlock the circuit breaker (#390)
+- `fix(trigger)`: guar
+
+---
+
+
 ## Version 0.4.10 (2026-04-03)
 
 ## What's new
