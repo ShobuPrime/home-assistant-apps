@@ -1,5 +1,22 @@
 # Changelog
 
+## Version 1.17.4 (2026-04-22)
+
+
+### Bug fixes
+
+* truncate long image refs in container table  ([#2318](https://github.com/getarcaneapp/arcane/pull/2318) by `GiulioSavini`)
+* project icons not loading when used with yaml/env aliases ([#2324](https://github.com/getarcaneapp/arcane/pull/2324) by `kmendell`)
+* surface actual compose load error instead of generic 'no compose file found' ([#2326](https://github.com/getarcaneapp/arcane/pull/2326) by `mkaltner`)
+* project max depth not working for filesystem discovery ([#2325](https://github.com/getarcaneapp/arcane/pull/2325) by `kmendell`)
+* Locale selector background was inconsistent ([#2348](https://github.com/getarcaneapp/arcane/pull/2348) by `RJMurg`)
+* light mode contrast for container stats CPU/memory monitor  ([#2344](https://github.com/getarcaneapp/arcane/pull/2344) by `GiulioSavini`)
+* keep project build context as container path so local builder can stat it  ([#2346](https://github.com/getarcaneapp/arcane/pull/2346) by `GiulioSavini`)
+* preserve webhook URL query params
+
+---
+
+
 ## Version 1.16.4 (2026-03-24)
 
 ### Bug fixes
