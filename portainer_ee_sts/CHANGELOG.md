@@ -1,5 +1,29 @@
 # Changelog
 
+## Version 2.41.0 (2026-04-30)
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+### Breaking changes
+
+Changes to the CSRF protection implementation may cause failures when upgrading:
+
+- Portainer fails to start with a fatal log entry like `failed to build server | error="invalid url for trusted origin... trusted_origin: \"portainer.example.com\""`. The new implementation requires each entry in the trusted origins list to be a full URL including scheme (e.g. `https://portainer.example.com/`); bare hostnames are no longer accepted.
+- Browser requests return `403 Forbidden` on state-changing actions, with `CSRF check failed` entries in the server logs. This means the browser's origin is not in the trusted origins list and needs to be added.
+
+The previous CSRF implementation can be re-enabled by starting Portainer with the `legacy-csrf`
+
+---
+
+
 ## Version 2.40.0 (2026-03-26)
 
 ## Known issues

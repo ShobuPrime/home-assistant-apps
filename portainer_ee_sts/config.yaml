@@ -1,6 +1,6 @@
 name: "Portainer EE (STS)"
 description: "Manage your Docker environment with Portainer Enterprise Edition (Short Term Support)"
-version: "2.40.0"
+version: "2.41.0"
 slug: "portainer_ee_sts"
 init: false
 ingress: true
