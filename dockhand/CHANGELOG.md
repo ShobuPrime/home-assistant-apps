@@ -1,5 +1,44 @@
 # Changelog
 
+## Version 1.0.27 (2026-05-03)
+
+### Changed
+- Updated Dockhand to version 1.0.27
+
+Released: 2026-04-26
+
+## What's new in v1.0.27
+
+- ✨ network graph visualization on networks page (#894, @Penlane)
+- ✨ customizable compose template for new stacks in settings (#632, @oratory)
+- ✨ Microsoft Teams notifications via Power Automate Workflows (#355, @slokhorst)
+- ✨ container label controls: dockhand.update, dockhand.hidden, dockhand.notify (#6, #53, #94, #215)
+- ✨ configurable label filter matching mode (any/all) for environment dashboard (#607)
+- ✨ log search filter mode to hide non-matching lines (#916)
+- ✨ inline terminal on logs page with resizable split layout (#900)
+- 🐛 disable Telegram link preview in notifications (#910, @deenle)
+- 🐛 cron editor rejects 6-field expressions with seconds (#839, @GiulioSavini)
+- 🐛 mirror Dockhand's ExtraHosts into scanner and self-update containers (#836, @YewFence)
+- 🐛 duplicate volume binds during container recreate (#765, @itsDNNS)
+- 🐛 log timestamp formatting not applied on main logs page (#882)
+- 🐛 uploaded files now inherit container user ownership (#732, @ivanjx)
+- 🐛 extraneous backslash in Telegram notification environment name (#955)
+- 🐛 collapse ports into ranges only if 3 or more consecutive ports
+- 🐛 git operations auto-merge system CAs with custom cert (#967)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.27
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## Version 1.0.24 (2026-04-04)
 
 ### Changed
