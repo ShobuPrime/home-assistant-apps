@@ -1,5 +1,19 @@
 # Changelog
 
+## Version 1.18.1 (2026-05-03)
+
+
+### Bug fixes
+
+* validation failed when creating git sync([d7a8bc1](https://github.com/getarcaneapp/arcane/commit/d7a8bc19f9d4b351a0f89b55cda243f2a74b7c91) by `kmendell`)
+
+
+
+**Full Changelog**: https://github.com/getarcaneapp/arcane/compare/v1.18.0...v1.18.1
+
+---
+
+
 ## Version 1.16.4 (2026-03-24)
 
 ### Bug fixes
