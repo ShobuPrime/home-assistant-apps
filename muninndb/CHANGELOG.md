@@ -1,5 +1,16 @@
 # Changelog
 
+## Version 0.5.1 (2026-05-07)
+
+## Bug Fixes
+
+- **fix(fts):** Auto-restart FTS worker goroutines after panic — worker goroutines that panicked were never replaced, eventually making all new writes unsearchable until server restart (#430)
+- **fix(fts):** Include field byte in BM25 posting key — terms appearing in multiple fields (e.g. concept + content) had all but the last field's contribution silently overwritten (#430)
+- **fix(fts):** Scope IDF cache by (vault, term) — the IDF cache was keyed by term only, causing incorrect BM25 scores in multi-vault setups (#430)
+
+---
+
+
 ## Version 0.5.0 (2026-04-28)
 
 ## What's New
