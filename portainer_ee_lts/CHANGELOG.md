@@ -1,5 +1,31 @@
 # Changelog
 
+## Version 2.33.8 (2026-05-07)
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+- Fixed a Docker API proxy authorisation bypass that allowed regular users to circumvent deny-plugin restrictions
+- Changed a default setting to enforce server-side EdgeID on first connection
+- Fixed a path traversal vulnerability in custom template handling
+- Fixed unauthorized access to custom template file contents via a direct API endpoint
+- Removed the option to pass a JWT token as a query string parameter
+- Removed the possibility to clone Git repositories that contain symlinks
+- Fixed a bind mount restriction bypass via HostConfig.Mounts during container creation 
+-
+
+---
+
+
 ## Version 2.39.1 (2026-03-20)
 
 ## Known issues
