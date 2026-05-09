@@ -1,5 +1,31 @@
 # Changelog
 
+## Version 2.39.2 (2026-05-09)
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+- Fixed an issue where the kubectl-shell-image flag only takes effect on the first Portainer run 
+- Fixed an issue where deleting a kube edge stack results in a downed environment
+- Fixed an issue where Edge stack deployment retries stopped working
+- Fixed an issue with saving Git credentials 
+- Fixed a Docker API proxy authorisation bypass that allowed regular users to circumvent deny-plugin restrictions
+- Changed a default setting to enforce server-side EdgeID on first connection
+- Fixed a bind mount restriction bypass via HostConfig.Mounts during container creation
+- Fixed a bi
+
+---
+
+
 ## Version 2.33.8 (2026-05-07)
 
 ## Known issues
