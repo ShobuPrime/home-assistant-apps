@@ -2,7 +2,7 @@ ARG BUILD_FROM
 FROM $BUILD_FROM
 
 # Build arguments for version
-ARG HULY_VERSION=0.7.382
+ARG HULY_VERSION=0.7.423
 ENV HULY_VERSION=v${HULY_VERSION}
 
 # S6-overlay shutdown timeouts (in milliseconds).

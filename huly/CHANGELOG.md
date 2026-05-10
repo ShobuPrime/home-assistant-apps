@@ -1,5 +1,31 @@
 # Changelog
 
+## Version 0.7.423 (2026-05-10)
+
+Update to v0.7.423 (#299)
+
+Signed-off-by: Artem Savchenko <armisav@gmail.com>
+Add front url for print (#298)
+
+Signed-off-by: Artem Savchenko <armisav@gmail.com>
+Disable auto-translate and mailboxes (#294)
+
+* Disable auto-translate and mailboxes
+
+Signed-off-by: Artem Savchenko <armisav@gmail.com>
+
+* Clean up
+
+Signed-off-by: Artem Savchenko <armisav@gmail.com>
+
+---------
+
+Signed-off-by: Artem Savchenko <armisav@gmail.com>
+Describe how to skip workspace initial content (#288)
+
+---
+
+
 ## Version 0.7.382 (2026-03-07)
 
 refactor: simplify - docker compose autogenerates container names (#275)
