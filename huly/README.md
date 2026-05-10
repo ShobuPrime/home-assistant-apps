@@ -129,7 +129,7 @@ Got questions or found a bug? Please open an issue on the GitHub repository.
 
 ## Version
 
-Currently running Huly 0.7.382
+Currently running Huly 0.7.423
 
 ## License
 
