@@ -39,7 +39,6 @@ type Options struct {
 	CastKeyPath           string         `json:"cast_key_path"`
 	YTCastDialPort        int            `json:"yt_cast_dial_port"`
 	CastReceiverTLSPort   int            `json:"cast_receiver_tls_port"`
-	VolumeStep            int            `json:"volume_step"`
 	HABaseURL             string         `json:"ha_base_url"`
 	HAToken               string         `json:"ha_token"`
 	MAWsURL               string         `json:"ma_ws_url"`
@@ -105,9 +104,6 @@ func Load(ctx context.Context, logger *slog.Logger) (Options, error) {
 // invisible failure mode downstream.
 func (o *Options) normalize() {
 	o.LogLevel = strings.TrimSpace(o.LogLevel)
-	if o.VolumeStep < 0 {
-		o.VolumeStep = 0
-	}
 	o.MAPlayerID = strings.TrimSpace(o.MAPlayerID)
 	o.FriendlyNameYouTube = strings.TrimSpace(o.FriendlyNameYouTube)
 	o.FriendlyNameTidal = strings.TrimSpace(o.FriendlyNameTidal)
@@ -185,25 +181,6 @@ func ResolveLogLevel(name string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
-}
-
-// EffectiveVolumeStep returns the volume quantisation increment. Phone
-// cast apps (in particular YouTube) emit volume changes at every drag
-// tick, which would flood MA with fine-grained updates. Rounding to a
-// step keeps the MA log clean and aligns cast values with how the
-// speaker steps its physical buttons. Default 5 — strikes the
-// responsiveness/quantisation balance: nearly every slider drag tick
-// crosses a bucket so the cast UI feels live, and the value lands on
-// a sensible round number for the speaker. Set 10 to coarse-quantise
-// or 1 to disable rounding entirely.
-func (o Options) EffectiveVolumeStep() int {
-	if o.VolumeStep <= 0 {
-		return 5
-	}
-	if o.VolumeStep > 50 {
-		return 50
-	}
-	return o.VolumeStep
 }
 
 // EffectiveYTCastDialPort returns the configured DIAL HTTP listen port

@@ -113,6 +113,16 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 	// path accepts a full MediaItem, so the title / artist / image
 	// land in MA's UI.
 	if p.Provider == "url" && d.MAWsURL != "" && d.MAPlayerQueue != "" {
+		// Clear MA's queue first so leftover library/autoplay tracks
+		// don't sit behind our item. Best-effort — if clear fails
+		// we still try play_media (with option:"play" MA only
+		// replaces the current item; queue items remain, but the
+		// user has a more degraded but not broken experience).
+		if err := ma.ClearQueue(ctx, d.MAWsURL, d.MAToken,
+			d.MAPlayerQueue, d.Logger.With("path", "ma-ws-clear")); err != nil {
+			d.Logger.Warn("dispatcher: queue clear failed (continuing to play_media)",
+				"err", err)
+		}
 		if err := d.playViaMAWS(ctx, uri, p); err == nil {
 			d.maybeSeekAfterPlay(ctx, p)
 			return
