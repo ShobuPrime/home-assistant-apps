@@ -36,6 +36,31 @@ func TestHARESTTokenFallbackToSupervisor(t *testing.T) {
 	}
 }
 
+func TestEffectiveListenPorts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		opt      Options
+		wantDial int
+		wantTLS  int
+	}{
+		{"defaults", Options{}, 8008, 8009},
+		{"user override", Options{YTCastDialPort: 9100, CastReceiverTLSPort: 9101}, 9100, 9101},
+		{"only dial override", Options{YTCastDialPort: 9100}, 9100, 8009},
+		{"only tls override", Options{CastReceiverTLSPort: 9101}, 8008, 9101},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.opt.EffectiveYTCastDialPort(); got != tc.wantDial {
+				t.Errorf("EffectiveYTCastDialPort() = %d, want %d", got, tc.wantDial)
+			}
+			if got := tc.opt.EffectiveCastReceiverTLSPort(); got != tc.wantTLS {
+				t.Errorf("EffectiveCastReceiverTLSPort() = %d, want %d", got, tc.wantTLS)
+			}
+		})
+	}
+}
+
 func TestHAWebSocketURLDerivation(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

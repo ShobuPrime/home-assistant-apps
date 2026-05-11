@@ -87,7 +87,7 @@ func main() {
 			Model: "Sonuntius",
 		},
 		Dial: ytcast.DialOptions{
-			Port: 3000,
+			Port: opts.AddonOptions.EffectiveYTCastDialPort(),
 			UUID: opts.UUID,
 		},
 		DataStore: store,

@@ -49,10 +49,6 @@ const (
 	serverRetryCeil   = 5 * time.Minute
 	mdnsRetryFloor    = 5 * time.Second
 	mdnsRetryCeil     = 5 * time.Minute
-
-	// castListenPort is the standard CASTV2 TLS listen port. Hard-coded
-	// because the protocol expects it.
-	castListenPort = 8009
 )
 
 func main() {
@@ -106,7 +102,7 @@ func main() {
 	mdnsR, mdnsErr := mdns.NewResponder(mdns.Options{
 		InstanceName: opts.FriendlyName,
 		ServiceType:  "_googlecast._tcp",
-		Port:         castListenPort,
+		Port:         opts.AddonOptions.EffectiveCastReceiverTLSPort(),
 		UUID:         opts.UUID,
 		TXTRecords: map[string]string{
 			"id": opts.UUID,
@@ -128,7 +124,7 @@ func main() {
 
 	// --- CASTV2 server -------------------------------------------------
 	server := castv2.NewServer(castv2.Options{
-		Addr:          fmt.Sprintf(":%d", castListenPort),
+		Addr:          fmt.Sprintf(":%d", opts.AddonOptions.EffectiveCastReceiverTLSPort()),
 		TLSConfig:     tlsConfig,
 		AuthResponder: responderOrNil(responder),
 		FriendlyName:  opts.FriendlyName,
