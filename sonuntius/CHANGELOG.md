@@ -1,5 +1,115 @@
 # Changelog
 
+## Version 0.1.17 (2026-05-11)
+
+### Session reset on sender disconnect
+
+When every sender (Cast app on phone) has disconnected, the adapter
+now wipes per-cast state — track title, artist, duration, position,
+and the local wall-clock estimator. Without this, a second device
+connecting after the first briefly saw the previous session's track
+info in its first state push, before its own DoPlay landed and
+replaced the cache.
+
+Speaker-scoped state (volume, muted) is intentionally preserved —
+the physical speaker keeps its setting regardless of which sender
+is connected, and surfacing that to a fresh sender is the right
+initial value.
+
+New `adapter.resetSession()` and a `watchSenderLifecycle` goroutine
+in `cmd/yt-cast/main.go` that subscribes to the receiver's app-event
+bus (`SenderConnectedEvent` / `SenderDisconnectedEvent`) and calls
+the reset when the connected-sender count drops to zero.
+
+### Performance discussion
+
+The user raised goroutines + mutexes for ordering. Re-evaluated:
+
+- Cast is **single-sender at a time**, so within one stream events
+  are naturally serial. A per-event-type mutex doesn't enable
+  parallelism — it just adds bookkeeping.
+- The **real** single-sender win is cutting the hop count. Today
+  volume commands traverse 6 hops (yt-cast → IPC → ma-bridge → HA
+  REST → HA → MA → speaker). Routing volume/transport over the
+  existing MA WebSocket (already used for play_media) would drop
+  to 4 hops and shave 30-40 ms per command. Tracked as a follow-up
+  PR — it's a meaningful refactor (long-lived WS connection in
+  ma-bridge, fallback path for when MA is unreachable).
+- `encoding/json` is the stdlib and our policy is stdlib-only;
+  `easyjson`/`sonic` would be 2-5× faster but require third-party
+  deps. For our <1KB messages the absolute saving is microseconds —
+  not worth the dep.
+- `sync.Pool` for IPC scanner buffers is a microsecond-scale win;
+  also tracked for follow-up.
+
+## Version 0.1.16 (2026-05-11)
+
+### Volume delta routing + honour sender start position
+
+**1. Volume feedback loop fixed.** With `volume_step = 10`, the
+v0.1.14 optimistic echo created a feedback loop: phone sends 47 →
+we round to 50 and echo 50 back → phone slider snaps to 50 → user
+presses down → phone calculates 50 − 3 = 47 → sends 47 → we round
+to 50 again. The user was visibly stuck at 50 even though the phone
+log showed many "down" presses. (The user's debug-log inspection
+caught this: `Level:47` repeated indefinitely.)
+
+`cmd/yt-cast/player.go::DoSetVolume`: rewritten to use **delta-based
+routing**. We compare the incoming raw to the value we last echoed
+(stored in `cachedState.Volume`):
+
+  - `|delta| >= step`: slider drag — snap to round(raw, step).
+  - `|delta| < step` and `delta > 0`: tap up — bump output by +step.
+  - `|delta| < step` and `delta < 0`: tap down — bump output by -step.
+  - `delta == 0`: keep output.
+
+Result: every distinct raw value from the phone produces exactly
+one step delta on MA, regardless of how the phone's slider step
+relates to our rounding step. New `computeVolumeOutput` helper,
+new `volume_test.go` covering 18 cases.
+
+**2. Honour the sender's start position.** Casting at 7:28 from the
+YouTube app would still start playback at 0:00 on the speaker. The
+PlayIntent didn't carry the position, and MA's `play_media` doesn't
+accept a start-offset arg. Fix: thread the sender-supplied position
+through `PlayIntent.StartPosition` and follow `play_media` with a
+delayed `media_seek` from the dispatcher. The 500 ms delay lets MA
+ingest the play_media before the seek lands, avoiding a race where
+MA drops the seek silently.
+
+`internal/events/events.go`: new `StartPosition float64` field.
+`cmd/yt-cast/player.go::DoPlay`: writes `intent.StartPosition`.
+`internal/dispatcher/dispatcher.go`: new `maybeSeekAfterPlay` helper
+running on both the WS and HA-REST play paths.
+
+### On the parallel-architecture / GPU questions
+
+- **Goroutines / concurrency:** the bridge already runs each
+  long-lived component (yt-cast receiver, cast-receiver, ma-bridge
+  IPC server, state watcher, MA WS probe) on its own goroutine.
+  Within ma-bridge, `dispatcher.Dispatch` is synchronous on the IPC
+  read goroutine, but HA REST calls return in ~20 ms (per live log)
+  while phone events arrive at ~2–5 Hz — there's slack, not
+  back-pressure. Sprinkling goroutines per Dispatch would change
+  ordering guarantees (a later "volume down" could overtake an
+  earlier "volume up") without measurable throughput gains.
+- **GPU acceleration on Pi CM5:** the workload is JSON, HTTP REST,
+  WebSocket frames, protobuf framing, mDNS/SSDP. Zero matrix
+  arithmetic and no encode/decode happening in-process (yt-dlp/
+  ffmpeg run elsewhere and only use the dedicated H.264/H.265
+  hardware blocks, not the VideoCore VII GPU). There is nothing
+  to offload.
+
+### On the queue-mirroring question
+
+Deferred to a separate effort. Mirroring the YouTube cast app's
+up-next list into MA's queue requires hooking the engine's
+`onAutoplayUpNext` / playlist-modified events, sending follow-up
+`player_queues/play_media` with `option: "add"` per upcoming
+video, clearing MA's queue on sender disconnect, and translating
+YouTube "remove from queue" back to MA. Each one is small but
+the lifecycle handling is delicate enough to warrant its own PR.
+
 ## Version 0.1.15 (2026-05-11)
 
 ### Position bounds + cast-start state seeding

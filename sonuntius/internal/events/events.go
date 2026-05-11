@@ -16,12 +16,16 @@ type Event interface {
 }
 
 // PlayIntent is a request from a Cast/DIAL receiver to play a track via MA.
+// StartPosition is the seconds offset the sender wants playback to begin
+// at — e.g. when the user is mid-video on the YouTube app and starts
+// casting, the app sends "play at 7:28" and we need to honor it.
 type PlayIntent struct {
-	Provider string         `json:"provider"`
-	TrackID  string         `json:"track_id,omitempty"`
-	URL      string         `json:"url,omitempty"`
-	Source   string         `json:"source,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Provider      string         `json:"provider"`
+	TrackID       string         `json:"track_id,omitempty"`
+	URL           string         `json:"url,omitempty"`
+	Source        string         `json:"source,omitempty"`
+	StartPosition float64        `json:"start_position,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
 // EventType implements Event.

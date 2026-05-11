@@ -153,6 +153,37 @@ func (a *adapter) setIPCClient(c *ipc.Client) {
 	a.mu.Unlock()
 }
 
+// resetSession clears all per-cast state in the adapter so the next
+// sender starts from a blank slate. Used when all senders disconnect
+// — without this, a second device casting after the first would
+// briefly see leftover title/artist/duration from the first session
+// before its own DoPlay lands.
+//
+// Speaker-scoped state (volume, muted) is intentionally preserved —
+// the speaker keeps its physical setting regardless of which sender
+// is connected, and surfacing that to a fresh sender is the right
+// initial value.
+func (a *adapter) resetSession() {
+	a.mu.Lock()
+	prevVolume := a.cachedState.Volume
+	prevMuted := a.cachedState.Muted
+	a.cachedState = events.PlayerState{
+		State:  "idle",
+		Volume: prevVolume,
+		Muted:  prevMuted,
+	}
+	a.playbackBasePos = 0
+	a.playbackStartedAt = nil
+	a.playbackPaused = false
+	a.playbackPauseStart = nil
+	a.playbackPauseAccum = 0
+	log := a.log
+	a.mu.Unlock()
+	if log != nil {
+		log.Info("yt-cast: session state reset — adapter ready for next sender")
+	}
+}
+
 // updateCachedState replaces the cached PlayerState frame and fires
 // the onStateChange callback (if any) so the host can re-emit player
 // state to connected senders. The callback runs synchronously on the
@@ -330,6 +361,7 @@ func resolveIntent(video types.Video, source string) *events.PlayIntent {
 // start position; see DoGetPosition for how the estimator is used.
 func (a *adapter) DoPlay(ctx context.Context, video types.Video, position float64) error {
 	intent := resolveIntent(video, a.source)
+	intent.StartPosition = position
 	a.mu.Lock()
 	log := a.log
 	a.mu.Unlock()
@@ -574,22 +606,34 @@ func (a *adapter) DoSeek(_ context.Context, position float64) error {
 	})
 }
 
-// DoSetVolume emits a VolumeCommand. We quantise the phone-supplied
-// 0–100 level to the configured volume_step (default 5) and rescale
-// to the 0.0–1.0 dispatcher range.
+// DoSetVolume emits a VolumeCommand. Volume routing is delta-based,
+// not absolute-round, so step quantisation never traps the user
+// inside a bucket.
 //
-// Optimistic echo: as soon as the rounded value is computed, we
-// update our cached PlayerState and fire onStateChange so the engine
-// pushes the new volume back to the YouTube sender immediately. The
-// phone's slider then snaps to the bucket boundary (e.g. 23→20,
-// 28→30) without waiting for the HA REST → MA → state_changed →
-// IPC round-trip (~hundreds of ms). Without the echo, the slider
-// trailed the user's drag and felt sticky even though every press
-// was being forwarded.
+// Background: the YouTube cast sender's slider steps in ~3-unit
+// increments. If we round naively (raw→nearest multiple of step)
+// AND echo the rounded value back to the phone, the phone is
+// snapped to e.g. 50 every time, so the user's "down" press from
+// the phone's perspective (50 → 47) gets re-rounded to 50, echoed
+// back to the phone, and the user is stuck — every press sends 47,
+// we keep sending 50.
 //
-// MA's eventual state_changed will reconcile the cached value with
-// the speaker's actual setting — typically a no-op since MA also
-// rounds to its own provider step, but a useful safety net.
+// New algorithm:
+//
+//  1. Compare incoming raw to our last echoed value (the volume
+//     the phone is currently showing, mirrored in cachedState).
+//  2. If the raw moved by less than `step`, treat it as a single
+//     button press in that direction and bump our output by one
+//     step in the same direction.
+//  3. If the raw moved by `step` or more, treat it as a slider
+//     drag and snap to round(raw, step) — the user's targeting
+//     a specific value, not nudging.
+//  4. Echo the result back to the phone (cachedState + fire
+//     onStateChange) so the slider tracks our quantised output.
+//
+// This way every press the user makes produces exactly one step
+// change in the speaker volume, regardless of how small the cast
+// sender's slider step is.
 func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error {
 	a.mu.Lock()
 	log := a.log
@@ -597,8 +641,15 @@ func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error 
 	if step <= 0 {
 		step = 5
 	}
-	rounded := roundToStep(volume.Level, step)
-	normLevel := float64(rounded) / 100.0
+	raw := volume.Level
+	// Reference: the volume the phone currently thinks it's at —
+	// which is whatever we last echoed via cachedState.
+	reference := -1
+	if a.cachedState.Volume != nil {
+		reference = int(*a.cachedState.Volume*100 + 0.5)
+	}
+	output := computeVolumeOutput(raw, step, reference)
+	normLevel := float64(output) / 100.0
 	mutedCopy := volume.Muted
 	a.cachedState.Volume = &normLevel
 	a.cachedState.Muted = &mutedCopy
@@ -608,10 +659,8 @@ func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error 
 		log = slog.Default()
 	}
 	log.Info("yt-cast: DoSetVolume",
-		"raw", volume.Level, "rounded", rounded, "step", step, "muted", mutedCopy)
-	// Push the rounded value back to the phone right away. This is
-	// fire-and-forget — if no Lounge sender is connected yet, the
-	// EmitPlayerState call is a cheap no-op.
+		"raw", raw, "reference", reference, "output", output,
+		"step", step, "muted", mutedCopy)
 	if fn != nil {
 		fn(context.Background())
 	}
@@ -620,6 +669,47 @@ func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error 
 		Muted:  &mutedCopy,
 		Source: a.source,
 	})
+}
+
+// computeVolumeOutput applies the delta-based rounding rule
+// described in DoSetVolume. reference is the previously-echoed
+// value (in 0-100 wire units); pass -1 when unknown (first call).
+func computeVolumeOutput(raw, step, reference int) int {
+	if step <= 0 {
+		step = 5
+	}
+	if reference < 0 {
+		// No prior state — round to nearest bucket.
+		return roundToStep(raw, step)
+	}
+	delta := raw - reference
+	if delta == 0 {
+		// Phone repeated the same value — keep our output put.
+		return reference
+	}
+	abs := delta
+	if abs < 0 {
+		abs = -abs
+	}
+	if abs >= step {
+		// Big movement (slider drag or large jump): snap to the
+		// rounded raw value.
+		return roundToStep(raw, step)
+	}
+	// Small movement (single button press inside a bucket): bump
+	// our output by one step in the direction of the change.
+	var out int
+	if delta > 0 {
+		out = reference + step
+	} else {
+		out = reference - step
+	}
+	out = max(out, 0)
+	out = min(out, 100)
+	// Round-defensive: caller's `reference` was always a multiple
+	// of step at last echo, so out should already be a multiple,
+	// but normalise just in case the user changed step at runtime.
+	return roundToStep(out, step)
 }
 
 // roundToStep returns the nearest multiple of step in [0, 100].

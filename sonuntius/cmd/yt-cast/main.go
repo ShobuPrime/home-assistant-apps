@@ -119,6 +119,14 @@ func main() {
 		}
 	})
 
+	// Subscribe to sender connect/disconnect events on the receiver
+	// bus. When every sender has gone away we wipe per-cast state in
+	// the adapter so that the next sender starts from a blank slate
+	// — without this, brief state leak between sessions briefly
+	// surfaces the previous track's title/duration to the new
+	// sender's first state push.
+	go watchSenderLifecycle(ctx, receiver, adapt, log.With("component", "session"))
+
 	// --- Start the receiver with retry-with-backoff. ---------------
 	startReceiverLoop(ctx, receiver, log)
 
@@ -133,6 +141,56 @@ func main() {
 	}
 	conn.close()
 	log.Info("yt-cast: stopped")
+}
+
+// watchSenderLifecycle subscribes to the receiver's app-event bus and
+// resets adapter state when every sender has disconnected. Cast is
+// single-sender at a time, but a sender that swaps devices (e.g.
+// closing YouTube on phone 1 and opening on phone 2) goes through a
+// disconnect / connect cycle. Without this reset, the second sender
+// briefly sees the first sender's title/duration on the initial
+// state push.
+//
+// Speaker state (volume, muted) is preserved across resets — see
+// adapter.resetSession.
+func watchSenderLifecycle(ctx context.Context, recv *ytcast.Receiver, adapt *adapter, log *slog.Logger) {
+	bus := recv.Bus()
+	if bus == nil {
+		return
+	}
+	sub := bus.Subscribe(8)
+	defer bus.Unsubscribe(sub)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-sub:
+			if !ok {
+				return
+			}
+			switch e := evt.(type) {
+			case ytcast.SenderConnectedEvent:
+				name := ""
+				if e.Sender != nil && e.Sender.Client != nil {
+					name = e.Sender.Client.Name
+				}
+				log.Info("sender connected", "client", name,
+					"remaining", len(recv.ConnectedSenders()))
+			case ytcast.SenderDisconnectedEvent:
+				remaining := len(recv.ConnectedSenders())
+				name := ""
+				if e.Sender != nil && e.Sender.Client != nil {
+					name = e.Sender.Client.Name
+				}
+				log.Info("sender disconnected",
+					"client", name, "implicit", e.Implicit,
+					"remaining", remaining)
+				if remaining == 0 {
+					adapt.resetSession()
+				}
+			}
+		}
+	}
 }
 
 // startReceiverLoop launches a goroutine that calls receiver.Start
