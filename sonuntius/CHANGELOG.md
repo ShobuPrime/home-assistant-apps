@@ -1,5 +1,61 @@
 # Changelog
 
+## Version 0.1.10 (2026-05-11)
+
+### Volume quantisation, actionable MA-auth guidance, debug telemetry
+
+Three follow-ups from the v0.1.9 live test, all narrow and additive:
+
+**1. Volume quantisation (`volume_step`).** The YouTube cast UI emits a
+fresh volume value on every slider tick, which (a) floods the MA log
+and (b) doesn't match the host speaker's physical button increments
+— the user's speaker, for example, steps in 10s. The adapter now
+rounds the incoming 0–100 level to the nearest multiple of
+`volume_step` (default `5`) and drops back-to-back repeats so
+identical rounded values aren't pushed twice. Set `volume_step: 10`
+in addon options to match a speaker that steps in 10s, or `1` to
+disable rounding entirely.
+
+`cmd/yt-cast/player.go::DoSetVolume`: the new `roundToStep` helper
+plus per-adapter `lastQuantizedVolume` / `lastVolumeMuted` /
+`lastVolumeHasSent` fields handle rounding and dedup. The original
+raw value is preserved in the log for diagnosis.
+
+**2. Actionable warning when MA WS auth is missing.** v0.1.9's MA-WS
+play_media path needs `ma_token` set to attach rich metadata; when
+the user hasn't set one, MA returns `error_code: 20` ("Authentication
+required") and we silently fall back to HA REST (no metadata). The
+client now detects the empty-token case up-front and the error-20
+response post-command, returns a typed `ma.ErrAuthRequired`, and the
+dispatcher logs a one-time warning explaining how to mint a token
+in MA (Settings → Security → API Tokens) and where to paste it.
+Subsequent attempts log at debug to avoid spam.
+
+`internal/ma/client.go`: new `ErrAuthRequired` sentinel,
+`isAuthRequiredCode` helper.
+`internal/dispatcher/dispatcher.go`: `authWarned` flag, one-time
+warn + thereafter debug.
+
+**3. Verbose debug telemetry for long-video drift.** The user
+reported that on very long videos the phone UI doesn't update its
+timestamp until a pause/play cycle nudges it. To narrow this down,
+`updateCachedState` now emits a single debug record per MA push
+showing the incoming state, the local wall-clock estimator's value,
+and the delta between them. `DoPause` and `DoResume` log the
+local-estimator transition (frozen at / resumed after pause-duration).
+Enable in addon options with `log_level: debug`.
+
+`cmd/yt-cast/player.go`: extracted `localEstimateLocked()` so the
+estimator value is reusable, added drift logging in
+`updateCachedState`, debug logs in `DoPause` / `DoResume`.
+
+### Schema / config
+
+- `config.yaml` adds `volume_step: 5` (default) with schema
+  `int(1,50)?`.
+- `internal/config/config.go`: new `VolumeStep` field with
+  `EffectiveVolumeStep()` accessor (default 5, clamped to ≤50).
+
 ## Version 0.1.9 (2026-05-11)
 
 ### Local position estimation + seek/volume visibility

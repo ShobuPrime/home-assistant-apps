@@ -35,6 +35,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
@@ -44,6 +45,14 @@ import (
 
 	"github.com/shobuprime/sonuntius/internal/events"
 )
+
+// ErrAuthRequired is returned when the MA server requires the client to
+// authenticate before issuing a command (schema_version >= 28) but no
+// `ma_token` was configured (or the configured token was rejected). The
+// dispatcher uses errors.Is to detect this specific case and surface a
+// one-time actionable warning to the user, since the play path silently
+// falls back to HA REST otherwise.
+var ErrAuthRequired = errors.New("ma: authentication required (set ma_token in addon options — create one at MA Settings → Security → API Tokens)")
 
 const (
 	// DefaultPort is the TCP port the music_assistant addon exposes its
@@ -432,6 +441,14 @@ func PlayMediaItem(ctx context.Context, url, token, queueID string, item MediaIt
 	if err != nil {
 		return fmt.Errorf("ma: server info: %w", err)
 	}
+	if info.SchemaVersion >= authSchemaVersion && token == "" {
+		// MA schema 28+ requires auth for every command. Skip the
+		// connection attempt entirely and surface a typed error so the
+		// dispatcher can log actionable guidance once. Falling through
+		// would only result in MA returning error_code=20 a few ms later.
+		return fmt.Errorf("%w (server schema=%d, server_id=%s)",
+			ErrAuthRequired, info.SchemaVersion, info.ServerID)
+	}
 	if info.SchemaVersion >= authSchemaVersion && token != "" {
 		msgID, mErr := randHex(16)
 		if mErr != nil {
@@ -490,6 +507,13 @@ func PlayMediaItem(ctx context.Context, url, token, queueID string, item MediaIt
 		if respID, ok := resp["message_id"].(string); ok && respID == msgID {
 			if ec, ok := resp["error_code"]; ok && ec != nil {
 				details, _ := resp["details"].(string)
+				// MA error_code 20 is the documented "Authentication
+				// required" code. Wrap with our sentinel so the
+				// dispatcher can detect it via errors.Is.
+				if isAuthRequiredCode(ec) {
+					return fmt.Errorf("%w: server reply: %v %s",
+						ErrAuthRequired, ec, details)
+				}
 				return fmt.Errorf("ma: play_media error: %v %s", ec, details)
 			}
 			return nil
@@ -540,6 +564,24 @@ func allDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+// isAuthRequiredCode reports whether ec, as decoded from a JSON value,
+// represents the MA `error_code: 20` ("Authentication required").
+// JSON numerics round-trip to float64 via encoding/json, but we tolerate
+// the int and string forms too.
+func isAuthRequiredCode(ec any) bool {
+	switch v := ec.(type) {
+	case float64:
+		return v == 20
+	case int:
+		return v == 20
+	case int64:
+		return v == 20
+	case string:
+		return v == "20"
+	}
+	return false
 }
 
 func truncate(s string, n int) string {
