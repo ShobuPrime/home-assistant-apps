@@ -165,6 +165,20 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 	a.mu.Lock()
 	prev := a.cachedState
 	a.cachedState = ps
+	// When the track has ended (MA reports idle/stopped/off after
+	// previously being playing/buffering/paused) the local estimator
+	// should NOT keep ticking — it's a fallback for the early-playback
+	// gap, not a continuous reference. Without this clear, MA stops
+	// emitting media_position on idle, our cachedState.Position goes
+	// nil, and the engine falls back to a runaway estimator showing
+	// e.g. "3:44 / 1:27".
+	if isTrackEndedState(ps.State) && isActivePlaybackState(prev.State) {
+		a.playbackStartedAt = nil
+		a.playbackBasePos = 0
+		a.playbackPaused = false
+		a.playbackPauseStart = nil
+		a.playbackPauseAccum = 0
+	}
 	fn := a.onStateChange
 	log := a.log
 	localPos, localOK := a.localEstimateLocked()
@@ -208,6 +222,26 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 	}
 }
 
+// isTrackEndedState reports whether s is one of the MA / HA state
+// strings that indicates the queue item finished or was stopped.
+func isTrackEndedState(s string) bool {
+	switch s {
+	case "idle", "stopped", "off", "unavailable", "":
+		return true
+	}
+	return false
+}
+
+// isActivePlaybackState reports whether s indicates an in-flight
+// track (regardless of paused/playing/buffering).
+func isActivePlaybackState(s string) bool {
+	switch s {
+	case "playing", "paused", "buffering", "loading":
+		return true
+	}
+	return false
+}
+
 // localEstimateLocked returns the local wall-clock position estimate.
 // The bool is false when no DoPlay/DoResume/DoSeek has been called yet
 // (i.e. the estimator hasn't been seeded). Caller MUST hold a.mu.
@@ -225,7 +259,15 @@ func (a *adapter) localEstimateLocked() (float64, bool) {
 	if elapsed < 0 {
 		elapsed = 0
 	}
-	return a.playbackBasePos + elapsed.Seconds(), true
+	pos := a.playbackBasePos + elapsed.Seconds()
+	// Cap at duration if we know it. The estimator should never run
+	// past the end of the track — if it does, the phone sees
+	// "3:44 / 1:27" because MA's media_position stops being reported
+	// when the queue ends and we fall back to a runaway estimate.
+	if a.cachedState.Duration != nil && *a.cachedState.Duration > 0 && pos > *a.cachedState.Duration {
+		pos = *a.cachedState.Duration
+	}
+	return pos, true
 }
 
 // snapshotState returns a copy of the cached state.
@@ -368,10 +410,16 @@ func (a *adapter) DoPlay(ctx context.Context, video types.Video, position float6
 	if err := a.send(intent); err != nil {
 		return err
 	}
-	// Seed the local position estimator now that play_media has been
-	// dispatched. cachedState.Position takes over the moment HA emits
-	// its first state_changed for the entity; until then this fills
-	// the gap so the phone's progress bar doesn't snap to 0:00.
+	// Seed the local position estimator AND replace the cached
+	// PlayerState with fresh fields for this cast. Without the cached
+	// replacement, the engine pushes a stale state to the phone (left
+	// over from the previous cast — wrong title, wrong duration, wrong
+	// position) for the ~1s before MA's first state_changed arrives.
+	// With it, the phone sees the right metadata and a correct
+	// position/duration ratio immediately.
+	resolvedTitle, _ := intent.Metadata["title"].(string)
+	resolvedChannel, _ := intent.Metadata["channel"].(string)
+	resolvedDuration, _ := intent.Metadata["duration"].(float64)
 	a.mu.Lock()
 	now := time.Now()
 	a.playbackBasePos = position
@@ -379,7 +427,29 @@ func (a *adapter) DoPlay(ctx context.Context, video types.Video, position float6
 	a.playbackPaused = false
 	a.playbackPauseStart = nil
 	a.playbackPauseAccum = 0
+	// Preserve volume/muted across casts (those are speaker-level,
+	// not track-level) but replace all track fields.
+	prevVolume := a.cachedState.Volume
+	prevMuted := a.cachedState.Muted
+	posCopy := position
+	a.cachedState = events.PlayerState{
+		State:    "buffering",
+		Title:    resolvedTitle,
+		Artist:   resolvedChannel,
+		TrackID:  intent.TrackID,
+		Position: &posCopy,
+		Volume:   prevVolume,
+		Muted:    prevMuted,
+	}
+	if resolvedDuration > 0 {
+		d := resolvedDuration
+		a.cachedState.Duration = &d
+	}
+	fn := a.onStateChange
 	a.mu.Unlock()
+	if fn != nil {
+		fn(context.Background())
+	}
 	go a.logResolvedTitle(video.ID, intent.Provider)
 	return nil
 }
