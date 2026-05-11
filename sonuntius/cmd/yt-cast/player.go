@@ -110,17 +110,17 @@ func newAdapter(client *ipc.Client) *adapter {
 		source:     "yt-cast",
 		metadata:   newMetadataResolver(),
 		stream:     newStreamResolver(),
-		volumeStep: 5,
+		volumeStep: 10,
 	}
 }
 
 // setVolumeStep configures the quantisation step for DoSetVolume. 0 or
-// negative values fall back to the default (5).
+// negative values fall back to the default (10).
 func (a *adapter) setVolumeStep(step int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if step <= 0 {
-		a.volumeStep = 5
+		a.volumeStep = 10
 		return
 	}
 	if step > 50 {
@@ -515,7 +515,7 @@ func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error 
 	log := a.log
 	step := a.volumeStep
 	if step <= 0 {
-		step = 5
+		step = 10
 	}
 	rounded := roundToStep(volume.Level, step)
 	// Dedup: drop the second back-to-back identical (level, muted) pair.

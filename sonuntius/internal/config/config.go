@@ -44,6 +44,7 @@ type Options struct {
 	HAToken               string         `json:"ha_token"`
 	MAWsURL               string         `json:"ma_ws_url"`
 	MAToken               string         `json:"ma_token"`
+	MAQueueID             string         `json:"ma_queue_id"`
 	TidalFallback         TidalFallback  `json:"tidal_fallback"`
 }
 
@@ -116,6 +117,7 @@ func (o *Options) normalize() {
 	o.HAToken = strings.TrimSpace(o.HAToken)
 	o.MAWsURL = strings.TrimSpace(o.MAWsURL)
 	o.MAToken = strings.TrimSpace(o.MAToken)
+	o.MAQueueID = strings.TrimSpace(o.MAQueueID)
 	o.TidalFallback.BinaryTarballPath = strings.TrimSpace(o.TidalFallback.BinaryTarballPath)
 	o.TidalFallback.CertFilename = strings.TrimSpace(o.TidalFallback.CertFilename)
 	o.TidalFallback.FriendlyName = strings.TrimSpace(o.TidalFallback.FriendlyName)
@@ -190,10 +192,12 @@ func ResolveLogLevel(name string) slog.Level {
 // tick, which would flood MA with fine-grained updates. Rounding to a
 // step that matches the speaker's own button increment keeps the MA
 // log clean and avoids the speaker fighting the cast UI for fractions.
-// Default 5 — pick 10 if your speaker steps in 10s.
+// Default 10 — most Sendspin/AirPlay speakers (the user's 3RSPK
+// included) step their physical buttons in 10s, so matching that is
+// the least surprising default. Set lower if you want finer control.
 func (o Options) EffectiveVolumeStep() int {
 	if o.VolumeStep <= 0 {
-		return 5
+		return 10
 	}
 	if o.VolumeStep > 50 {
 		return 50
