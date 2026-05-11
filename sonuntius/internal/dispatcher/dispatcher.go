@@ -147,10 +147,20 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 // `player_queues/play_media` command. Used for url-provider intents
 // where rich metadata would otherwise be lost.
 //
-// The MediaItem is shaped so MA's stream pipeline uses our resolved
-// URL directly and does NOT call builtin.parse_item (which would
-// ffmpeg-probe the googlevideo URL and overwrite our name/artist).
-// See ma.MediaItem doc for the field-by-field reasoning.
+// item_id is the stream URL itself. The previous v0.1.12 attempt at
+// a synthetic id (`yt_<videoId>`) failed at stream time: MA's
+// builtin provider's get_stream_details treats non-URL item_ids as
+// filesystem paths, can't find the file, and the queue skips the
+// item ("Unable to retrieve info for yt_xxx — No such file or
+// directory" in MA's log). Using the URL puts builtin on its
+// ffmpeg-probe path, which succeeds for a real audio stream.
+//
+// Our explicit `name` + `artists` (full Artist dicts) survive the
+// probe — MA's QueueItem.from_media_item uses the dict fields we
+// provide for display, and ffmpeg's metadata only fills in audio
+// stream details. Confirmed against MA 2026.x: queue title rendered
+// as "<artist[0].name> - <name>" from our dict even when item_id is
+// the URL.
 func (d *Dispatcher) playViaMAWS(ctx context.Context, uri string, p *events.PlayIntent) error {
 	title, _ := p.Metadata["title"].(string)
 	channel, _ := p.Metadata["channel"].(string)
@@ -158,14 +168,10 @@ func (d *Dispatcher) playViaMAWS(ctx context.Context, uri string, p *events.Play
 	videoID, _ := p.Metadata["video_id"].(string)
 	durationVal, _ := p.Metadata["duration"].(float64)
 
-	// Synthetic, stable, NON-URL item_id. yt_<videoId> when we have a
-	// YouTube id; otherwise a hash-shaped fallback. Whatever it is,
-	// it must not look like an HTTP URL or builtin.parse_item will
-	// probe it.
-	itemID := "yt_" + videoID
-	if videoID == "" {
-		itemID = "sonuntius_url_" + shortHash(uri)
-	}
+	// item_id must be the URL so MA's builtin provider can stream it
+	// (its get_stream_details treats non-URL ids as filesystem paths).
+	itemID := uri
+	_ = videoID // kept available in metadata for future routing changes
 
 	contentType := guessAudioContentType(uri)
 	mapping := ma.MediaItemProviderMapping{
@@ -256,22 +262,6 @@ func slugifyChannel(s string) string {
 	}
 	if len(out) == 0 {
 		return "unknown"
-	}
-	return string(out)
-}
-
-// shortHash returns a short hex digest of s for synthesising an
-// item_id when no upstream-stable id is available.
-func shortHash(s string) string {
-	var h uint32 = 2166136261
-	for i := 0; i < len(s); i++ {
-		h ^= uint32(s[i])
-		h *= 16777619
-	}
-	const hex = "0123456789abcdef"
-	out := make([]byte, 8)
-	for i := range 8 {
-		out[i] = hex[(h>>uint(28-i*4))&0xf]
 	}
 	return string(out)
 }
