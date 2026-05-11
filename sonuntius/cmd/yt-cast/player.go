@@ -26,7 +26,9 @@ package main
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/shobuprime/sonuntius/internal/events"
 	"github.com/shobuprime/sonuntius/internal/ipc"
@@ -52,6 +54,14 @@ type adapter struct {
 	// source is the "originating receiver" label attached to every
 	// outgoing event. Always "yt-cast" for this adapter.
 	source string
+
+	// metadata resolves human-readable titles via YouTube's oEmbed
+	// endpoint. May be nil — DoPlay falls back to logging just the ID.
+	metadata *metadataResolver
+
+	// log is the slog logger used for the async title-resolution
+	// callback. May be nil; falls back to slog.Default().
+	log *slog.Logger
 }
 
 // newAdapter constructs an adapter that emits events with source =
@@ -61,7 +71,17 @@ func newAdapter(client *ipc.Client) *adapter {
 	return &adapter{
 		ipcClient: client,
 		source:    "yt-cast",
+		metadata:  newMetadataResolver(),
 	}
+}
+
+// setLogger attaches a logger used for the async title-resolution
+// callback. Optional — without a logger the resolver still populates
+// PlayIntent.Metadata, but the human-name log line is skipped.
+func (a *adapter) setLogger(l *slog.Logger) {
+	a.mu.Lock()
+	a.log = l
+	a.mu.Unlock()
 }
 
 // setIPCClient swaps the underlying writer. nil means "broker is
@@ -128,9 +148,44 @@ func resolveIntent(video types.Video, source string) *events.PlayIntent {
 	return intent
 }
 
-// DoPlay emits a PlayIntent.
+// DoPlay emits a PlayIntent. After dispatching the event we fire an
+// async metadata fetch via the oEmbed endpoint and log the resolved
+// title — the play path itself never blocks on the network roundtrip,
+// matching upstream's optimistic Player.play() behavior.
 func (a *adapter) DoPlay(_ context.Context, video types.Video, _ float64) error {
-	return a.send(resolveIntent(video, a.source))
+	intent := resolveIntent(video, a.source)
+	if err := a.send(intent); err != nil {
+		return err
+	}
+	go a.logResolvedTitle(video.ID, intent.Provider)
+	return nil
+}
+
+// logResolvedTitle runs out-of-band so the play path stays optimistic.
+// Resolution failures degrade to a single warn line carrying the ID.
+func (a *adapter) logResolvedTitle(videoID, provider string) {
+	if a.metadata == nil || videoID == "" {
+		return
+	}
+	a.mu.Lock()
+	log := a.log
+	a.mu.Unlock()
+	if log == nil {
+		log = slog.Default()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	m, err := a.metadata.Resolve(ctx, videoID)
+	if err != nil {
+		log.Warn("yt-cast: metadata resolve failed",
+			"video_id", videoID, "provider", provider, "err", err)
+		return
+	}
+	log.Info("yt-cast: now playing",
+		"video_id", videoID,
+		"title", m.Title,
+		"channel", m.Channel,
+		"provider", provider)
 }
 
 // DoPause emits a pause TransportCommand.

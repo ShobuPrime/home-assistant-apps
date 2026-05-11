@@ -22,6 +22,25 @@
   resolveIntent provider mapping (YT Music, YouTube classic, unknown
   surface).
 
+### YouTube video-title resolution + Lounge-state visibility
+
+- New `cmd/yt-cast/metadata.go` (with tests) — `metadataResolver`
+  fetches video title + channel via YouTube's public oEmbed endpoint
+  (`https://www.youtube.com/oembed?url=...&format=json`), stdlib-only,
+  no third-party deps, in-process cache to avoid re-fetching the same
+  video. `DoPlay` fires the resolution in a goroutine so the play path
+  stays optimistic; the addon log now shows
+  `yt-cast: now playing  video_id=0FrB-7Nm3d4  title="Poker Flat Podcast 32"  channel="Poker Flat Recordings"  provider=url`
+  shortly after every cast.
+- `internal/ytcast/youtubeapp.go`: when the orchestrator pushes a
+  player-state update to the connected sender (the messages that drive
+  the phone's play/pause/skip/seek controls), it now logs the message
+  names + status code at info level. The previous behavior was silent
+  on success, so a perpetual loading spinner on the phone was opaque
+  from the addon side. Lines like
+  `Pushing player-state update to sender: names=[onStateChange nowPlaying onHasPreviousNextChanged] status=1`
+  now appear after every state transition.
+
 ## Version 0.1.2 (2026-05-11)
 
 ### MA addon auto-discovery + /share/sonuntius bootstrap

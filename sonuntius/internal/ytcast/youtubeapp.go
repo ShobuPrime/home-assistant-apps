@@ -1249,6 +1249,16 @@ func (a *YouTubeApp) handlePlayerStateEvent(ev pkgplayer.StateEvent) {
 	if allVolumeChange {
 		defer_ = &lounge.SendDeferOptions{Key: "onVolumeChanged", Interval: 200_000_000} // 200ms
 	}
+	// Build a short summary of message names so the addon log shows
+	// what state updates are being pushed to the sender — without this,
+	// a perpetual loading spinner on the phone is opaque from the
+	// receiver side.
+	names := make([]string, 0, len(messages))
+	for _, m := range messages {
+		names = append(names, m.Name)
+	}
+	statusStr := fmt.Sprintf("%d", int(ev.Current.Status))
+	a.info(fmt.Sprintf("Pushing player-state update to sender: names=%v status=%s", names, statusStr))
 	go func(msgs []*lounge.Message, d *lounge.SendDeferOptions) {
 		if _, err := active.SendMessage(context.Background(), msgs, d); err != nil {
 			a.errorLog("Caught error sending message:", err)
