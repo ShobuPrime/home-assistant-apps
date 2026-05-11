@@ -44,11 +44,25 @@ func newStreamResolver() *streamResolver {
 	}
 }
 
-// Resolve returns a direct audio stream URL for the given video id.
-// Equivalent shell: yt-dlp -f bestaudio -g <watch-url>.
-func (r *streamResolver) Resolve(ctx context.Context, videoID string) (string, error) {
+// streamInfo bundles the resolver output: the direct audio stream URL
+// and the source video's duration in seconds (0 when yt-dlp didn't
+// surface a duration for this format).
+type streamInfo struct {
+	URL      string
+	Duration float64
+}
+
+// Resolve returns a direct audio stream URL + duration for the given
+// video id. Equivalent shell:
+//
+//	yt-dlp -f bestaudio -g --print '%(duration)s' <watch-url>
+//
+// The `-g` flag emits the format URL; `--print '%(duration)s'` adds
+// the integer duration. yt-dlp emits the URL first, then the print
+// values, on separate lines.
+func (r *streamResolver) Resolve(ctx context.Context, videoID string) (streamInfo, error) {
 	if videoID == "" {
-		return "", errors.New("streamresolve: empty video id")
+		return streamInfo{}, errors.New("streamresolve: empty video id")
 	}
 	bin := r.Binary
 	if bin == "" {
@@ -66,6 +80,7 @@ func (r *streamResolver) Resolve(ctx context.Context, videoID string) (string, e
 		"--quiet",
 		"-f", "bestaudio",
 		"-g",
+		"--print", "%(duration)s",
 		watchURL,
 	)
 	var stdout, stderr bytes.Buffer
@@ -76,19 +91,37 @@ func (r *streamResolver) Resolve(ctx context.Context, videoID string) (string, e
 		if msg == "" {
 			msg = err.Error()
 		}
-		return "", fmt.Errorf("streamresolve: yt-dlp failed: %s", truncateString(msg, 200))
+		return streamInfo{}, fmt.Errorf("streamresolve: yt-dlp failed: %s", truncateString(msg, 200))
 	}
-	url := strings.TrimSpace(stdout.String())
-	if url == "" {
-		return "", errors.New("streamresolve: yt-dlp returned empty url")
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	var info streamInfo
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "NA" {
+			continue
+		}
+		if info.URL == "" && (strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://")) {
+			info.URL = line
+			continue
+		}
+		if info.Duration == 0 {
+			if d, err := parseFloat(line); err == nil && d > 0 {
+				info.Duration = d
+			}
+		}
 	}
-	// yt-dlp can emit multiple lines for combined audio+video formats;
-	// we asked for bestaudio so a single line is expected, but defend
-	// against the multi-line case by taking the first line.
-	if i := strings.IndexByte(url, '\n'); i >= 0 {
-		url = strings.TrimSpace(url[:i])
+	if info.URL == "" {
+		return streamInfo{}, errors.New("streamresolve: yt-dlp returned empty url")
 	}
-	return url, nil
+	return info, nil
+}
+
+// parseFloat is a thin wrapper to keep the package's import surface
+// small; we don't pull strconv in elsewhere here.
+func parseFloat(s string) (float64, error) {
+	var f float64
+	_, err := fmt.Sscanf(s, "%f", &f)
+	return f, err
 }
 
 func truncateString(s string, n int) string {

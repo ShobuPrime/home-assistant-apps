@@ -390,28 +390,89 @@ func randHex(bytes int) (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-// MediaItemImage is the image sub-object of a MediaItem.
+// MediaItemImage is one entry in MediaItemMetadata.Images.
 type MediaItemImage struct {
-	Type     string `json:"type"`     // "thumb", "cover", "logo"
-	Path     string `json:"path"`     // URL
-	Provider string `json:"provider"` // "url" for remote
+	Type               string `json:"type"`                          // "thumb", "fanart", "logo"
+	Path               string `json:"path"`                          // URL
+	Provider           string `json:"provider"`                      // "url" for remote
+	RemotelyAccessible bool   `json:"remotely_accessible,omitempty"` // true for public HTTP URLs
 }
 
-// MediaItem mirrors the subset of MA's MediaItem schema we populate
-// when dispatching a play_media via the native WS API. Bypassing
-// HA's media_player.play_media wrapper preserves the rich metadata
-// fields (name, image, artist) which would otherwise be stripped on
-// the way through the HA integration's `extra` field — the URL
-// provider then falls back to ffmpeg-probed metadata which is empty
-// for a googlevideo.com signed URL.
+// MediaItemMetadata is the metadata sub-object of a MediaItem.
+type MediaItemMetadata struct {
+	Images []MediaItemImage `json:"images,omitempty"`
+}
+
+// MediaItemAudioFormat describes the wire audio format of a provider
+// mapping. We only fill the fields MA looks at on the playback path.
+type MediaItemAudioFormat struct {
+	ContentType string `json:"content_type,omitempty"` // "webm", "m4a", "mp3"
+	SampleRate  int    `json:"sample_rate,omitempty"`
+	BitDepth    int    `json:"bit_depth,omitempty"`
+	Channels    int    `json:"channels,omitempty"`
+}
+
+// MediaItemProviderMapping is a single entry under provider_mappings.
+// The critical field is `url` — when set, MA's streams pipeline uses
+// it directly and does NOT call the provider's parse_item / probe
+// flow. `item_id` here must be a synthetic ID (not the HTTP URL),
+// otherwise the builtin provider's parse_item re-probes the URL with
+// ffmpeg and clobbers our name/artist.
+type MediaItemProviderMapping struct {
+	ItemID           string                `json:"item_id"`
+	ProviderDomain   string                `json:"provider_domain"`
+	ProviderInstance string                `json:"provider_instance"`
+	Available        bool                  `json:"available"`
+	URL              string                `json:"url,omitempty"`
+	AudioFormat      *MediaItemAudioFormat `json:"audio_format,omitempty"`
+}
+
+// MediaItemArtist is a full Artist dict for use under MediaItem.Artists.
+// MA's deserializer drops a list of strings silently — the artist
+// name surfaces in the UI only when each entry is a proper dict.
+type MediaItemArtist struct {
+	ItemID    string `json:"item_id"`
+	Provider  string `json:"provider"`
+	Name      string `json:"name"`
+	MediaType string `json:"media_type"` // "artist"
+	Available bool   `json:"available"`
+}
+
+// MediaItem mirrors the subset of MA's Track schema we populate when
+// dispatching a play_media via the native WS API. Bypassing HA's
+// media_player.play_media wrapper preserves rich metadata that would
+// otherwise be stripped on the way through the HA integration's
+// `extra` field.
+//
+// CRITICAL fields for skipping MA's re-resolution of the URL (which
+// would clobber the title/artist with ffmpeg-probed values from the
+// signed googlevideo URL):
+//
+//   - ItemID is a synthetic, stable id (e.g. "yt_<videoId>"), NOT the
+//     HTTP URL. A URL-shaped item_id triggers builtin.parse_item which
+//     ffmpeg-probes and overwrites the metadata.
+//   - ProviderMappings[0].URL holds the resolved stream URL. MA's
+//     stream pipeline prefers this when set.
+//   - Artists must be full dicts (not strings) — MA's mashumaro
+//     deserializer silently drops list-of-string artists.
+//   - Metadata.Images replaces the older flat `image` field.
+//   - Available + IsPlayable must both be true; the play_media loop
+//     filters items by `available`.
 type MediaItem struct {
-	ItemID    string          `json:"item_id"`
-	Provider  string          `json:"provider"` // "builtin" for arbitrary URLs
-	Name      string          `json:"name,omitempty"`
-	MediaType string          `json:"media_type,omitempty"` // "track"
-	Image     *MediaItemImage `json:"image,omitempty"`
-	Artists   []string        `json:"artists,omitempty"`
-	URI       string          `json:"uri,omitempty"`
+	ItemID           string                     `json:"item_id"`
+	Provider         string                     `json:"provider"`
+	Name             string                     `json:"name"`
+	Version          string                     `json:"version"`
+	MediaType        string                     `json:"media_type"` // "track"
+	URI              string                     `json:"uri,omitempty"`
+	Available        bool                       `json:"available"`
+	IsPlayable       bool                       `json:"is_playable"`
+	Favorite         bool                       `json:"favorite"`
+	Duration         int                        `json:"duration,omitempty"`
+	Artists          []MediaItemArtist          `json:"artists,omitempty"`
+	Metadata         MediaItemMetadata          `json:"metadata"`
+	ProviderMappings []MediaItemProviderMapping `json:"provider_mappings"`
+	ExternalIDs      []any                      `json:"external_ids"`
 }
 
 // PlayMediaItem sends `player_queues/play_media` to MA's WebSocket

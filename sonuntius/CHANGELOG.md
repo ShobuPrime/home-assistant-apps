@@ -1,5 +1,73 @@
 # Changelog
 
+## Version 0.1.12 (2026-05-11)
+
+### Real metadata fix, fully responsive volume, position-drift guard
+
+Three issues from the v0.1.11 live test.
+
+**1. MA UI still showed the raw URL as the title.** v0.1.11's MA-WS
+play_media call succeeded (no more `error_code: 10`) but the MA UI
+still rendered `videoplayback?expire=…` instead of the song name —
+because the MediaItem we sent had two structural bugs that caused
+MA to silently drop our metadata and re-resolve the URL via
+ffmpeg-probe:
+
+  - `item_id` was the googlevideo HTTP URL. MA's builtin provider
+    treats URL-shaped item_ids as something to probe.
+  - `artists` was a `[]string`; MA's deserializer requires a list of
+    full Artist objects and silently drops the string form.
+  - Image lived under top-level `image`; MA reads from
+    `metadata.images[]`.
+
+`internal/ma/client.go`: redesigned `MediaItem` with a synthetic
+non-URL `item_id` (`yt_<video_id>`), full `Artist` dicts under
+`Artists`, `Metadata.Images[]` with `RemotelyAccessible: true`,
+`ProviderMappings[0].URL` carrying the actual stream URL (so the
+streams pipeline uses it directly, never calling `parse_item`), and
+`Available: true` + `IsPlayable: true` to pass the play_media
+availability filter. Added optional `AudioFormat` derived from the
+URL `mime=` parameter (webm/m4a).
+
+`internal/dispatcher/dispatcher.go::playViaMAWS`: builds the new
+shape; new helpers `guessAudioContentType`, `slugifyChannel`,
+`shortHash`.
+
+`cmd/yt-cast/streamresolve.go`: yt-dlp call now also captures the
+video duration (`--print "%(duration)s"`) and returns a
+`streamInfo{URL, Duration}`. The duration rides through
+`PlayIntent.Metadata["duration"]` into the MA MediaItem's
+`duration` field so the MA UI shows a proper progress bar from
+the moment play_media lands.
+
+**2. "Just make all my button presses work."** v0.1.11's volume
+dedup was eating press-and-hold streams from the Android phone:
+when the YouTube cast app sends a rapid burst of values during a
+hold, all rounded to the same bucket → all dropped. Result: volume
+felt frozen during a hold. Removed dedup entirely — every cast
+event is rounded and forwarded to MA. Repeated identical
+`volume_set` commands are idempotent on MA's end.
+
+`cmd/yt-cast/player.go::DoSetVolume`: dedup logic + state fields
+gone.
+
+Also reverted `volume_step` default from 10 → 5 (which was v0.1.10's
+default and felt right to the user). The user can still set 10 for
+coarser quantisation, or 1 to disable rounding entirely.
+
+**3. Phone progress bar snapping to 0:00 mid-playback.** v0.1.11
+logs showed `state: broadcasting state=playing position=0.00` for
+state events where MA's media_position attribute was 0, even
+though playback was in second 900-ish. The cachedState
+overwriting the local estimator with 0 produced the
+`drift_seconds=-935` lines and made the phone's UI jump to 0 every
+few seconds. We now treat `media_position=0` as "no fresh
+position" when the state is `playing` and don't overwrite the
+estimator.
+
+`internal/state/watcher.go::playerStateFrom`: only set
+`ps.Position` when the value is > 0 or the state is not `playing`.
+
 ## Version 0.1.11 (2026-05-11)
 
 ### MA queue_id auto-discovery, `volume_step` default → 10
