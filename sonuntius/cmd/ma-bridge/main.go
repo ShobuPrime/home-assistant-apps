@@ -65,10 +65,17 @@ func main() {
 
 	// Music Assistant addon discovery feeds the Phase 6a direct MA WS
 	// path. The discovered hostname is only used when the explicit
-	// ma_ws_url override is empty.
-	maHost, _ := haCli.FindMAAddonHostname(ctx)
-	if maHost != "" {
+	// ma_ws_url override is empty. Log every outcome so the cause of a
+	// silent fallback to HA core WS is visible in the addon log.
+	maHost, discoveryErr := haCli.FindMAAddonHostname(ctx)
+	switch {
+	case discoveryErr != nil:
+		logger.Warn("ha: MA addon discovery errored — falling back to HA core WS",
+			"err", discoveryErr)
+	case maHost != "":
 		logger.Info("music_assistant addon detected", "hostname", maHost)
+	default:
+		logger.Info("ha: MA addon not discovered — falling back to HA core WS (set ma_ws_url to override)")
 	}
 
 	// Health endpoint — exposes /health JSON for the HA addon watchdog

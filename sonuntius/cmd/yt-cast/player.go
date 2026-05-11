@@ -8,14 +8,19 @@
 //
 // Provider mapping (DoPlay):
 //
-//   - Video.Client.Theme == "m"  → "ytmusic" (YouTube Music app)
-//   - Video.Client.Theme == "cl" → "youtube" (regular YouTube app)
+//   - Video.Client.Theme == "m"  → ytmusic://track/<id>
+//                                  (Music Assistant's YouTube Music
+//                                  native provider).
+//   - Video.Client.Theme == "cl" → https://www.youtube.com/watch?v=<id>
+//                                  emitted with provider="url" so the
+//                                  dispatcher feeds it to MA's stream
+//                                  extractor (yt-dlp), which handles
+//                                  arbitrary YouTube watch URLs.
 //
-// The dispatcher in internal/dispatcher rejects unknown providers — for
-// the YouTube classic surface there is no MA-native provider, so we
-// still emit a PlayIntent (with provider="youtube") to keep the
-// integration observable; the dispatcher logs and drops it. Hooking up
-// a real YouTube provider in MA is a Phase 2.1 follow-up.
+// The dispatcher in internal/dispatcher accepts provider="url" by
+// forwarding URL straight into media_player.play_media as the
+// media_content_id, so no dispatcher change is needed for the
+// YouTube-classic path.
 package main
 
 import (
@@ -98,28 +103,34 @@ func (a *adapter) send(ev events.Event) error {
 // no automatic retry — the wrapper main reconnects on its own.
 var errIPCOffline = errors.New("yt-cast: ma-bridge IPC unavailable")
 
-// providerForClient maps a Cast Client surface onto the dispatcher's
-// provider tag. See package doc comment for rationale.
-func providerForClient(c types.Client) string {
-	switch c.Theme {
+// resolveIntent maps a Cast video onto a dispatcher-ready PlayIntent.
+// See package doc comment for the provider mapping rationale.
+func resolveIntent(video types.Video, source string) *events.PlayIntent {
+	intent := &events.PlayIntent{Source: source}
+	switch video.Client.Theme {
 	case "m":
-		return "ytmusic"
+		// YouTube Music app — MA's native ytmusic provider takes the
+		// raw video/track id.
+		intent.Provider = "ytmusic"
+		intent.TrackID = video.ID
 	case "cl":
-		return "youtube"
+		// YouTube classic — hand MA the public watch URL so its stream
+		// extractor (yt-dlp) can pull audio.
+		intent.Provider = "url"
+		intent.URL = "https://www.youtube.com/watch?v=" + video.ID
+		intent.TrackID = video.ID
 	default:
 		// Unknown surface — let the dispatcher's "unknown provider" log
 		// surface the issue rather than silently dropping.
-		return c.Theme
+		intent.Provider = video.Client.Theme
+		intent.TrackID = video.ID
 	}
+	return intent
 }
 
 // DoPlay emits a PlayIntent.
 func (a *adapter) DoPlay(_ context.Context, video types.Video, _ float64) error {
-	return a.send(&events.PlayIntent{
-		Provider: providerForClient(video.Client),
-		TrackID:  video.ID,
-		Source:   a.source,
-	})
+	return a.send(resolveIntent(video, a.source))
 }
 
 // DoPause emits a pause TransportCommand.
