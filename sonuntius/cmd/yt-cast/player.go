@@ -75,6 +75,18 @@ type adapter struct {
 	// Assistant flow back to the phone as Lounge messages. May be nil.
 	onStateChange func(context.Context)
 
+	// volumeStep is the quantisation increment for DoSetVolume. Phone
+	// cast apps (especially YouTube) emit volume changes at every
+	// slider tick — without rounding we'd flood MA with sub-second
+	// 33→36→33→36 sequences. Defaults to 5.
+	volumeStep int
+
+	// lastQuantizedVolume / lastVolumeMuted dedup repeat sends so the
+	// same rounded value isn't pushed twice in a row.
+	lastQuantizedVolume int
+	lastVolumeMuted     bool
+	lastVolumeHasSent   bool
+
 	// Local position tracking. HA's state_changed events for the MA
 	// player carry an accurate media_position, but they only fire after
 	// MA actually starts streaming (typically 2–10 s after our
@@ -94,11 +106,27 @@ type adapter struct {
 // itself because the wrapper main keeps connection lifecycle.
 func newAdapter(client *ipc.Client) *adapter {
 	return &adapter{
-		ipcClient: client,
-		source:    "yt-cast",
-		metadata:  newMetadataResolver(),
-		stream:    newStreamResolver(),
+		ipcClient:  client,
+		source:     "yt-cast",
+		metadata:   newMetadataResolver(),
+		stream:     newStreamResolver(),
+		volumeStep: 5,
 	}
+}
+
+// setVolumeStep configures the quantisation step for DoSetVolume. 0 or
+// negative values fall back to the default (5).
+func (a *adapter) setVolumeStep(step int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if step <= 0 {
+		a.volumeStep = 5
+		return
+	}
+	if step > 50 {
+		step = 50
+	}
+	a.volumeStep = step
 }
 
 // setLogger attaches a logger used for the async title-resolution
@@ -134,14 +162,75 @@ func (a *adapter) setIPCClient(c *ipc.Client) {
 // the onStateChange callback (if any) so the host can re-emit player
 // state to connected senders. The callback runs synchronously on the
 // IPC reader goroutine — it should be cheap and non-blocking.
+//
+// At debug level we log the incoming state plus the delta vs our local
+// position estimator — useful for diagnosing timestamp drift on long
+// videos where the phone UI and the speaker fall out of sync.
 func (a *adapter) updateCachedState(ps events.PlayerState) {
 	a.mu.Lock()
+	prev := a.cachedState
 	a.cachedState = ps
 	fn := a.onStateChange
+	log := a.log
+	localPos, localOK := a.localEstimateLocked()
 	a.mu.Unlock()
+	if log == nil {
+		log = slog.Default()
+	}
+	// Build a compact debug record showing both what MA sent us and
+	// how it compares to our wall-clock estimate. Throttled output
+	// would obscure the cause of drift — let debug be verbose.
+	attrs := []any{
+		"state", ps.State,
+		"title", ps.Title,
+		"artist", ps.Artist,
+		"track_id", ps.TrackID,
+	}
+	if ps.Position != nil {
+		attrs = append(attrs, "ma_position", *ps.Position)
+		if localOK {
+			attrs = append(attrs, "local_estimate", localPos,
+				"drift_seconds", *ps.Position-localPos)
+		}
+	} else if localOK {
+		attrs = append(attrs, "local_estimate_only", localPos)
+	}
+	if ps.Duration != nil {
+		attrs = append(attrs, "duration", *ps.Duration)
+	}
+	if ps.Volume != nil {
+		attrs = append(attrs, "volume", *ps.Volume)
+	}
+	if ps.Muted != nil {
+		attrs = append(attrs, "muted", *ps.Muted)
+	}
+	if prev.State != "" && prev.State != ps.State {
+		attrs = append(attrs, "prev_state", prev.State)
+	}
+	log.Debug("yt-cast: cachedState updated", attrs...)
 	if fn != nil {
 		fn(context.Background())
 	}
+}
+
+// localEstimateLocked returns the local wall-clock position estimate.
+// The bool is false when no DoPlay/DoResume/DoSeek has been called yet
+// (i.e. the estimator hasn't been seeded). Caller MUST hold a.mu.
+func (a *adapter) localEstimateLocked() (float64, bool) {
+	if a.playbackStartedAt == nil {
+		return 0, false
+	}
+	now := time.Now()
+	elapsed := now.Sub(*a.playbackStartedAt)
+	if a.playbackPaused && a.playbackPauseStart != nil {
+		elapsed -= a.playbackPauseAccum + now.Sub(*a.playbackPauseStart)
+	} else {
+		elapsed -= a.playbackPauseAccum
+	}
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	return a.playbackBasePos + elapsed.Seconds(), true
 }
 
 // snapshotState returns a copy of the cached state.
@@ -325,12 +414,24 @@ func (a *adapter) logResolvedTitle(videoID, provider string) {
 // paused state.
 func (a *adapter) DoPause(_ context.Context) error {
 	a.mu.Lock()
+	log := a.log
+	var localPos float64
+	var hasLocal bool
 	if !a.playbackPaused {
 		now := time.Now()
 		a.playbackPaused = true
 		a.playbackPauseStart = &now
+		localPos, hasLocal = a.localEstimateLocked()
 	}
 	a.mu.Unlock()
+	if log == nil {
+		log = slog.Default()
+	}
+	if hasLocal {
+		log.Debug("yt-cast: DoPause — local estimator frozen", "at", localPos)
+	} else {
+		log.Debug("yt-cast: DoPause (no local estimate)")
+	}
 	return a.send(&events.TransportCommand{Command: "pause", Source: a.source})
 }
 
@@ -339,12 +440,25 @@ func (a *adapter) DoPause(_ context.Context) error {
 // so future DoGetPosition calls don't count it as playback.
 func (a *adapter) DoResume(_ context.Context) error {
 	a.mu.Lock()
+	log := a.log
+	var pausedFor time.Duration
 	if a.playbackPaused && a.playbackPauseStart != nil {
-		a.playbackPauseAccum += time.Since(*a.playbackPauseStart)
+		pausedFor = time.Since(*a.playbackPauseStart)
+		a.playbackPauseAccum += pausedFor
 	}
 	a.playbackPaused = false
 	a.playbackPauseStart = nil
+	localPos, hasLocal := a.localEstimateLocked()
 	a.mu.Unlock()
+	if log == nil {
+		log = slog.Default()
+	}
+	if hasLocal {
+		log.Debug("yt-cast: DoResume — estimator resumed",
+			"paused_for_seconds", pausedFor.Seconds(), "at", localPos)
+	} else {
+		log.Debug("yt-cast: DoResume (no local estimate)")
+	}
 	return a.send(&events.TransportCommand{Command: "play", Source: a.source})
 }
 
@@ -387,27 +501,66 @@ func (a *adapter) DoSeek(_ context.Context, position float64) error {
 	})
 }
 
-// DoSetVolume emits a VolumeCommand. The upstream wire range for
-// `level` is 0-100; the dispatcher expects 0.0-1.0, so we rescale.
-// Logged at info so we can see when the phone actually asks for a
-// volume change — the YouTube cast UI sometimes throttles or skips
-// the command depending on how the user drags the slider.
+// DoSetVolume emits a VolumeCommand. The phone's cast UI emits volume
+// changes at every slider drag tick — without rounding we'd flood MA
+// with sub-second 33→36→33→36 sequences which the speaker can't keep
+// up with (it steps in 10s on its own physical buttons). We quantise
+// to the configured volume_step (default 5) and dedup back-to-back
+// repeats so MA gets a clean stream of meaningful updates.
+//
+// Upstream wire range for `level` is 0–100; the dispatcher expects
+// 0.0–1.0, so we rescale.
 func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error {
-	level := float64(volume.Level) / 100.0
-	muted := volume.Muted
 	a.mu.Lock()
 	log := a.log
+	step := a.volumeStep
+	if step <= 0 {
+		step = 5
+	}
+	rounded := roundToStep(volume.Level, step)
+	// Dedup: drop the second back-to-back identical (level, muted) pair.
+	dropDup := a.lastVolumeHasSent &&
+		a.lastQuantizedVolume == rounded &&
+		a.lastVolumeMuted == volume.Muted
+	a.lastQuantizedVolume = rounded
+	a.lastVolumeMuted = volume.Muted
+	a.lastVolumeHasSent = true
 	a.mu.Unlock()
 	if log == nil {
 		log = slog.Default()
 	}
+	if dropDup {
+		log.Debug("yt-cast: DoSetVolume deduplicated (same as last send)",
+			"raw", volume.Level, "rounded", rounded)
+		return nil
+	}
+	level := float64(rounded) / 100.0
+	muted := volume.Muted
 	log.Info("yt-cast: DoSetVolume",
-		"level_raw", volume.Level, "level_normalized", level, "muted", muted)
+		"raw", volume.Level, "rounded", rounded, "step", step, "muted", muted)
 	return a.send(&events.VolumeCommand{
 		Level:  &level,
 		Muted:  &muted,
 		Source: a.source,
 	})
+}
+
+// roundToStep returns the nearest multiple of step in [0, 100].
+func roundToStep(level, step int) int {
+	if step <= 1 {
+		if level < 0 {
+			return 0
+		}
+		if level > 100 {
+			return 100
+		}
+		return level
+	}
+	half := step / 2
+	rounded := ((level + half) / step) * step
+	rounded = max(rounded, 0)
+	rounded = min(rounded, 100)
+	return rounded
 }
 
 // DoGetVolume returns the cached volume + muted state, rescaled from
@@ -447,22 +600,11 @@ func (a *adapter) DoGetPosition(_ context.Context) (float64, error) {
 	if a.cachedState.Position != nil {
 		return *a.cachedState.Position, nil
 	}
-	if a.playbackStartedAt == nil {
+	pos, ok := a.localEstimateLocked()
+	if !ok {
 		return 0, nil
 	}
-	now := time.Now()
-	elapsed := now.Sub(*a.playbackStartedAt)
-	if a.playbackPaused && a.playbackPauseStart != nil {
-		// Currently paused — exclude both the accumulated pause time
-		// AND the time since the current pause started.
-		elapsed -= a.playbackPauseAccum + now.Sub(*a.playbackPauseStart)
-	} else {
-		elapsed -= a.playbackPauseAccum
-	}
-	if elapsed < 0 {
-		elapsed = 0
-	}
-	return a.playbackBasePos + elapsed.Seconds(), nil
+	return pos, nil
 }
 
 // DoGetDuration returns the cached duration in seconds.

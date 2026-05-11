@@ -4,7 +4,9 @@ package dispatcher
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/shobuprime/sonuntius/internal/events"
 	"github.com/shobuprime/sonuntius/internal/ha"
@@ -45,6 +47,12 @@ type Dispatcher struct {
 	MAWsURL       string
 	MAToken       string
 	MAPlayerQueue string
+
+	// authWarned tracks whether we've already surfaced the loud
+	// "ma_token not configured" warning for ErrAuthRequired. Without
+	// this the warning would fire on every PlayIntent — instead, log
+	// once at warn, and at debug on subsequent attempts.
+	authWarned atomic.Bool
 }
 
 // New constructs a Dispatcher.
@@ -105,6 +113,23 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 	if p.Provider == "url" && d.MAWsURL != "" && d.MAPlayerQueue != "" {
 		if err := d.playViaMAWS(ctx, uri, p); err == nil {
 			return
+		} else if errors.Is(err, ma.ErrAuthRequired) {
+			// MA's URL provider is what would surface our metadata in
+			// the MA UI. Without auth we can't reach it. Tell the user
+			// once at warn, then degrade to debug so the log doesn't
+			// drown in repeats — the HA REST fallback below still
+			// plays audio, just without rich metadata.
+			if !d.authWarned.Swap(true) {
+				d.Logger.Warn(
+					"dispatcher: MA WS requires a long-lived API token to display title/artist/thumbnail in the MA UI",
+					"how_to_fix",
+					"In Music Assistant: Settings → Security → API Tokens → create a token, then paste it into the Sonuntius addon option ma_token and restart the addon.",
+					"err", err,
+				)
+			} else {
+				d.Logger.Debug("dispatcher: MA WS auth still missing — using HA REST fallback",
+					"err", err)
+			}
 		} else {
 			d.Logger.Warn("dispatcher: MA WS play_media failed, falling back to HA REST",
 				"err", err)

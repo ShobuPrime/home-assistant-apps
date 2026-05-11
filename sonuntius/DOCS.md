@@ -61,6 +61,15 @@ Default: `8009` — the Chromecast standard. Change this only if 8009 is
 already in use on your host. Cast senders discover the port via the
 mDNS `_googlecast._tcp` SRV record we publish, so any port works.
 
+### `volume_step`
+
+Quantisation increment for volume changes received from the cast
+sender. The phone's cast UI typically emits a fresh value on every
+slider drag tick; rounding to a fixed step keeps the log clean and
+avoids the speaker fighting the UI for fractions of a step. Default:
+`5`. Set to `10` if your physical speaker steps in 10s, or `1` to
+disable rounding.
+
 ### `cast_cert_path` / `cast_key_path`
 
 Filesystem paths inside the container for the AirReceiver
@@ -99,6 +108,19 @@ WebSocket subscription path.
 | --- | --- | --- |
 | `ma_ws_url` | `""` (auto-discover) | Full WebSocket URL to MA's `/ws` endpoint |
 | `ma_token` | `""` (no auth — addon-local trust) | Auth token used when MA's schema version is ≥ 28. Hidden in the addon UI. |
+
+> **`ma_token` is required for rich metadata in the MA UI.** On MA
+> schema ≥ 28 the addon must authenticate before issuing
+> `player_queues/play_media` — which is the only call path that
+> carries title / artist / thumbnail through to the MA UI for URL
+> playbacks (YouTube watch URLs). Without a token the bridge still
+> plays audio via the HA REST fallback, but the MA UI shows the raw
+> stream URL instead of the title.
+>
+> To create one: open Music Assistant → **Settings** → **Security** →
+> **API Tokens**, mint a token, and paste it into the `ma_token`
+> field of the Sonuntius addon options. Restart the addon. Look for
+> `ma: authenticated` in the log.
 
 ### `tidal_fallback.*`
 
