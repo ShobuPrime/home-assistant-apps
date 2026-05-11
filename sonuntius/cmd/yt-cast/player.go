@@ -81,11 +81,6 @@ type adapter struct {
 	// 33→36→33→36 sequences. Defaults to 5.
 	volumeStep int
 
-	// lastQuantizedVolume / lastVolumeMuted dedup repeat sends so the
-	// same rounded value isn't pushed twice in a row.
-	lastQuantizedVolume int
-	lastVolumeMuted     bool
-	lastVolumeHasSent   bool
 
 	// Local position tracking. HA's state_changed events for the MA
 	// player carry an accurate media_position, but they only fire after
@@ -110,17 +105,17 @@ func newAdapter(client *ipc.Client) *adapter {
 		source:     "yt-cast",
 		metadata:   newMetadataResolver(),
 		stream:     newStreamResolver(),
-		volumeStep: 10,
+		volumeStep: 5,
 	}
 }
 
 // setVolumeStep configures the quantisation step for DoSetVolume. 0 or
-// negative values fall back to the default (10).
+// negative values fall back to the default (5).
 func (a *adapter) setVolumeStep(step int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if step <= 0 {
-		a.volumeStep = 10
+		a.volumeStep = 5
 		return
 	}
 	if step > 50 {
@@ -350,14 +345,22 @@ func (a *adapter) DoPlay(ctx context.Context, video types.Video, position float6
 		// Stream URL via yt-dlp — the larger ~1–5s cost, but MA needs
 		// it to actually play the audio.
 		if a.stream != nil {
-			streamURL, err := a.stream.Resolve(ctx, video.ID)
+			info, err := a.stream.Resolve(ctx, video.ID)
 			if err != nil {
 				log.Error("yt-cast: stream URL pre-resolve failed — MA will reject the watch URL",
 					"video_id", video.ID, "err", err)
 			} else {
 				log.Info("yt-cast: stream URL pre-resolved via yt-dlp",
-					"video_id", video.ID, "stream_url", truncateString(streamURL, 120))
-				intent.URL = streamURL
+					"video_id", video.ID,
+					"stream_url", truncateString(info.URL, 120),
+					"duration", info.Duration)
+				intent.URL = info.URL
+				if info.Duration > 0 {
+					if intent.Metadata == nil {
+						intent.Metadata = make(map[string]any)
+					}
+					intent.Metadata["duration"] = info.Duration
+				}
 			}
 		}
 	}
@@ -515,25 +518,19 @@ func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error 
 	log := a.log
 	step := a.volumeStep
 	if step <= 0 {
-		step = 10
+		step = 5
 	}
 	rounded := roundToStep(volume.Level, step)
-	// Dedup: drop the second back-to-back identical (level, muted) pair.
-	dropDup := a.lastVolumeHasSent &&
-		a.lastQuantizedVolume == rounded &&
-		a.lastVolumeMuted == volume.Muted
-	a.lastQuantizedVolume = rounded
-	a.lastVolumeMuted = volume.Muted
-	a.lastVolumeHasSent = true
 	a.mu.Unlock()
 	if log == nil {
 		log = slog.Default()
 	}
-	if dropDup {
-		log.Debug("yt-cast: DoSetVolume deduplicated (same as last send)",
-			"raw", volume.Level, "rounded", rounded)
-		return nil
-	}
+	// No dedup: every phone-side adjustment is forwarded to MA as-is
+	// (after rounding to the configured step). Repeats are
+	// idempotent on MA's end — set the same level twice and the
+	// speaker stays put. The earlier dedup made the slider feel
+	// sticky inside a bucket (e.g. with step=10, anything 45-54
+	// folded to 50 and intermediate user actions were dropped).
 	level := float64(rounded) / 100.0
 	muted := volume.Muted
 	log.Info("yt-cast: DoSetVolume",

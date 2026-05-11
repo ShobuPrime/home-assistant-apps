@@ -64,12 +64,11 @@ mDNS `_googlecast._tcp` SRV record we publish, so any port works.
 ### `volume_step`
 
 Quantisation increment for volume changes received from the cast
-sender. The phone's cast UI typically emits a fresh value on every
-slider drag tick; rounding to a fixed step keeps the log clean and
-avoids the speaker fighting the UI for fractions of a step. Default:
-`10` — matches the increment most Sendspin/AirPlay speakers use on
-their physical buttons. Set to `5` for finer control, or `1` to
-disable rounding entirely.
+sender. Every event from the phone is rounded to the nearest
+multiple of this step and forwarded to MA. There is no dedup —
+press-and-hold streams pass through, and repeated identical values
+are idempotent on MA's end. Default: `5`. Set `10` for coarser
+quantisation, or `1` to disable rounding entirely.
 
 ### `cast_cert_path` / `cast_key_path`
 

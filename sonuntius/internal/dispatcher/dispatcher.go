@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 
 	"github.com/shobuprime/sonuntius/internal/events"
@@ -145,32 +146,134 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 // playViaMAWS sends a fully-formed MediaItem to MA's native WS
 // `player_queues/play_media` command. Used for url-provider intents
 // where rich metadata would otherwise be lost.
+//
+// The MediaItem is shaped so MA's stream pipeline uses our resolved
+// URL directly and does NOT call builtin.parse_item (which would
+// ffmpeg-probe the googlevideo URL and overwrite our name/artist).
+// See ma.MediaItem doc for the field-by-field reasoning.
 func (d *Dispatcher) playViaMAWS(ctx context.Context, uri string, p *events.PlayIntent) error {
 	title, _ := p.Metadata["title"].(string)
 	channel, _ := p.Metadata["channel"].(string)
 	thumb, _ := p.Metadata["thumbnail"].(string)
-	source, _ := p.Metadata["source"].(string)
-	if source == "" {
-		source = "builtin"
+	videoID, _ := p.Metadata["video_id"].(string)
+	durationVal, _ := p.Metadata["duration"].(float64)
+
+	// Synthetic, stable, NON-URL item_id. yt_<videoId> when we have a
+	// YouTube id; otherwise a hash-shaped fallback. Whatever it is,
+	// it must not look like an HTTP URL or builtin.parse_item will
+	// probe it.
+	itemID := "yt_" + videoID
+	if videoID == "" {
+		itemID = "sonuntius_url_" + shortHash(uri)
 	}
-	item := ma.MediaItem{
-		ItemID:    uri,
-		Provider:  "builtin",
-		Name:      title,
-		MediaType: "track",
-		URI:       uri,
+
+	contentType := guessAudioContentType(uri)
+	mapping := ma.MediaItemProviderMapping{
+		ItemID:           itemID,
+		ProviderDomain:   "builtin",
+		ProviderInstance: "builtin",
+		Available:        true,
+		URL:              uri,
 	}
-	if channel != "" {
-		item.Artists = []string{channel}
-	}
-	if thumb != "" {
-		item.Image = &ma.MediaItemImage{
-			Type:     "thumb",
-			Path:     thumb,
-			Provider: "url",
+	if contentType != "" {
+		mapping.AudioFormat = &ma.MediaItemAudioFormat{
+			ContentType: contentType,
+			SampleRate:  48000,
+			BitDepth:    16,
+			Channels:    2,
 		}
 	}
+
+	item := ma.MediaItem{
+		ItemID:           itemID,
+		Provider:         "builtin",
+		Name:             title,
+		Version:          "",
+		MediaType:        "track",
+		URI:              "builtin://track/" + itemID,
+		Available:        true,
+		IsPlayable:       true,
+		Favorite:         false,
+		Duration:         int(durationVal),
+		ProviderMappings: []ma.MediaItemProviderMapping{mapping},
+		ExternalIDs:      []any{},
+		Metadata:         ma.MediaItemMetadata{},
+	}
+	if channel != "" {
+		item.Artists = []ma.MediaItemArtist{{
+			ItemID:    "yt_channel_" + slugifyChannel(channel),
+			Provider:  "builtin",
+			Name:      channel,
+			MediaType: "artist",
+			Available: true,
+		}}
+	}
+	if thumb != "" {
+		item.Metadata.Images = []ma.MediaItemImage{{
+			Type:               "thumb",
+			Path:               thumb,
+			Provider:           "url",
+			RemotelyAccessible: true,
+		}}
+	}
 	return ma.PlayMediaItem(ctx, d.MAWsURL, d.MAToken, d.MAPlayerQueue, item, d.Logger.With("path", "ma-ws"))
+}
+
+// guessAudioContentType derives an MA-style content_type from the URL.
+// We're forwarding YouTube googlevideo audio streams (`mime=audio/webm`
+// for opus, `mime=audio/mp4` for AAC). Returns "" if unknown — MA
+// then ffmpeg-probes for the codec on its own.
+func guessAudioContentType(rawURL string) string {
+	switch {
+	case strings.Contains(rawURL, "mime=audio%2Fwebm") || strings.Contains(rawURL, "mime=audio/webm"):
+		return "webm"
+	case strings.Contains(rawURL, "mime=audio%2Fmp4") || strings.Contains(rawURL, "mime=audio/mp4"):
+		return "m4a"
+	}
+	return ""
+}
+
+// slugifyChannel produces a stable ASCII slug suitable for an
+// item_id. Lowercase, non-alphanumerics → '_', trimmed. Empty for
+// empty input.
+func slugifyChannel(s string) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'A' && c <= 'Z':
+			out = append(out, c+('a'-'A'))
+		case (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'):
+			out = append(out, c)
+		default:
+			if len(out) > 0 && out[len(out)-1] != '_' {
+				out = append(out, '_')
+			}
+		}
+	}
+	for len(out) > 0 && out[len(out)-1] == '_' {
+		out = out[:len(out)-1]
+	}
+	if len(out) == 0 {
+		return "unknown"
+	}
+	return string(out)
+}
+
+// shortHash returns a short hex digest of s for synthesising an
+// item_id when no upstream-stable id is available.
+func shortHash(s string) string {
+	var h uint32 = 2166136261
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= 16777619
+	}
+	const hex = "0123456789abcdef"
+	out := make([]byte, 8)
+	for i := range 8 {
+		out[i] = hex[(h>>uint(28-i*4))&0xf]
+	}
+	return string(out)
 }
 
 // metadataExtra translates PlayIntent.Metadata (populated by the

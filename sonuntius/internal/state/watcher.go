@@ -289,7 +289,16 @@ func playerStateFrom(s *haEntityState) *events.PlayerState {
 		ps.TrackID = v
 	}
 	if v, ok := floatAttr(s.Attributes, "media_position"); ok {
-		ps.Position = &v
+		// HA's MA integration sometimes emits state_changed events
+		// for a playing entity where media_position is set to 0
+		// because the underlying media_position_updated_at didn't
+		// tick — accepting the 0 would snap the receiver's cached
+		// position back to 0 mid-playback and the phone's progress
+		// bar would jump. Only trust position when the state is
+		// not "playing", or when position is > 0.
+		if v > 0 || s.State != "playing" {
+			ps.Position = &v
+		}
 	}
 	if v, ok := floatAttr(s.Attributes, "media_duration"); ok {
 		ps.Duration = &v

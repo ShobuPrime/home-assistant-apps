@@ -190,14 +190,15 @@ func ResolveLogLevel(name string) slog.Level {
 // EffectiveVolumeStep returns the volume quantisation increment. Phone
 // cast apps (in particular YouTube) emit volume changes at every drag
 // tick, which would flood MA with fine-grained updates. Rounding to a
-// step that matches the speaker's own button increment keeps the MA
-// log clean and avoids the speaker fighting the cast UI for fractions.
-// Default 10 — most Sendspin/AirPlay speakers (the user's 3RSPK
-// included) step their physical buttons in 10s, so matching that is
-// the least surprising default. Set lower if you want finer control.
+// step keeps the MA log clean and aligns cast values with how the
+// speaker steps its physical buttons. Default 5 — strikes the
+// responsiveness/quantisation balance: nearly every slider drag tick
+// crosses a bucket so the cast UI feels live, and the value lands on
+// a sensible round number for the speaker. Set 10 to coarse-quantise
+// or 1 to disable rounding entirely.
 func (o Options) EffectiveVolumeStep() int {
 	if o.VolumeStep <= 0 {
-		return 10
+		return 5
 	}
 	if o.VolumeStep > 50 {
 		return 50
