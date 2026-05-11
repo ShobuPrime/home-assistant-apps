@@ -67,8 +67,9 @@ Quantisation increment for volume changes received from the cast
 sender. The phone's cast UI typically emits a fresh value on every
 slider drag tick; rounding to a fixed step keeps the log clean and
 avoids the speaker fighting the UI for fractions of a step. Default:
-`5`. Set to `10` if your physical speaker steps in 10s, or `1` to
-disable rounding.
+`10` — matches the increment most Sendspin/AirPlay speakers use on
+their physical buttons. Set to `5` for finer control, or `1` to
+disable rounding entirely.
 
 ### `cast_cert_path` / `cast_key_path`
 
@@ -108,6 +109,7 @@ WebSocket subscription path.
 | --- | --- | --- |
 | `ma_ws_url` | `""` (auto-discover) | Full WebSocket URL to MA's `/ws` endpoint |
 | `ma_token` | `""` (no auth — addon-local trust) | Auth token used when MA's schema version is ≥ 28. Hidden in the addon UI. |
+| `ma_queue_id` | `""` (auto-discover via `players/all`) | MA's internal `player_id` — the value MA uses as `queue_id` for `player_queues/play_media`. Set this only when auto-discovery doesn't find your speaker. The startup log lists every visible MA player at info — copy the `player_id` of the row whose `display_name` matches your speaker. |
 
 > **`ma_token` is required for rich metadata in the MA UI.** On MA
 > schema ≥ 28 the addon must authenticate before issuing

@@ -103,15 +103,20 @@ func main() {
 	// queue_id is MA's internal player_id, derived from the HA
 	// entity_id by stripping `media_player.` and any trailing `_N`.
 	if opts.MAPlayerID != "" {
-		maQueue := ma.DerivePlayerID(opts.MAPlayerID)
 		maPlayURL := opts.MAWsURL
 		if maPlayURL == "" && maHost != "" {
 			maPlayURL = ma.URLFromHost(maHost)
 		}
 		if maPlayURL != "" {
-			disp.SetMAWS(maPlayURL, opts.MAToken, maQueue)
-			logger.Info("dispatcher: MA WS play_media path enabled",
-				"queue_id", maQueue, "url", maPlayURL)
+			queueID := resolveMAQueueID(ctx, maPlayURL, opts, logger.With("component", "ma-discovery"))
+			if queueID != "" {
+				disp.SetMAWS(maPlayURL, opts.MAToken, queueID)
+				logger.Info("dispatcher: MA WS play_media path enabled",
+					"queue_id", queueID, "url", maPlayURL)
+			} else {
+				logger.Warn("dispatcher: MA WS play_media path disabled — could not determine queue_id (set ma_queue_id explicitly)",
+					"url", maPlayURL)
+			}
 		}
 	}
 	srv := ipc.NewServer(ipc.SocketPath(), logger.With("component", "ipc"))
@@ -164,6 +169,54 @@ func main() {
 
 	<-ctx.Done()
 	logger.Info("ma-bridge shutting down")
+}
+
+// resolveMAQueueID determines the MA-side queue_id (internal player_id)
+// to use for player_queues/play_media. Precedence:
+//
+//  1. Explicit `ma_queue_id` from config — trust the user; do not probe.
+//  2. Auto-discover via `players/all` and MatchPlayer on the configured
+//     HA entity_id. Logs every visible player at info so the user can
+//     copy the correct one into `ma_queue_id` if matching fails.
+//  3. Conservative fallback to ma.DerivePlayerID(entity_id) — preserves
+//     v0.1.10 behaviour if MA is unreachable for discovery. Returns ""
+//     when discovery yields nothing and we don't want to send doomed
+//     play_media commands to a non-existent queue.
+func resolveMAQueueID(ctx context.Context, maURL string, opts config.Options, log *slog.Logger) string {
+	if opts.MAQueueID != "" {
+		log.Info("ma: queue_id from config override", "queue_id", opts.MAQueueID)
+		return opts.MAQueueID
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	players, err := ma.ListPlayers(probeCtx, maURL, opts.MAToken, log)
+	if err != nil {
+		log.Warn("ma: players/all failed — falling back to derived queue_id",
+			"err", err, "fallback", ma.DerivePlayerID(opts.MAPlayerID))
+		return ma.DerivePlayerID(opts.MAPlayerID)
+	}
+	for _, p := range players {
+		log.Info("ma: known player",
+			"player_id", p.PlayerID,
+			"display_name", p.DisplayName,
+			"name", p.Name,
+			"provider", p.Provider,
+			"available", p.Available,
+			"type", p.Type)
+	}
+	match, rule := ma.MatchPlayer(players, opts.MAPlayerID)
+	if rule != "" {
+		log.Info("ma: queue_id resolved via discovery",
+			"queue_id", match.PlayerID,
+			"display_name", match.DisplayName,
+			"match_rule", rule,
+			"entity_id", opts.MAPlayerID)
+		return match.PlayerID
+	}
+	log.Warn("ma: no MA player matches entity_id — set ma_queue_id explicitly from the list above",
+		"entity_id", opts.MAPlayerID,
+		"count", len(players))
+	return ""
 }
 
 // summarizeConfig returns a concise one-line summary of the loaded

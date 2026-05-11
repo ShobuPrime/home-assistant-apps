@@ -1,5 +1,63 @@
 # Changelog
 
+## Version 0.1.11 (2026-05-11)
+
+### MA queue_id auto-discovery, `volume_step` default → 10
+
+Follow-up from the v0.1.10 live test. v0.1.10 fixed the auth path
+(`ma_token` accepted) but exposed a deeper issue: the queue_id we
+were deriving from the HA entity_id (`media_player.3rspk_a8e29151e187_2`
+→ `3rspk_a8e29151e187`) doesn't match MA's actual internal player_id,
+so the play_media WS call still failed — this time with
+`error_code: 10 Queue 3rspk_a8e29151e187 is not available`. MA's UI
+showed audio playing from the HA REST fallback path but, again, no
+metadata.
+
+**1. Auto-discover the queue_id via `players/all`.** On startup, after
+the MA WS reachability probe succeeds, ma-bridge now sends
+`players/all` over the MA WebSocket, logs every visible player at
+info (player_id, display_name, name, provider, available, type), and
+runs a four-rule matcher against the configured HA entity_id:
+
+  1. Exact `player_id == entity_slug`
+  2. Exact match after stripping a trailing `_N` (the HA collision
+     disambiguator)
+  3. Slug-equivalent `display_name` / `name`
+  4. Substring containment in either direction (covers
+     `<provider>_<id>` MA naming)
+
+The matched player_id becomes the dispatcher's `MAPlayerQueue`. If
+nothing matches, ma-bridge logs the available IDs at warn and tells
+the user to set `ma_queue_id` explicitly.
+
+`internal/ma/client.go`: new `PlayerInfo`, `ListPlayers`, `MatchPlayer`,
+`slugify`, `containsFold`.
+`cmd/ma-bridge/main.go`: new `resolveMAQueueID` orchestrator running
+config-override → discovery → derive fallback.
+
+**2. New `ma_queue_id` option.** An explicit override for the auto-
+discovered value. When set, ma-bridge skips `players/all` entirely
+and uses the value as-is. This is the right thing to set when (a)
+discovery can't find the right player or (b) you want the lookup to
+short-circuit at startup.
+
+`internal/config/config.go`: new `MAQueueID` field.
+`config.yaml`: `ma_queue_id: ""` option, `ma_queue_id: str?` schema.
+
+**3. `volume_step` default 5 → 10.** Most Sendspin/AirPlay speakers
+(including the user's 3RSPK) step in 10s on their physical buttons,
+which makes 10 the least-surprising default. Existing configs that
+explicitly set `volume_step: 5` are preserved.
+
+`config.yaml`: `volume_step: 10`.
+`internal/config/config.go::EffectiveVolumeStep`, `cmd/yt-cast/player.go`:
+default constant flipped to 10.
+
+### Tests
+
+`internal/ma/match_player_test.go` (new): covers each MatchPlayer
+rule plus slugify edge cases.
+
 ## Version 0.1.10 (2026-05-11)
 
 ### Volume quantisation, actionable MA-auth guidance, debug telemetry

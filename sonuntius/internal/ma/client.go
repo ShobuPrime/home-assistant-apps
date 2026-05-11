@@ -524,6 +524,209 @@ func PlayMediaItem(ctx context.Context, url, token, queueID string, item MediaIt
 	}
 }
 
+// PlayerInfo is the subset of MA's Player schema we use for queue-id
+// discovery. Unknown fields are ignored.
+type PlayerInfo struct {
+	PlayerID    string `json:"player_id"`
+	Provider    string `json:"provider"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Available   bool   `json:"available"`
+	Type        string `json:"type"`
+}
+
+// ListPlayers opens a short-lived WS connection, authenticates if the
+// server schema requires it, sends `players/all`, and returns the
+// decoded player list. Used by ma-bridge to discover the correct
+// queue_id (MA's internal player_id) at startup — the HA entity_id is
+// not, in general, identical to MA's internal id, so any auto-derived
+// queue_id can be wrong.
+func ListPlayers(ctx context.Context, url, token string, log *slog.Logger) ([]PlayerInfo, error) {
+	if log == nil {
+		log = slog.Default()
+	}
+	cfg, err := websocket.NewConfig(url, origin())
+	if err != nil {
+		return nil, fmt.Errorf("ma: ws config: %w", err)
+	}
+	conn, err := websocket.DialConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("ma: ws dial: %w", err)
+	}
+	defer conn.Close()
+
+	info, err := readServerInfo(conn)
+	if err != nil {
+		return nil, fmt.Errorf("ma: server info: %w", err)
+	}
+	if info.SchemaVersion >= authSchemaVersion && token == "" {
+		return nil, fmt.Errorf("%w (server schema=%d, server_id=%s)",
+			ErrAuthRequired, info.SchemaVersion, info.ServerID)
+	}
+	if info.SchemaVersion >= authSchemaVersion && token != "" {
+		msgID, mErr := randHex(16)
+		if mErr != nil {
+			return nil, fmt.Errorf("ma: msg id: %w", mErr)
+		}
+		if err := websocket.JSON.Send(conn, map[string]any{
+			"message_id": msgID,
+			"command":    authCommand,
+			"args":       map[string]any{"token": token},
+		}); err != nil {
+			return nil, fmt.Errorf("ma: auth send: %w", err)
+		}
+		if err := conn.SetReadDeadline(time.Now().Add(connectReadTimeout)); err != nil {
+			return nil, err
+		}
+		var authResp map[string]any
+		if err := websocket.JSON.Receive(conn, &authResp); err != nil {
+			return nil, fmt.Errorf("ma: auth recv: %w", err)
+		}
+		_ = conn.SetReadDeadline(time.Time{})
+		if errCode, ok := authResp["error_code"]; ok && errCode != nil {
+			if isAuthRequiredCode(errCode) {
+				return nil, fmt.Errorf("%w: server reply: %v", ErrAuthRequired, authResp)
+			}
+			return nil, fmt.Errorf("ma: auth rejected: %v", authResp)
+		}
+	}
+
+	msgID, err := randHex(16)
+	if err != nil {
+		return nil, fmt.Errorf("ma: msg id: %w", err)
+	}
+	if err := websocket.JSON.Send(conn, map[string]any{
+		"message_id": msgID,
+		"command":    "players/all",
+		"args":       map[string]any{},
+	}); err != nil {
+		return nil, fmt.Errorf("ma: players/all send: %w", err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return nil, err
+	}
+	defer conn.SetReadDeadline(time.Time{})
+	for {
+		var resp map[string]any
+		if err := websocket.JSON.Receive(conn, &resp); err != nil {
+			return nil, fmt.Errorf("ma: players/all recv: %w", err)
+		}
+		respID, _ := resp["message_id"].(string)
+		if respID != msgID {
+			// event push (player_updated etc) — ignore and keep reading
+			continue
+		}
+		if ec, ok := resp["error_code"]; ok && ec != nil {
+			details, _ := resp["details"].(string)
+			return nil, fmt.Errorf("ma: players/all error: %v %s", ec, details)
+		}
+		// Re-marshal the result field so we can decode through the typed
+		// PlayerInfo struct without hand-walking the map[string]any tree.
+		result, ok := resp["result"]
+		if !ok {
+			return nil, fmt.Errorf("ma: players/all: response missing result")
+		}
+		raw, err := json.Marshal(result)
+		if err != nil {
+			return nil, fmt.Errorf("ma: players/all: re-marshal: %w", err)
+		}
+		var out []PlayerInfo
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return nil, fmt.Errorf("ma: players/all: decode: %w", err)
+		}
+		return out, nil
+	}
+}
+
+// MatchPlayer finds the PlayerInfo whose player_id, display_name, or
+// name best matches the supplied HA entity slug (the part after
+// `media_player.`). Matching is best-effort:
+//
+//  1. Exact match on player_id.
+//  2. Exact match after stripping a trailing `_N` (where N is 1-3
+//     digits — HA appends this when a slug collides).
+//  3. Slug-equivalent match on display_name (lowercase, ASCII only,
+//     non-alphanumeric → '_').
+//  4. Substring containment (player_id contains entity slug, or vice
+//     versa) — covers cases where MA uses a `<provider>_<id>` form.
+//
+// Returns the matched PlayerInfo and the matching rule used, or an
+// empty PlayerInfo and "" when nothing matched.
+func MatchPlayer(players []PlayerInfo, entityID string) (PlayerInfo, string) {
+	slug := entityID
+	const prefix = "media_player."
+	if len(slug) > len(prefix) && slug[:len(prefix)] == prefix {
+		slug = slug[len(prefix):]
+	}
+	stripped := DerivePlayerID(entityID)
+
+	for _, p := range players {
+		if p.PlayerID == slug {
+			return p, "exact_player_id"
+		}
+	}
+	for _, p := range players {
+		if p.PlayerID == stripped {
+			return p, "stripped_player_id"
+		}
+	}
+	for _, p := range players {
+		if slugify(p.DisplayName) == slug || slugify(p.Name) == slug {
+			return p, "display_name_slug"
+		}
+		if slugify(p.DisplayName) == stripped || slugify(p.Name) == stripped {
+			return p, "display_name_slug_stripped"
+		}
+	}
+	for _, p := range players {
+		if p.PlayerID == "" {
+			continue
+		}
+		if containsFold(p.PlayerID, stripped) || containsFold(stripped, p.PlayerID) {
+			return p, "substring"
+		}
+	}
+	return PlayerInfo{}, ""
+}
+
+func slugify(s string) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'A' && c <= 'Z':
+			out = append(out, c+('a'-'A'))
+		case (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'):
+			out = append(out, c)
+		default:
+			if len(out) > 0 && out[len(out)-1] != '_' {
+				out = append(out, '_')
+			}
+		}
+	}
+	for len(out) > 0 && out[len(out)-1] == '_' {
+		out = out[:len(out)-1]
+	}
+	return string(out)
+}
+
+func containsFold(haystack, needle string) bool {
+	if needle == "" {
+		return false
+	}
+	h := slugify(haystack)
+	n := slugify(needle)
+	if n == "" {
+		return false
+	}
+	for i := 0; i+len(n) <= len(h); i++ {
+		if h[i:i+len(n)] == n {
+			return true
+		}
+	}
+	return false
+}
+
 // DerivePlayerID returns MA's internal player_id derived from the
 // HA media_player entity_id. The rule is:
 //
