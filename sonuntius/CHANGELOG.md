@@ -1,5 +1,25 @@
 # Changelog
 
+## Version 0.1.5 (2026-05-11)
+
+### Trim whitespace from every string option
+
+A first live test of v0.1.4 with `ma_player_id` set caught an
+invisible-failure mode: HA's addon options UI happily preserves a
+leading or trailing space typed (or pasted) into a string field. The
+loaded config carried `ma_player_id=" media_player.3rspk_a8e29151e187_2"`
+and `media_player.play_media` would have rejected that entity_id as
+unknown without ever logging a useful diagnosis.
+
+`config.Options.normalize()` now `strings.TrimSpace`'s every string
+field after each successful load (file path + Supervisor REST path) —
+`log_level`, `ma_player_id`, friendly names, cert/key paths, the four
+HA/MA URL+token overrides, and every `tidal_fallback.*` string. New
+`TestNormalize_TrimsStringFields` covers the matrix.
+
+This complements the `cmd/cast-receiver/options.go` cert-path trim that
+already existed and centralises the defensive behaviour in the loader.
+
 ## Version 0.1.4 (2026-05-11)
 
 ### MA addon hostname derivation

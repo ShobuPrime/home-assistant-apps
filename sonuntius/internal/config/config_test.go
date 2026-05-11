@@ -36,6 +36,66 @@ func TestHARESTTokenFallbackToSupervisor(t *testing.T) {
 	}
 }
 
+func TestNormalize_TrimsStringFields(t *testing.T) {
+	t.Parallel()
+	o := Options{
+		LogLevel:            "  info  ",
+		MAPlayerID:          " media_player.living_room_2 ",
+		FriendlyNameYouTube: "  Sonuntius (YouTube)",
+		FriendlyNameTidal:   "Sonuntius (Tidal)\n",
+		CastCertPath:        "\t/share/sonuntius/airreceiver_cert.pem ",
+		CastKeyPath:         "/share/sonuntius/airreceiver_key.pem",
+		HABaseURL:           "  http://homeassistant.local:8123  ",
+		HAToken:             "\tsecret-token ",
+		MAWsURL:             " ws://music-assistant:8095/ws ",
+		MAToken:             "  another-secret ",
+		TidalFallback: TidalFallback{
+			BinaryTarballPath: "  /share/sonuntius/ifi.tar.gz",
+			CertFilename:      "IfiAudio_ZenStream.dat\n",
+			FriendlyName:      " Sonuntius (Tidal Connect) ",
+			SendspinServerURL: "  ws://music-assistant:8095/sendspin ",
+		},
+	}
+	o.normalize()
+	wantStrings := map[string]string{
+		"LogLevel":                          "info",
+		"MAPlayerID":                        "media_player.living_room_2",
+		"FriendlyNameYouTube":               "Sonuntius (YouTube)",
+		"FriendlyNameTidal":                 "Sonuntius (Tidal)",
+		"CastCertPath":                      "/share/sonuntius/airreceiver_cert.pem",
+		"CastKeyPath":                       "/share/sonuntius/airreceiver_key.pem",
+		"HABaseURL":                         "http://homeassistant.local:8123",
+		"HAToken":                           "secret-token",
+		"MAWsURL":                           "ws://music-assistant:8095/ws",
+		"MAToken":                           "another-secret",
+		"TidalFallback.BinaryTarballPath":   "/share/sonuntius/ifi.tar.gz",
+		"TidalFallback.CertFilename":        "IfiAudio_ZenStream.dat",
+		"TidalFallback.FriendlyName":        "Sonuntius (Tidal Connect)",
+		"TidalFallback.SendspinServerURL":   "ws://music-assistant:8095/sendspin",
+	}
+	got := map[string]string{
+		"LogLevel":                          o.LogLevel,
+		"MAPlayerID":                        o.MAPlayerID,
+		"FriendlyNameYouTube":               o.FriendlyNameYouTube,
+		"FriendlyNameTidal":                 o.FriendlyNameTidal,
+		"CastCertPath":                      o.CastCertPath,
+		"CastKeyPath":                       o.CastKeyPath,
+		"HABaseURL":                         o.HABaseURL,
+		"HAToken":                           o.HAToken,
+		"MAWsURL":                           o.MAWsURL,
+		"MAToken":                           o.MAToken,
+		"TidalFallback.BinaryTarballPath":   o.TidalFallback.BinaryTarballPath,
+		"TidalFallback.CertFilename":        o.TidalFallback.CertFilename,
+		"TidalFallback.FriendlyName":        o.TidalFallback.FriendlyName,
+		"TidalFallback.SendspinServerURL":   o.TidalFallback.SendspinServerURL,
+	}
+	for field, want := range wantStrings {
+		if got[field] != want {
+			t.Errorf("%s = %q, want %q", field, got[field], want)
+		}
+	}
+}
+
 func TestEffectiveListenPorts(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
