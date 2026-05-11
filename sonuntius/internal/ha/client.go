@@ -179,8 +179,20 @@ func (c *Client) FindMAAddonHostname(ctx context.Context) (string, error) {
 	c.Logger.Info("ha: addon list retrieved", "count", len(envelope.Data.Addons))
 	for _, a := range envelope.Data.Addons {
 		if strings.Contains(a.Slug, "music_assistant") {
-			c.Logger.Info("ha: matched music_assistant addon", "slug", a.Slug, "hostname", a.Hostname)
-			return a.Hostname, nil
+			hostname := a.Hostname
+			if hostname == "" {
+				// The bulk /addons listing returns each addon with the
+				// `hostname` field empty in current Supervisor versions;
+				// the field is only populated by /addons/<slug>/info.
+				// We derive the Docker hostname from the slug instead
+				// (underscores → hyphens), which is the canonical HA
+				// Supervisor naming convention.
+				hostname = strings.ReplaceAll(a.Slug, "_", "-")
+				c.Logger.Info("ha: hostname missing from /addons response — derived from slug",
+					"slug", a.Slug, "hostname", hostname)
+			}
+			c.Logger.Info("ha: matched music_assistant addon", "slug", a.Slug, "hostname", hostname)
+			return hostname, nil
 		}
 	}
 	c.Logger.Info("ha: addon list did not contain music_assistant")

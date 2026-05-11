@@ -1,5 +1,27 @@
 # Changelog
 
+## Version 0.1.4 (2026-05-11)
+
+### MA addon hostname derivation
+
+A first live v0.1.3 cast revealed that the Supervisor `/addons` bulk
+listing returns each addon entry with the `hostname` field empty —
+the field is only populated when you call `/addons/<slug>/info`
+individually. Result: `FindMAAddonHostname` would correctly *match*
+the `music_assistant` addon in the list, but return an empty hostname
+and fall back to the HA core WS path even when MA was installed and
+reachable.
+
+Fix: when the bulk-listing hostname is empty, derive it from the slug
+by replacing underscores with hyphens (the canonical HA Supervisor
+addon-to-Docker hostname convention). For example,
+`d5369777_music_assistant` → `d5369777-music-assistant`. Probed and
+confirmed against the live HA host.
+
+The Phase 6a direct-MA-WS path now engages automatically on installs
+that have Music Assistant alongside Sonuntius, without the user
+needing to set `ma_ws_url` manually.
+
 ## Version 0.1.3 (2026-05-11)
 
 ### YouTube-classic playback path + auto-discovery observability
