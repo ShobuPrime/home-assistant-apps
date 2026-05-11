@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/shobuprime/sonuntius/internal/events"
 	"github.com/shobuprime/sonuntius/internal/ha"
@@ -113,6 +114,7 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 	// land in MA's UI.
 	if p.Provider == "url" && d.MAWsURL != "" && d.MAPlayerQueue != "" {
 		if err := d.playViaMAWS(ctx, uri, p); err == nil {
+			d.maybeSeekAfterPlay(ctx, p)
 			return
 		} else if errors.Is(err, ma.ErrAuthRequired) {
 			// MA's URL provider is what would surface our metadata in
@@ -140,7 +142,43 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 	extra := metadataExtra(p.Metadata)
 	if err := d.HA.PlayMedia(ctx, d.EntityID, uri, "music", extra); err != nil {
 		d.Logger.Error("dispatcher: play_media failed", "err", err)
+		return
 	}
+	d.maybeSeekAfterPlay(ctx, p)
+}
+
+// maybeSeekAfterPlay fires media_seek on the entity if the play intent
+// carried a non-zero start position. MA's `player_queues/play_media`
+// has no built-in "start at N seconds" argument; the convention is
+// to follow play_media with a seek. Without this, casting at 7:28
+// from the YouTube app would still start playback at 0:00 on the
+// speaker.
+//
+// Runs in the foreground but errors are non-fatal — playback already
+// started, we just can't honor the requested offset.
+func (d *Dispatcher) maybeSeekAfterPlay(ctx context.Context, p *events.PlayIntent) {
+	if p.StartPosition <= 0.5 {
+		return
+	}
+	// Give MA a moment to ingest the play_media before seeking — a
+	// seek issued immediately can race the queue-item-loaded state
+	// and be dropped silently. 500ms is a conservative single-RTT
+	// budget.
+	go func(pos float64) {
+		select {
+		case <-time.After(500 * time.Millisecond):
+		case <-ctx.Done():
+			return
+		}
+		if err := d.HA.MediaPlayerCommand(ctx, d.EntityID, "media_seek",
+			map[string]any{"seek_position": pos}); err != nil {
+			d.Logger.Warn("dispatcher: post-play seek failed",
+				"position", pos, "err", err)
+			return
+		}
+		d.Logger.Info("dispatcher: post-play seek issued",
+			"position", pos, "entity", d.EntityID)
+	}(p.StartPosition)
 }
 
 // playViaMAWS sends a fully-formed MediaItem to MA's native WS
