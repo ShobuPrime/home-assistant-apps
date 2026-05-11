@@ -545,7 +545,15 @@ func PlayMediaItem(ctx context.Context, url, token, queueID string, item MediaIt
 		"args": map[string]any{
 			"queue_id": queueID,
 			"media":    []MediaItem{item},
-			"option":   "play",
+			// "replace" clears MA's existing queue and plays our item
+			// as the only entry. We want this — MA's library may have
+			// leftover tracks (favourites, library autoplay, an
+			// earlier cast) that would otherwise auto-advance when
+			// our cast ends. With "play" (MA's default) MA only
+			// replaces the *current* item and keeps the rest of the
+			// queue, which caused stale tracks to take over after
+			// each cast. See v0.1.14 CHANGELOG.
+			"option": "replace",
 		},
 	}
 	log.Info("ma: PlayMediaItem", "queue_id", queueID,

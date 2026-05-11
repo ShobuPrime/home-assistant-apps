@@ -1,5 +1,47 @@
 # Changelog
 
+## Version 0.1.14 (2026-05-11)
+
+### Volume bidirectional sync + queue replace
+
+Two refinements suggested by the user after v0.1.13 worked end-to-end.
+
+**1. Volume bidirectional sync (optimistic echo).** With `volume_step`
+quantisation, the phone would drag the slider to e.g. 23 but the
+speaker would land on 20. The slider stayed at the raw drag value
+because the new MA state took several hundred ms to round-trip back
+(HA REST → MA → state_changed → IPC → engine → Lounge → phone).
+Subsequent presses arrived while the phone still thought the volume
+was 23, so the user's "feel" lagged.
+
+`cmd/yt-cast/player.go::DoSetVolume`: after computing the rounded
+value, we now immediately write it into the adapter's
+`cachedState.Volume`/`Muted` and fire `onStateChange`. The engine
+re-emits player state to the Lounge sender right away, so the phone
+slider snaps to the bucket boundary the moment the user lifts their
+finger. MA's later state_changed reconciles silently.
+
+**2. `player_queues/play_media` option flipped to `replace`.** MA's
+WS API accepts an `option` field on play_media. We had `"play"`
+which only replaces the current item — the rest of the queue
+remains. With MA's library having tracks queued up (favourites,
+prior casts), our cast would end and MA would happily auto-advance
+to the next stale item. The user observed this as "automatically
+goes to the next item in MA, not whatever YouTube wants".
+
+`internal/ma/client.go::PlayMediaItem`: switched to
+`"option": "replace"` which clears the entire queue before adding
+our item. When playback finishes, the queue is empty and MA stops.
+
+### Future work (not in this release)
+
+Mirroring the YouTube cast app's own queue into MA (so adding videos
+to YouTube's up-next list flows into MA's queue too) requires
+hooking the engine's queue-modified events and sending follow-up
+`player_queues/play_media` with `option: "add"`. Tracked as a
+separate effort because it needs careful sender-disconnect
+lifecycle handling to avoid orphaned MA queue items.
+
 ## Version 0.1.13 (2026-05-11)
 
 ### MA queue skip fix — revert item_id to the URL
