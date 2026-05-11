@@ -1,5 +1,46 @@
 # Changelog
 
+## Version 0.1.8 (2026-05-11)
+
+### subscribe_events instead of subscribe_trigger; flat-and-nested play_media metadata
+
+First-light testing of v0.1.7 surfaced two bugs that the new logging
+immediately diagnosed:
+
+**1. HA state subscription wasn't actually receiving the state we
+care about.** The watcher logged `state: HA WS authenticated` but
+never logged `state: first HA state update received` — meaning the
+`subscribe_trigger` API I used in v0.1.7 only fires on transitions
+of the primary `state` field (idle ↔ playing ↔ paused). Attribute-
+only updates like `media_position` ticking forward, `volume_level`
+changing from the speaker, etc. went through `state_changed` events
+which `subscribe_trigger` does not surface.
+
+Switched `internal/state/watcher.go` to use `subscribe_events` with
+`event_type: state_changed` and filter for the configured entity_id
+client-side. This is the broad event stream — every attribute change
+fires it. The throughput is one ~200-byte JSON parse per state-change
+in the whole HA install, which is fine.
+
+**2. Music Assistant's UI still shows the raw `videoplayback?…` URL
+as the title even though `has_extra=true` confirmed the metadata
+extras were being sent.** MA's URL provider apparently doesn't read
+`extra.metadata.{title, artist, image}` — different MA versions read
+metadata from different locations and the URL-provider code path in
+particular looks at the flat `extra.<field>` form.
+
+`internal/dispatcher/dispatcher.go` now emits metadata fields under
+BOTH `extra.<field>` (flat) AND `extra.metadata.<field>` (nested),
+defensive against whichever shape MA's resolver consumes. Thumbnail
+is also mirrored under `extra.metadata.artwork` for MA versions that
+look for that key specifically.
+
+If MA's UI still shows the raw URL after this, the next escalation
+is to drop `media_player.play_media` (the HA-routed service call)
+and use MA's native WS `player_queues/play_media` command with a
+full MediaItem object — that bypass guarantees richer metadata
+handling, at the cost of a deeper change to the dispatcher.
+
 ## Version 0.1.7 (2026-05-11)
 
 ### Bidirectional player-state sync + rich MA metadata

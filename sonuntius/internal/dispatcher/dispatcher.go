@@ -83,37 +83,65 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 
 // metadataExtra translates PlayIntent.Metadata (populated by the
 // receivers with title / channel / thumbnail / video_id / source) into
-// the shape Music Assistant's play_media service accepts as its
-// `extra.metadata.*` sub-object. Returns nil when there is nothing to
-// pass through so the dispatcher omits the field instead of sending an
-// empty map.
+// the shape Music Assistant's play_media service consumes. Returns nil
+// when there is nothing to pass through so the dispatcher omits the
+// field instead of sending an empty map.
+//
+// We emit fields under BOTH `extra.<field>` (flat) AND
+// `extra.metadata.<field>` (nested). Different MA versions and
+// provider code paths read from different locations — the flat form
+// is what the URL provider's track resolver looks at in current
+// releases, while the nested form is what the play_media schema
+// historically documented. Emitting both maximises the chance that
+// MA's UI picks up the title / artist / artwork.
 func metadataExtra(meta map[string]any) map[string]any {
 	if len(meta) == 0 {
 		return nil
 	}
-	md := map[string]any{}
-	if v, ok := meta["title"].(string); ok && v != "" {
-		md["title"] = v
+	title, _ := meta["title"].(string)
+	// MA's media item model uses `artist`; "channel" is the YouTube-side
+	// equivalent we receive from the oEmbed lookup.
+	artist, _ := meta["channel"].(string)
+	thumb, _ := meta["thumbnail"].(string)
+	videoID, _ := meta["video_id"].(string)
+	source, _ := meta["source"].(string)
+
+	nested := map[string]any{}
+	if title != "" {
+		nested["title"] = title
 	}
-	if v, ok := meta["channel"].(string); ok && v != "" {
-		// MA's media item model uses `artist`; "channel" is the
-		// YouTube-side equivalent we receive from the oEmbed lookup.
-		md["artist"] = v
+	if artist != "" {
+		nested["artist"] = artist
 	}
-	if v, ok := meta["thumbnail"].(string); ok && v != "" {
-		md["image"] = v
-		md["thumb"] = v
+	if thumb != "" {
+		nested["image"] = thumb
+		nested["thumb"] = thumb
+		nested["artwork"] = thumb
 	}
-	if v, ok := meta["video_id"].(string); ok && v != "" {
-		md["external_id"] = v
+	if videoID != "" {
+		nested["external_id"] = videoID
 	}
-	if v, ok := meta["source"].(string); ok && v != "" {
-		md["source"] = v
+	if source != "" {
+		nested["source"] = source
 	}
-	if len(md) == 0 {
+	if len(nested) == 0 {
 		return nil
 	}
-	return map[string]any{"metadata": md}
+
+	out := map[string]any{"metadata": nested}
+	// Mirror title/thumb/etc. at the top level for MA versions that
+	// read directly from `extra.<field>`.
+	if title != "" {
+		out["title"] = title
+	}
+	if artist != "" {
+		out["artist"] = artist
+	}
+	if thumb != "" {
+		out["thumb"] = thumb
+		out["image"] = thumb
+	}
+	return out
 }
 
 func (d *Dispatcher) dispatchTransport(ctx context.Context, t *events.TransportCommand) {

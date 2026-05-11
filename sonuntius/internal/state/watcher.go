@@ -155,13 +155,18 @@ func (w *Watcher) runOnce(ctx context.Context) error {
 	w.Logger.Info("state: HA WS authenticated", "entity_id", w.EntityID)
 
 	subID := 1
+	// Subscribe to raw state_changed events rather than the higher-level
+	// state-trigger. The state-trigger API on Home Assistant only fires
+	// on transitions of the primary `state` field (idle ↔ playing ↔
+	// paused), so attribute-only updates such as `media_position` ticking
+	// forward never arrive. media_player attribute changes are what carry
+	// position / duration / volume back to the receiver — we need the
+	// raw event stream to see them. We filter for our entity_id
+	// client-side in handleFrame.
 	if err := websocket.JSON.Send(conn, map[string]any{
-		"id":   subID,
-		"type": "subscribe_trigger",
-		"trigger": map[string]any{
-			"platform":  "state",
-			"entity_id": w.EntityID,
-		},
+		"id":         subID,
+		"type":       "subscribe_events",
+		"event_type": "state_changed",
 	}); err != nil {
 		return err
 	}
@@ -181,18 +186,19 @@ func (w *Watcher) runOnce(ctx context.Context) error {
 	}
 }
 
-type triggerFrame struct {
-	ID    int             `json:"id"`
-	Type  string          `json:"type"`
-	Event json.RawMessage `json:"event"`
-
-	// Different HA versions land the new state under either .event.variables.trigger
-	// or .variables.trigger; we try both.
-	Variables struct {
-		Trigger struct {
-			ToState haEntityState `json:"to_state"`
-		} `json:"trigger"`
-	} `json:"variables"`
+// eventFrame is the wire shape of a subscribe_events message — the
+// only one we expect now that the watcher uses the raw state_changed
+// event stream rather than the higher-level state trigger.
+type eventFrame struct {
+	ID    int    `json:"id"`
+	Type  string `json:"type"`
+	Event struct {
+		EventType string `json:"event_type"`
+		Data      struct {
+			EntityID string         `json:"entity_id"`
+			NewState *haEntityState `json:"new_state"`
+		} `json:"data"`
+	} `json:"event"`
 }
 
 type haEntityState struct {
@@ -212,22 +218,32 @@ func (w *Watcher) handleFrame(raw []byte) {
 	switch head.Type {
 	case "result":
 		if head.Success != nil && !*head.Success {
-			w.Logger.Warn("state: subscribe_trigger rejected", "frame", string(raw))
+			w.Logger.Warn("state: subscription rejected", "frame", string(raw))
 		}
 		return
-	case "trigger":
-		// fall through
 	case "event":
-		// fall through (older HA shape)
+		// fall through
 	default:
+		// Unexpected frame types (e.g. pong, auth, etc.) — ignore quietly.
 		return
 	}
-	var tf triggerFrame
-	if err := json.Unmarshal(raw, &tf); err != nil {
-		w.Logger.Debug("state: trigger decode failed", "err", err)
+	var ef eventFrame
+	if err := json.Unmarshal(raw, &ef); err != nil {
+		w.Logger.Debug("state: event decode failed", "err", err)
 		return
 	}
-	ps := playerStateFrom(&tf.Variables.Trigger.ToState)
+	if ef.Event.EventType != "state_changed" {
+		return
+	}
+	// state_changed fires for EVERY entity in the system — filter for
+	// the one we care about. The cost of receiving the firehose is one
+	// 200-byte JSON parse per event, which on a typical HA install is
+	// fine; the alternative (per-entity subscribe) doesn't surface
+	// attribute-only updates which is exactly what we need.
+	if ef.Event.Data.EntityID != w.EntityID {
+		return
+	}
+	ps := playerStateFrom(ef.Event.Data.NewState)
 	if ps == nil {
 		return
 	}
