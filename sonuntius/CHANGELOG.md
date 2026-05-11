@@ -1,5 +1,48 @@
 # Changelog
 
+## Version 0.1.15 (2026-05-11)
+
+### Position bounds + cast-start state seeding
+
+Two issues from the v0.1.14 live test.
+
+**1. Phone timeline shows `3:44 / 1:27` after track ends.** When MA
+reaches the end of the queued item it stops emitting
+`media_position` events; HA's state_changed events arrive with no
+`media_position` attribute, so our cached `Position` goes nil and
+DoGetPosition falls back to the local wall-clock estimator. The
+estimator was happily ticking past the end of the video forever —
+1m9s after the 87-second track ended, it was reporting 154s, and
+by the time the user looked at the phone it had reached 224s
+(`3:44`).
+
+Two changes:
+
+- `localEstimateLocked` caps the returned position at the known
+  duration. The estimator is a fallback for the early-playback
+  gap, not a continuous reference — it should never exceed the
+  track length.
+- `updateCachedState` clears the estimator (sets
+  `playbackStartedAt = nil`) when it sees a transition from an
+  active state (`playing`, `paused`, `buffering`, `loading`) into
+  an ended state (`idle`, `stopped`, `off`, `unavailable`, empty).
+  Helpers `isTrackEndedState` and `isActivePlaybackState` keep
+  the rule explicit.
+
+**2. Initial cast shows placeholders / stale data.** Between
+`DoPlay` invoking and MA's first state_changed arriving for the
+new track (~1s gap), the engine pushes the cached PlayerState to
+the phone. That cached state was leftover from the *previous*
+cast — wrong title, wrong duration, wrong position — so the
+phone briefly rendered "65s / 87s" on a freshly-cast video.
+
+`DoPlay` now replaces the cached state's track-scoped fields
+(state="buffering", title, artist, trackID, position=sender-
+supplied, duration=yt-dlp value) immediately after seeding the
+local estimator, and fires `onStateChange` so the engine pushes
+the new info to the phone right away. Speaker-scoped fields
+(volume, muted) are preserved across casts.
+
 ## Version 0.1.14 (2026-05-11)
 
 ### Volume bidirectional sync + queue replace
