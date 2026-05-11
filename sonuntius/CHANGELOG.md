@@ -1,5 +1,37 @@
 # Changelog
 
+## Version 0.1.13 (2026-05-11)
+
+### MA queue skip fix — revert item_id to the URL
+
+v0.1.12's MediaItem reached MA correctly: the queue title was
+composed from our `artists[].name` + `name` ("Dads MMO Lab -
+Offline RuneScape Install Guide…") so the metadata path was sound.
+But MA then could not stream it, logging:
+
+    WARNING [music_assistant.streams.audio] Unable to retrieve info
+      for yt_tCW5iRYXnBc (No such file or directory)
+    WARNING [music_assistant.player_queues] Skipping unplayable item
+      Dads MMO Lab - Offline RuneScape Install Guide...
+
+The synthetic `item_id` (`yt_<videoId>`) made MA's builtin provider's
+`get_stream_details` treat the id as a filesystem path. The item
+was marked unplayable and the queue auto-advanced to the next track
+— exactly what the user observed ("when it tried to resolve the
+YouTube video it fails and just automatically tries to play the
+next video in the queue").
+
+**Fix**: set both `MediaItem.item_id` and
+`ProviderMappings[0].item_id` to the resolved stream URL. MA's
+builtin provider goes down its URL/ffmpeg-probe path which
+succeeds for a real audio stream. The explicit `name` + `artists`
+fields on the MediaItem dict still survive — MA's
+`QueueItem.from_media_item` uses our dict's display fields and
+ffmpeg metadata only supplements the audio-format streamdetails.
+
+`internal/dispatcher/dispatcher.go::playViaMAWS`: `itemID := uri`,
+removed the unused `shortHash` helper.
+
 ## Version 0.1.12 (2026-05-11)
 
 ### Real metadata fix, fully responsive volume, position-drift guard
