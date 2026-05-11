@@ -28,6 +28,7 @@ This repository contains custom Home Assistant apps.
 | [MuninnDB](muninndb/) | Local-first AI memory and knowledge base with ONNX embedder |
 | [Portainer EE (LTS)](portainer_ee_lts/) | Docker management with Portainer Enterprise Edition (Long Term Support) |
 | [Portainer EE (STS)](portainer_ee_sts/) | Docker management with Portainer Enterprise Edition (Short Term Support) |
+| [Sonuntius](sonuntius/) | Cast/DIAL to Music Assistant bridge for Sendspin playback |
 
 ## Support
 

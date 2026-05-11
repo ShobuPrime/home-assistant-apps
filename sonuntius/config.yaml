@@ -1,0 +1,57 @@
+name: "Sonuntius"
+description: "Cast/DIAL to Music Assistant bridge for Sendspin playback"
+version: "0.1.0"
+slug: "sonuntius"
+url: "https://github.com/ShobuPrime/home-assistant-apps/tree/master/sonuntius"
+init: false
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+host_network: true
+host_dbus: false
+hassio_api: true
+homeassistant_api: true
+apparmor: true
+map:
+  - share:rw
+  - addon_config:rw
+options:
+  log_level: info
+  ma_player_id: ""
+  friendly_name_youtube: "Sonuntius (YouTube)"
+  friendly_name_tidal: "Sonuntius (Tidal)"
+  enable_youtube: true
+  enable_tidal_proxy: true
+  cast_cert_path: "/share/sonuntius/airreceiver_cert.pem"
+  cast_key_path: "/share/sonuntius/airreceiver_key.pem"
+  ha_base_url: ""
+  ha_token: ""
+  ma_ws_url: ""
+  ma_token: ""
+  tidal_fallback:
+    enabled: false
+    binary_tarball_path: "/share/sonuntius/ifi-tidal-release.tar.gz"
+    cert_filename: "IfiAudio_ZenStream.dat"
+    friendly_name: "Sonuntius (Tidal Connect)"
+    sendspin_server_url: ""
+schema:
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?
+  ma_player_id: str?
+  friendly_name_youtube: str
+  friendly_name_tidal: str
+  enable_youtube: bool
+  enable_tidal_proxy: bool
+  cast_cert_path: str
+  cast_key_path: str
+  ha_base_url: str?
+  ha_token: password?
+  ma_ws_url: str?
+  ma_token: password?
+  tidal_fallback:
+    enabled: bool
+    binary_tarball_path: str
+    cert_filename: str
+    friendly_name: str
+    sendspin_server_url: str?

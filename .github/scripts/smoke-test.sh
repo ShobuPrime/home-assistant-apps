@@ -308,6 +308,150 @@ case "${SLUG}" in
         wait_for_health "${HEALTH_PORT}" 120
         ;;
 
+    sonuntius)
+        # Phase 3b + Phase 4: ma-bridge, yt-cast, AND cast-receiver all
+        # run as Go binaries now. We verify init, each service boots and
+        # stays alive without a real network of senders (the smoke test
+        # has no AirReceiver cert provisioned), and IPC round-trip works.
+        sleep 8
+        LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
+        if echo "${LOGS}" | grep -q "Sonuntius: preparing runtime environment"; then
+            pass "Init script executed"
+        else
+            fail "Init script did not run"
+        fi
+        if echo "${LOGS}" | grep -q "Starting Sonuntius cast-receiver"; then
+            pass "cast-receiver S6 service started"
+        else
+            fail "cast-receiver S6 service did not start"
+        fi
+        if echo "${LOGS}" | grep -q "cast-receiver: starting"; then
+            pass "cast-receiver Go binary started"
+        else
+            fail "cast-receiver Go binary did not start"
+        fi
+        # CI does not ship an AirReceiver cert, so the binary must log
+        # the no-cert path cleanly rather than crashing. We accept either
+        # the cert-not-configured banner or the cont-init warning to
+        # confirm the missing-cert path was exercised.
+        if echo "${LOGS}" | grep -Eq "TLS server disabled \(cert not configured\)|AirReceiver cert (missing|not found)"; then
+            pass "cast-receiver handled missing AirReceiver cert gracefully"
+        else
+            fail "cast-receiver did not log the no-cert path"
+        fi
+        if echo "${LOGS}" | grep -q "Starting Sonuntius yt-cast"; then
+            pass "yt-cast S6 service started"
+        else
+            fail "yt-cast S6 service did not start"
+        fi
+        if echo "${LOGS}" | grep -q "yt-cast: starting (yt-cast-receiver port"; then
+            pass "yt-cast Go binary started"
+        else
+            fail "yt-cast Go binary did not start"
+        fi
+        # Verify the upstream commit pin is alive in the binary's banner.
+        if echo "${LOGS}" | grep -q "yt-cast-receiver port @ 83d61fa"; then
+            pass "yt-cast banner reports pinned upstream commit"
+        else
+            fail "yt-cast banner missing pinned upstream commit hash"
+        fi
+        if echo "${LOGS}" | grep -q "Starting Sonuntius ma-bridge"; then
+            pass "ma-bridge service started"
+        else
+            fail "ma-bridge service did not start"
+        fi
+        if echo "${LOGS}" | grep -q "ma-bridge online"; then
+            pass "ma-bridge reached online state"
+        else
+            fail "ma-bridge never reached online state"
+        fi
+        if docker exec "${CONTAINER_NAME}" test -S /run/sonuntius/events.sock; then
+            pass "IPC socket exists"
+        else
+            fail "IPC socket missing at /run/sonuntius/events.sock"
+        fi
+        # Phase 6b — health endpoint hosted by ma-bridge on 127.0.0.1:8099.
+        HEALTH_BODY=$(docker exec "${CONTAINER_NAME}" \
+            curl -sf --max-time 3 http://127.0.0.1:8099/health 2>/dev/null || true)
+        if [ -n "${HEALTH_BODY}" ] && echo "${HEALTH_BODY}" | grep -q '"components"'; then
+            pass "health endpoint responding on :8099/health"
+        else
+            fail "health endpoint not reachable or malformed at :8099/health"
+        fi
+        # The CI environment does not configure ma_player_id, so the
+        # dispatcher component should report degraded — that confirms
+        # status aggregation actually works rather than blindly returning
+        # "ok" for everything.
+        if echo "${HEALTH_BODY}" | grep -q '"status": "degraded"'; then
+            pass "health endpoint correctly aggregates degraded components"
+        else
+            info "health endpoint reported ok (dispatcher may be configured)"
+        fi
+        if docker exec "${CONTAINER_NAME}" /usr/local/bin/sonuntius-ctl play \
+                --provider ytmusic --track-id smoketest >/dev/null 2>&1; then
+            pass "sonuntius-ctl successfully sent PlayIntent"
+        else
+            fail "sonuntius-ctl could not send PlayIntent"
+        fi
+        sleep 2
+        DISPATCH_LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
+        if echo "${DISPATCH_LOGS}" | grep -q "ha: play_media"; then
+            pass "dispatcher invoked play_media on HA REST"
+        else
+            info "play_media call not logged — dispatcher may be idle (ma_player_id unset)"
+        fi
+        # Every receiver must remain alive after 10s even without
+        # senders on the network. A premature exit would mean S6 had to
+        # restart it, which would manifest as repeated "Starting ..."
+        # lines for that service.
+        YT_STARTS=$(echo "${DISPATCH_LOGS}" | grep -c "Starting Sonuntius yt-cast" || echo 0)
+        if [ "${YT_STARTS}" -le 1 ]; then
+            pass "yt-cast service stable (no S6 restart loop)"
+        else
+            fail "yt-cast service restarted ${YT_STARTS} times — crash loop"
+        fi
+        CAST_STARTS=$(echo "${DISPATCH_LOGS}" | grep -c "Starting Sonuntius cast-receiver" || echo 0)
+        if [ "${CAST_STARTS}" -le 1 ]; then
+            pass "cast-receiver service stable (no S6 restart loop)"
+        else
+            fail "cast-receiver service restarted ${CAST_STARTS} times — crash loop"
+        fi
+        # Phase 5 — Tidal Connect binary fallback (opt-in). CI runs with
+        # tidal_fallback.enabled = false, so the cont-init step must skip
+        # extraction and the two new services must log "idle" and stay
+        # asleep instead of crash-looping looking for a missing binary.
+        if echo "${DISPATCH_LOGS}" | grep -q "tidal_fallback.enabled = false — skipping iFi"; then
+            pass "Phase 5 cont-init correctly skipped (fallback disabled)"
+        else
+            fail "Phase 5 cont-init did not log the disabled path"
+        fi
+        if echo "${DISPATCH_LOGS}" | grep -q "tidal-connect: tidal_fallback.enabled = false"; then
+            pass "tidal-connect service idle (fallback disabled)"
+        else
+            fail "tidal-connect service did not log the disabled path"
+        fi
+        if echo "${DISPATCH_LOGS}" | grep -q "alsa-to-sendspin: tidal_fallback.enabled = false"; then
+            pass "alsa-to-sendspin service idle (fallback disabled)"
+        else
+            fail "alsa-to-sendspin service did not log the disabled path"
+        fi
+        # grep -c prints "0" on no-match AND exits 1, so `|| echo 0`
+        # would double-up to "0\n0". Use `|| true` instead — grep's own
+        # "0" is the count we want.
+        TIDAL_STARTS=$(echo "${DISPATCH_LOGS}" | grep -c "Starting Sonuntius tidal-connect" || true)
+        ALSA_STARTS=$(echo "${DISPATCH_LOGS}" | grep -c "Starting Sonuntius alsa-to-sendspin" || true)
+        if [ "${TIDAL_STARTS}" -eq 0 ] && [ "${ALSA_STARTS}" -eq 0 ]; then
+            pass "Phase 5 services never attempted exec (correct disabled-state behavior)"
+        else
+            fail "Phase 5 services attempted exec while disabled (tidal=${TIDAL_STARTS}, alsa=${ALSA_STARTS})"
+        fi
+        if docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
+            pass "Container still running"
+        else
+            fail "Container exited"
+        fi
+        ;;
+
     hay_cm5_fan)
         # Hardware-specific app — no /dev/gpiochip0 on CI runners.
         # Verify the image built successfully and the init script runs

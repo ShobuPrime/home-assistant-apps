@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant Add-on: Sonuntius
+# YouTube / YT Music DIAL + lounge receiver — Go port of yt-cast-receiver.
+# Binary at /usr/local/bin/yt-cast.
+# ==============================================================================
+bashio::log.info "Starting Sonuntius yt-cast..."
+exec /usr/local/bin/yt-cast

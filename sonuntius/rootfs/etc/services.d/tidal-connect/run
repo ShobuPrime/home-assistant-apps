@@ -1,0 +1,40 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant Add-on: Sonuntius
+# Phase 5 — iFi Tidal Connect binary service (opt-in).
+#
+# When tidal_fallback.enabled is true and cont-init.d/20-tidal-fallback.sh
+# successfully prepared the binary + cert (signalled by the marker file
+# /run/sonuntius/tidal-fallback-ready), exec the iFi binary with the
+# user's friendly name. Otherwise log and sleep so S6 doesn't restart-loop.
+# ==============================================================================
+
+if ! bashio::config.true 'tidal_fallback.enabled'; then
+    bashio::log.info "tidal-connect: tidal_fallback.enabled = false — service idle."
+    exec sleep infinity
+fi
+
+if [[ ! -f /run/sonuntius/tidal-fallback-ready ]]; then
+    bashio::log.warning "tidal-connect: fallback prep failed (see cont-init log) — service idle."
+    exec sleep infinity
+fi
+
+if [[ ! -x /usr/local/bin/tidal_connect_application ]]; then
+    bashio::log.error "tidal-connect: binary missing at /usr/local/bin/tidal_connect_application"
+    exec sleep infinity
+fi
+
+FRIENDLY_NAME="$(bashio::config 'tidal_fallback.friendly_name')"
+[[ -z "${FRIENDLY_NAME}" ]] && FRIENDLY_NAME="Sonuntius (Tidal Connect)"
+
+PLAYBACK_DEVICE="${SONUNTIUS_TIDAL_PLAYBACK_DEVICE:-hw:Loopback,0,0}"
+
+bashio::log.info "Starting Sonuntius tidal-connect (iFi binary)..."
+bashio::log.info "  friendly_name : ${FRIENDLY_NAME}"
+bashio::log.info "  playback_dev  : ${PLAYBACK_DEVICE}"
+
+# Run the binary. Arguments mirror the iFi-community usage; if upstream
+# argv changes, surface a clear log line on exit via the finish script.
+exec /usr/local/bin/tidal_connect_application \
+    --playback-device "${PLAYBACK_DEVICE}" \
+    --model-name "${FRIENDLY_NAME}"
