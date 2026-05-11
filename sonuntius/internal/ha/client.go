@@ -176,10 +176,13 @@ func (c *Client) FindMAAddonHostname(ctx context.Context) (string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return "", err
 	}
+	c.Logger.Info("ha: addon list retrieved", "count", len(envelope.Data.Addons))
 	for _, a := range envelope.Data.Addons {
 		if strings.Contains(a.Slug, "music_assistant") {
+			c.Logger.Info("ha: matched music_assistant addon", "slug", a.Slug, "hostname", a.Hostname)
 			return a.Hostname, nil
 		}
 	}
+	c.Logger.Info("ha: addon list did not contain music_assistant")
 	return "", nil
 }

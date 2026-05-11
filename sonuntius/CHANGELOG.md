@@ -1,5 +1,46 @@
 # Changelog
 
+## Version 0.1.3 (2026-05-11)
+
+### YouTube-classic playback path + auto-discovery observability
+
+- `cmd/yt-cast/player.go`: when a Cast sender is the regular YouTube
+  app (`Video.Client.Theme == "cl"`) the adapter now emits
+  `PlayIntent{Provider:"url", URL:"https://www.youtube.com/watch?v=<id>"}`
+  instead of the previous `provider="youtube"` (which the dispatcher
+  has no URI template for and dropped as "unresolvable"). Music
+  Assistant's stream extractor (yt-dlp) handles arbitrary YouTube
+  watch URLs, so the dispatcher's existing `provider="url"` path is
+  reused. The YouTube Music path (`Theme == "m"`) is unchanged and
+  continues to use `ytmusic://track/<id>`.
+- `internal/ha/client.go` + `cmd/ma-bridge/main.go`: every outcome of
+  the MA-addon auto-discovery path now logs at info or warn level —
+  addon-list count, matched slug + hostname on success, an explicit
+  "not discovered" line on the empty-result path. The previous silent
+  fallback to HA core WS was easy to miss when debugging real installs.
+- 5 new test cases in `cmd/yt-cast/player_test.go` covering the
+  resolveIntent provider mapping (YT Music, YouTube classic, unknown
+  surface).
+
+### YouTube video-title resolution + Lounge-state visibility
+
+- New `cmd/yt-cast/metadata.go` (with tests) — `metadataResolver`
+  fetches video title + channel via YouTube's public oEmbed endpoint
+  (`https://www.youtube.com/oembed?url=...&format=json`), stdlib-only,
+  no third-party deps, in-process cache to avoid re-fetching the same
+  video. `DoPlay` fires the resolution in a goroutine so the play path
+  stays optimistic; the addon log now shows
+  `yt-cast: now playing  video_id=bp4_7T9J6Fg  title="birds for some reason"  channel="Avocado Animations"  provider=url`
+  shortly after every cast.
+- `internal/ytcast/youtubeapp.go`: when the orchestrator pushes a
+  player-state update to the connected sender (the messages that drive
+  the phone's play/pause/skip/seek controls), it now logs the message
+  names + status code at info level. The previous behavior was silent
+  on success, so a perpetual loading spinner on the phone was opaque
+  from the addon side. Lines like
+  `Pushing player-state update to sender: names=[onStateChange nowPlaying onHasPreviousNextChanged] status=1`
+  now appear after every state transition.
+
 ## Version 0.1.2 (2026-05-11)
 
 ### MA addon auto-discovery + /share/sonuntius bootstrap

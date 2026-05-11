@@ -8,20 +8,27 @@
 //
 // Provider mapping (DoPlay):
 //
-//   - Video.Client.Theme == "m"  → "ytmusic" (YouTube Music app)
-//   - Video.Client.Theme == "cl" → "youtube" (regular YouTube app)
+//   - Video.Client.Theme == "m"  → ytmusic://track/<id>
+//                                  (Music Assistant's YouTube Music
+//                                  native provider).
+//   - Video.Client.Theme == "cl" → https://www.youtube.com/watch?v=<id>
+//                                  emitted with provider="url" so the
+//                                  dispatcher feeds it to MA's stream
+//                                  extractor (yt-dlp), which handles
+//                                  arbitrary YouTube watch URLs.
 //
-// The dispatcher in internal/dispatcher rejects unknown providers — for
-// the YouTube classic surface there is no MA-native provider, so we
-// still emit a PlayIntent (with provider="youtube") to keep the
-// integration observable; the dispatcher logs and drops it. Hooking up
-// a real YouTube provider in MA is a Phase 2.1 follow-up.
+// The dispatcher in internal/dispatcher accepts provider="url" by
+// forwarding URL straight into media_player.play_media as the
+// media_content_id, so no dispatcher change is needed for the
+// YouTube-classic path.
 package main
 
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/shobuprime/sonuntius/internal/events"
 	"github.com/shobuprime/sonuntius/internal/ipc"
@@ -47,6 +54,14 @@ type adapter struct {
 	// source is the "originating receiver" label attached to every
 	// outgoing event. Always "yt-cast" for this adapter.
 	source string
+
+	// metadata resolves human-readable titles via YouTube's oEmbed
+	// endpoint. May be nil — DoPlay falls back to logging just the ID.
+	metadata *metadataResolver
+
+	// log is the slog logger used for the async title-resolution
+	// callback. May be nil; falls back to slog.Default().
+	log *slog.Logger
 }
 
 // newAdapter constructs an adapter that emits events with source =
@@ -56,7 +71,17 @@ func newAdapter(client *ipc.Client) *adapter {
 	return &adapter{
 		ipcClient: client,
 		source:    "yt-cast",
+		metadata:  newMetadataResolver(),
 	}
+}
+
+// setLogger attaches a logger used for the async title-resolution
+// callback. Optional — without a logger the resolver still populates
+// PlayIntent.Metadata, but the human-name log line is skipped.
+func (a *adapter) setLogger(l *slog.Logger) {
+	a.mu.Lock()
+	a.log = l
+	a.mu.Unlock()
 }
 
 // setIPCClient swaps the underlying writer. nil means "broker is
@@ -98,28 +123,69 @@ func (a *adapter) send(ev events.Event) error {
 // no automatic retry — the wrapper main reconnects on its own.
 var errIPCOffline = errors.New("yt-cast: ma-bridge IPC unavailable")
 
-// providerForClient maps a Cast Client surface onto the dispatcher's
-// provider tag. See package doc comment for rationale.
-func providerForClient(c types.Client) string {
-	switch c.Theme {
+// resolveIntent maps a Cast video onto a dispatcher-ready PlayIntent.
+// See package doc comment for the provider mapping rationale.
+func resolveIntent(video types.Video, source string) *events.PlayIntent {
+	intent := &events.PlayIntent{Source: source}
+	switch video.Client.Theme {
 	case "m":
-		return "ytmusic"
+		// YouTube Music app — MA's native ytmusic provider takes the
+		// raw video/track id.
+		intent.Provider = "ytmusic"
+		intent.TrackID = video.ID
 	case "cl":
-		return "youtube"
+		// YouTube classic — hand MA the public watch URL so its stream
+		// extractor (yt-dlp) can pull audio.
+		intent.Provider = "url"
+		intent.URL = "https://www.youtube.com/watch?v=" + video.ID
+		intent.TrackID = video.ID
 	default:
 		// Unknown surface — let the dispatcher's "unknown provider" log
 		// surface the issue rather than silently dropping.
-		return c.Theme
+		intent.Provider = video.Client.Theme
+		intent.TrackID = video.ID
 	}
+	return intent
 }
 
-// DoPlay emits a PlayIntent.
+// DoPlay emits a PlayIntent. After dispatching the event we fire an
+// async metadata fetch via the oEmbed endpoint and log the resolved
+// title — the play path itself never blocks on the network roundtrip,
+// matching upstream's optimistic Player.play() behavior.
 func (a *adapter) DoPlay(_ context.Context, video types.Video, _ float64) error {
-	return a.send(&events.PlayIntent{
-		Provider: providerForClient(video.Client),
-		TrackID:  video.ID,
-		Source:   a.source,
-	})
+	intent := resolveIntent(video, a.source)
+	if err := a.send(intent); err != nil {
+		return err
+	}
+	go a.logResolvedTitle(video.ID, intent.Provider)
+	return nil
+}
+
+// logResolvedTitle runs out-of-band so the play path stays optimistic.
+// Resolution failures degrade to a single warn line carrying the ID.
+func (a *adapter) logResolvedTitle(videoID, provider string) {
+	if a.metadata == nil || videoID == "" {
+		return
+	}
+	a.mu.Lock()
+	log := a.log
+	a.mu.Unlock()
+	if log == nil {
+		log = slog.Default()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	m, err := a.metadata.Resolve(ctx, videoID)
+	if err != nil {
+		log.Warn("yt-cast: metadata resolve failed",
+			"video_id", videoID, "provider", provider, "err", err)
+		return
+	}
+	log.Info("yt-cast: now playing",
+		"video_id", videoID,
+		"title", m.Title,
+		"channel", m.Channel,
+		"provider", provider)
 }
 
 // DoPause emits a pause TransportCommand.

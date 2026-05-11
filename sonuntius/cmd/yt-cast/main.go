@@ -72,6 +72,7 @@ func main() {
 
 	// --- Build the adapter and connect to the IPC broker. ----------
 	adapt := newAdapter(nil)
+	adapt.setLogger(log.With("component", "player"))
 	conn := newIPCConnector(adapt, log.With("component", "ipc"))
 	conn.run(ctx)
 
