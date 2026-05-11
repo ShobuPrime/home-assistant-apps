@@ -142,6 +142,12 @@ func (c *Client) GetState(ctx context.Context, entityID string) (*State, error) 
 // FindMAAddonHostname looks up the music_assistant addon's hostname via
 // Supervisor. Returns "" if the addon is not installed or the call
 // fails — callers should treat that as "MA WS not reachable directly".
+//
+// The Supervisor /addons endpoint requires the addon to have
+// hassio_role: manager (or admin); without it the call returns 403 and
+// we cannot auto-discover MA's hostname. We surface the HTTP status at
+// warn level so the cause is visible in the addon log instead of being
+// silently swallowed.
 func (c *Client) FindMAAddonHostname(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://supervisor/addons", nil)
 	if err != nil {
@@ -154,6 +160,9 @@ func (c *Client) FindMAAddonHostname(ctx context.Context) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
+		c.Logger.Warn("ha: addon list request failed — MA auto-discovery skipped",
+			"status", resp.StatusCode,
+			"hint", "addon may need hassio_role: manager in config.yaml")
 		return "", nil
 	}
 	var envelope struct {

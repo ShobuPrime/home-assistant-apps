@@ -1,5 +1,23 @@
 # Changelog
 
+## Version 0.1.2 (2026-05-11)
+
+### MA addon auto-discovery + /share/sonuntius bootstrap
+
+- `config.yaml`: add `hassio_role: manager`. Without this, the addon's
+  Supervisor token is rejected by `GET /addons` (HTTP 403) and the
+  Phase 6a direct-MA-WS auto-discovery silently falls back to the HA
+  core WS path. Manager is the lowest role that grants the addon-list
+  endpoint; we don't need anything broader.
+- `cont-init.d/10-prepare.sh`: auto-create `/share/sonuntius/` so the
+  user has a known, pre-existing directory to drop the AirReceiver
+  cert (Phase 3 Tidal proxy) and the iFi tarball (Phase 5 fallback)
+  into. The dir is empty by default and carries no secrets.
+- `internal/ha/client.go`: elevate the `FindMAAddonHostname` HTTP-error
+  log from debug to warn with an explicit hint about `hassio_role` —
+  so future permission issues surface in the addon log instead of
+  being swallowed at the default log level.
+
 ## Version 0.1.1 (2026-05-11)
 
 ### Configurable listen ports — Music Assistant port-3000 conflict fix
