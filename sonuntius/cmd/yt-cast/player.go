@@ -153,6 +153,37 @@ func (a *adapter) setIPCClient(c *ipc.Client) {
 	a.mu.Unlock()
 }
 
+// resetSession clears all per-cast state in the adapter so the next
+// sender starts from a blank slate. Used when all senders disconnect
+// — without this, a second device casting after the first would
+// briefly see leftover title/artist/duration from the first session
+// before its own DoPlay lands.
+//
+// Speaker-scoped state (volume, muted) is intentionally preserved —
+// the speaker keeps its physical setting regardless of which sender
+// is connected, and surfacing that to a fresh sender is the right
+// initial value.
+func (a *adapter) resetSession() {
+	a.mu.Lock()
+	prevVolume := a.cachedState.Volume
+	prevMuted := a.cachedState.Muted
+	a.cachedState = events.PlayerState{
+		State:  "idle",
+		Volume: prevVolume,
+		Muted:  prevMuted,
+	}
+	a.playbackBasePos = 0
+	a.playbackStartedAt = nil
+	a.playbackPaused = false
+	a.playbackPauseStart = nil
+	a.playbackPauseAccum = 0
+	log := a.log
+	a.mu.Unlock()
+	if log != nil {
+		log.Info("yt-cast: session state reset — adapter ready for next sender")
+	}
+}
+
 // updateCachedState replaces the cached PlayerState frame and fires
 // the onStateChange callback (if any) so the host can re-emit player
 // state to connected senders. The callback runs synchronously on the

@@ -1,5 +1,47 @@
 # Changelog
 
+## Version 0.1.17 (2026-05-11)
+
+### Session reset on sender disconnect
+
+When every sender (Cast app on phone) has disconnected, the adapter
+now wipes per-cast state — track title, artist, duration, position,
+and the local wall-clock estimator. Without this, a second device
+connecting after the first briefly saw the previous session's track
+info in its first state push, before its own DoPlay landed and
+replaced the cache.
+
+Speaker-scoped state (volume, muted) is intentionally preserved —
+the physical speaker keeps its setting regardless of which sender
+is connected, and surfacing that to a fresh sender is the right
+initial value.
+
+New `adapter.resetSession()` and a `watchSenderLifecycle` goroutine
+in `cmd/yt-cast/main.go` that subscribes to the receiver's app-event
+bus (`SenderConnectedEvent` / `SenderDisconnectedEvent`) and calls
+the reset when the connected-sender count drops to zero.
+
+### Performance discussion
+
+The user raised goroutines + mutexes for ordering. Re-evaluated:
+
+- Cast is **single-sender at a time**, so within one stream events
+  are naturally serial. A per-event-type mutex doesn't enable
+  parallelism — it just adds bookkeeping.
+- The **real** single-sender win is cutting the hop count. Today
+  volume commands traverse 6 hops (yt-cast → IPC → ma-bridge → HA
+  REST → HA → MA → speaker). Routing volume/transport over the
+  existing MA WebSocket (already used for play_media) would drop
+  to 4 hops and shave 30-40 ms per command. Tracked as a follow-up
+  PR — it's a meaningful refactor (long-lived WS connection in
+  ma-bridge, fallback path for when MA is unreachable).
+- `encoding/json` is the stdlib and our policy is stdlib-only;
+  `easyjson`/`sonic` would be 2-5× faster but require third-party
+  deps. For our <1KB messages the absolute saving is microseconds —
+  not worth the dep.
+- `sync.Pool` for IPC scanner buffers is a microsecond-scale win;
+  also tracked for follow-up.
+
 ## Version 0.1.16 (2026-05-11)
 
 ### Volume delta routing + honour sender start position
