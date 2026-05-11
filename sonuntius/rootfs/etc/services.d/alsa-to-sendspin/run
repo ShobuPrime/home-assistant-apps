@@ -1,0 +1,37 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant Add-on: Sonuntius
+# Phase 5 — ALSA loopback → Sendspin forwarder (opt-in).
+#
+# Reads PCM from the ALSA loopback capture side (where the iFi binary
+# writes its decoded Tidal audio) and forwards it to the configured
+# Sendspin server WebSocket. The Go binary execs `arecord` as a child
+# process; signal handling cascades cleanly through SIGTERM.
+# ==============================================================================
+
+if ! bashio::config.true 'tidal_fallback.enabled'; then
+    bashio::log.info "alsa-to-sendspin: tidal_fallback.enabled = false — service idle."
+    exec sleep infinity
+fi
+
+if [[ ! -f /run/sonuntius/tidal-fallback-ready ]]; then
+    bashio::log.warning "alsa-to-sendspin: fallback prep failed (see cont-init log) — service idle."
+    exec sleep infinity
+fi
+
+SENDSPIN_URL="$(bashio::config 'tidal_fallback.sendspin_server_url')"
+if [[ -z "${SENDSPIN_URL}" ]]; then
+    bashio::log.warning "alsa-to-sendspin: tidal_fallback.sendspin_server_url is empty — service idle."
+    bashio::log.warning "alsa-to-sendspin: set it to the MA Sendspin server URL (e.g. ws://music-assistant:8095/sendspin)."
+    exec sleep infinity
+fi
+
+if [[ ! -x /usr/local/bin/alsa-to-sendspin ]]; then
+    bashio::log.error "alsa-to-sendspin: binary missing at /usr/local/bin/alsa-to-sendspin"
+    exec sleep infinity
+fi
+
+bashio::log.info "Starting Sonuntius alsa-to-sendspin..."
+bashio::log.info "  sendspin_url : ${SENDSPIN_URL}"
+
+exec /usr/local/bin/alsa-to-sendspin

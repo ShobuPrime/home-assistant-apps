@@ -1,0 +1,7 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant Add-on: Sonuntius
+# Music Assistant bridge daemon — Go binary at /usr/local/bin/ma-bridge.
+# ==============================================================================
+bashio::log.info "Starting Sonuntius ma-bridge..."
+exec /usr/local/bin/ma-bridge

@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant Add-on: Sonuntius
+# alsa-to-sendspin finish handler.
+# ==============================================================================
+if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
+    bashio::log.warning "alsa-to-sendspin exited with code ${1}. Respawning..."
+fi
