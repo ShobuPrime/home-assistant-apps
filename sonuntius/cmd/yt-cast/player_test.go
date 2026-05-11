@@ -31,13 +31,13 @@ func TestResolveIntent(t *testing.T) {
 		{
 			name: "YouTube classic — url provider with watch URL",
 			video: types.Video{
-				ID:     "0FrB-7Nm3d4",
+				ID:     "bp4_7T9J6Fg",
 				Client: types.Client{Theme: "cl"},
 			},
 			want: events.PlayIntent{
 				Provider: "url",
-				URL:      "https://www.youtube.com/watch?v=0FrB-7Nm3d4",
-				TrackID:  "0FrB-7Nm3d4",
+				URL:      "https://www.youtube.com/watch?v=bp4_7T9J6Fg",
+				TrackID:  "bp4_7T9J6Fg",
 				Source:   "yt-cast",
 			},
 		},

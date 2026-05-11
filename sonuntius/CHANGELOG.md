@@ -30,7 +30,7 @@
   no third-party deps, in-process cache to avoid re-fetching the same
   video. `DoPlay` fires the resolution in a goroutine so the play path
   stays optimistic; the addon log now shows
-  `yt-cast: now playing  video_id=0FrB-7Nm3d4  title="Poker Flat Podcast 32"  channel="Poker Flat Recordings"  provider=url`
+  `yt-cast: now playing  video_id=bp4_7T9J6Fg  title="birds for some reason"  channel="Avocado Animations"  provider=url`
   shortly after every cast.
 - `internal/ytcast/youtubeapp.go`: when the orchestrator pushes a
   player-state update to the connected sender (the messages that drive
