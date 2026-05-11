@@ -102,6 +102,13 @@ func main() {
 	// prefer MA's native WS API with a fully-formed MediaItem. The
 	// queue_id is MA's internal player_id, derived from the HA
 	// entity_id by stripping `media_player.` and any trailing `_N`.
+	// MA WS direct path. A single long-lived WebSocket replaces the
+	// per-call short connections used before v0.2.0 and replaces HA
+	// REST for transport / volume / seek (~30-40 ms saved per command,
+	// and seek-after-play actually lands on the new queue item
+	// instead of racing HA's 3-4 s media_seek round-trip). HA REST
+	// remains the fallback when MA is unavailable.
+	var maClient *ma.WSClient
 	if opts.MAPlayerID != "" {
 		maPlayURL := opts.MAWsURL
 		if maPlayURL == "" && maHost != "" {
@@ -110,11 +117,14 @@ func main() {
 		if maPlayURL != "" {
 			queueID := resolveMAQueueID(ctx, maPlayURL, opts, logger.With("component", "ma-discovery"))
 			if queueID != "" {
-				disp.SetMAWS(maPlayURL, opts.MAToken, queueID)
-				logger.Info("dispatcher: MA WS play_media path enabled",
+				maClient = ma.NewWSClient(maPlayURL, opts.MAToken,
+					logger.With("component", "ma-ws"), nil)
+				maClient.Start(ctx)
+				disp.SetMAWS(maClient, queueID)
+				logger.Info("dispatcher: MA WS direct path enabled",
 					"queue_id", queueID, "url", maPlayURL)
 			} else {
-				logger.Warn("dispatcher: MA WS play_media path disabled — could not determine queue_id (set ma_queue_id explicitly)",
+				logger.Warn("dispatcher: MA WS direct path disabled — could not determine queue_id (set ma_queue_id explicitly)",
 					"url", maPlayURL)
 			}
 		}
@@ -131,36 +141,12 @@ func main() {
 
 	// Player state subscription:
 	//
-	// The HA core WS (state.Watcher) is ALWAYS started — it subscribes by
-	// HA entity_id (the value the user puts in `ma_player_id`) and is the
-	// reliable source of media_position / media_duration / media_title /
-	// volume_level updates because HA aggregates MA's reports into the
-	// entity state. Without this path the yt-cast adapter's cachedState
-	// stays empty and the phone's playback timer perpetually shows 0.
-	//
-	// The MA direct WS (ma.Watcher) is OPTIONAL and additive. MA's WS
-	// uses MA's own internal player IDs, not HA entity_ids, so filtering
-	// it by `ma_player_id` would drop every event. For v0.1.7 we keep
-	// only the connect-probe (so the `ma: connected` log line surfaces
-	// the MA server version + schema as a sanity check) but we do not
-	// run the long-lived watcher — HA core WS carries the data we need.
-	maURL := opts.MAWsURL
-	if maURL == "" && maHost != "" {
-		maURL = ma.URLFromHost(maHost)
-	}
-	if maURL != "" {
-		probe := ma.NewWatcher(maURL, opts.MAToken, opts.MAPlayerID, srv, logger.With("component", "ma"))
-		probeCtx, cancel := context.WithTimeout(ctx, 7*time.Second)
-		if err := probe.TryConnect(probeCtx); err == nil {
-			logger.Info("ma: direct WS reachable (advisory only — state subscription uses HA core WS)",
-				"url", maURL)
-		} else {
-			logger.Warn("ma: direct WS unreachable (advisory only — state subscription uses HA core WS)",
-				"url", maURL, "err", err)
-		}
-		cancel()
-	}
-
+	// HA core WS state subscription. ALWAYS started — it watches the
+	// HA `media_player.*` entity for state_changed events and feeds
+	// position / duration / title back to receivers via IPC. The
+	// MA-direct WS (above, via the WSClient) handles outbound commands;
+	// state still flows back via HA core because HA's MA integration
+	// aggregates MA's player events into the entity state.
 	watcher := state.NewWithURL(opts.HAWebSocketURL(), haToken, opts.MAPlayerID, srv, logger.With("component", "state"))
 	healthSrv.Set("state", true, "HA core WebSocket: "+opts.HAWebSocketURL()+" (entity="+opts.MAPlayerID+")")
 	go watcher.Run(ctx)
@@ -169,6 +155,9 @@ func main() {
 
 	<-ctx.Done()
 	logger.Info("ma-bridge shutting down")
+	if maClient != nil {
+		maClient.Stop()
+	}
 }
 
 // resolveMAQueueID determines the MA-side queue_id (internal player_id)

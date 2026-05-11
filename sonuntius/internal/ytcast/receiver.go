@@ -231,6 +231,10 @@ func (r *Receiver) PairingCodeService() *lounge.PairingCodeRequestService {
 // ConnectedSenders returns the currently-connected senders.
 func (r *Receiver) ConnectedSenders() []*types.Sender { return r.app.ConnectedSenders() }
 
+// UpcomingVideo returns the engine's "what plays next" — see
+// YouTubeApp.UpcomingVideo for semantics.
+func (r *Receiver) UpcomingVideo() *types.Video { return r.app.UpcomingVideo() }
+
 // EnableAutoplayOnConnect ports `enableAutoplayOnConnect(value)`.
 func (r *Receiver) EnableAutoplayOnConnect(value bool) { r.app.EnableAutoplayOnConnect(value) }
 

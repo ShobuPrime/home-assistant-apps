@@ -33,21 +33,21 @@ var transportToService = map[string]string{
 	"seek":     "media_seek",
 }
 
-// Dispatcher routes events to the HA client. When MAWsURL is set the
-// dispatcher also has a direct path to MA's WebSocket so url-provider
-// PlayIntents can be sent as a fully-formed MediaItem (preserving
-// title / artist / image), bypassing HA's media_player.play_media
-// wrapper which strips metadata for the URL provider.
+// Dispatcher routes events to the HA client. When MAWS is set, the
+// dispatcher uses MA's WebSocket directly for play_media, seek,
+// transport, and volume — cutting out the HA REST + Python-integration
+// hop. HA REST remains the fallback when MA WS is unavailable (e.g.,
+// MA addon stopped) so the bridge still works in degraded mode.
 type Dispatcher struct {
 	HA       *ha.Client
 	EntityID string
 	Logger   *slog.Logger
 
-	// MA-WS direct path (optional). When MAWsURL is non-empty the
-	// dispatcher tries this first for url-provider intents and falls
-	// back to the HA REST path on any error.
-	MAWsURL       string
-	MAToken       string
+	// MA WS client (optional). When non-nil and Connected(), the
+	// dispatcher routes commands directly to MA over its WebSocket
+	// instead of HA REST. MAPlayerQueue is the MA-internal player_id
+	// (which doubles as the queue_id for the player's own queue).
+	MAWS          *ma.WSClient
 	MAPlayerQueue string
 
 	// authWarned tracks whether we've already surfaced the loud
@@ -65,13 +65,17 @@ func New(haClient *ha.Client, entityID string, logger *slog.Logger) *Dispatcher 
 	return &Dispatcher{HA: haClient, EntityID: entityID, Logger: logger}
 }
 
-// SetMAWS configures the MA WS direct path. queueID is MA's internal
-// player_id (NOT the HA entity_id); use ma.DerivePlayerID to derive
-// it from the entity_id, or accept an explicit override from config.
-func (d *Dispatcher) SetMAWS(url, token, queueID string) {
-	d.MAWsURL = url
-	d.MAToken = token
+// SetMAWS configures the long-lived MA WS client and the MA-internal
+// player/queue ID for this dispatcher. queueID is MA's player_id; for
+// single-player queues it doubles as the queue_id.
+func (d *Dispatcher) SetMAWS(client *ma.WSClient, queueID string) {
+	d.MAWS = client
 	d.MAPlayerQueue = queueID
+}
+
+// maWSReady reports whether we can route commands through the MA WS.
+func (d *Dispatcher) maWSReady() bool {
+	return d.MAWS != nil && d.MAPlayerQueue != "" && d.MAWS.Connected()
 }
 
 // Ready reports whether the dispatcher has a target entity configured.
@@ -90,6 +94,8 @@ func (d *Dispatcher) Dispatch(ctx context.Context, ev events.Event) {
 	switch e := ev.(type) {
 	case *events.PlayIntent:
 		d.dispatchPlay(ctx, e)
+	case *events.QueueAddIntent:
+		d.dispatchQueueAdd(ctx, e)
 	case *events.TransportCommand:
 		d.dispatchTransport(ctx, e)
 	case *events.VolumeCommand:
@@ -106,32 +112,10 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 			"provider", p.Provider, "track_id", p.TrackID, "url", p.URL)
 		return
 	}
-
-	// For url-provider intents prefer MA's native WS play_media when
-	// it's configured. MA's URL provider strips most metadata when
-	// routed through HA's media_player.play_media service; the WS
-	// path accepts a full MediaItem, so the title / artist / image
-	// land in MA's UI.
-	if p.Provider == "url" && d.MAWsURL != "" && d.MAPlayerQueue != "" {
-		// Clear MA's queue first so leftover library/autoplay tracks
-		// don't sit behind our item. Best-effort — if clear fails
-		// we still try play_media (with option:"play" MA only
-		// replaces the current item; queue items remain, but the
-		// user has a more degraded but not broken experience).
-		if err := ma.ClearQueue(ctx, d.MAWsURL, d.MAToken,
-			d.MAPlayerQueue, d.Logger.With("path", "ma-ws-clear")); err != nil {
-			d.Logger.Warn("dispatcher: queue clear failed (continuing to play_media)",
-				"err", err)
-		}
+	if p.Provider == "url" && d.maWSReady() {
 		if err := d.playViaMAWS(ctx, uri, p); err == nil {
-			d.maybeSeekAfterPlay(ctx, p)
 			return
 		} else if errors.Is(err, ma.ErrAuthRequired) {
-			// MA's URL provider is what would surface our metadata in
-			// the MA UI. Without auth we can't reach it. Tell the user
-			// once at warn, then degrade to debug so the log doesn't
-			// drown in repeats — the HA REST fallback below still
-			// plays audio, just without rich metadata.
 			if !d.authWarned.Swap(true) {
 				d.Logger.Warn(
 					"dispatcher: MA WS requires a long-lived API token to display title/artist/thumbnail in the MA UI",
@@ -144,51 +128,34 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 					"err", err)
 			}
 		} else {
-			d.Logger.Warn("dispatcher: MA WS play_media failed, falling back to HA REST",
+			d.Logger.Warn("dispatcher: MA WS play path failed, falling back to HA REST",
 				"err", err)
 		}
 	}
-
+	// Fallback: HA REST. No rich metadata, no immediate seek, but
+	// audio plays. Used when MA WS is unavailable or auth is missing.
 	extra := metadataExtra(p.Metadata)
 	if err := d.HA.PlayMedia(ctx, d.EntityID, uri, "music", extra); err != nil {
 		d.Logger.Error("dispatcher: play_media failed", "err", err)
 		return
 	}
-	d.maybeSeekAfterPlay(ctx, p)
-}
-
-// maybeSeekAfterPlay fires media_seek on the entity if the play intent
-// carried a non-zero start position. MA's `player_queues/play_media`
-// has no built-in "start at N seconds" argument; the convention is
-// to follow play_media with a seek. Without this, casting at 7:28
-// from the YouTube app would still start playback at 0:00 on the
-// speaker.
-//
-// Runs in the foreground but errors are non-fatal — playback already
-// started, we just can't honor the requested offset.
-func (d *Dispatcher) maybeSeekAfterPlay(ctx context.Context, p *events.PlayIntent) {
-	if p.StartPosition <= 0.5 {
-		return
+	if p.StartPosition > 0.5 {
+		go func(pos float64) {
+			select {
+			case <-time.After(500 * time.Millisecond):
+			case <-ctx.Done():
+				return
+			}
+			if err := d.HA.MediaPlayerCommand(ctx, d.EntityID, "media_seek",
+				map[string]any{"seek_position": pos}); err != nil {
+				d.Logger.Warn("dispatcher: HA-REST post-play seek failed",
+					"position", pos, "err", err)
+				return
+			}
+			d.Logger.Info("dispatcher: HA-REST post-play seek issued",
+				"position", pos, "entity", d.EntityID)
+		}(p.StartPosition)
 	}
-	// Give MA a moment to ingest the play_media before seeking — a
-	// seek issued immediately can race the queue-item-loaded state
-	// and be dropped silently. 500ms is a conservative single-RTT
-	// budget.
-	go func(pos float64) {
-		select {
-		case <-time.After(500 * time.Millisecond):
-		case <-ctx.Done():
-			return
-		}
-		if err := d.HA.MediaPlayerCommand(ctx, d.EntityID, "media_seek",
-			map[string]any{"seek_position": pos}); err != nil {
-			d.Logger.Warn("dispatcher: post-play seek failed",
-				"position", pos, "err", err)
-			return
-		}
-		d.Logger.Info("dispatcher: post-play seek issued",
-			"position", pos, "entity", d.EntityID)
-	}(p.StartPosition)
 }
 
 // playViaMAWS sends a fully-formed MediaItem to MA's native WS
@@ -210,20 +177,77 @@ func (d *Dispatcher) maybeSeekAfterPlay(ctx context.Context, p *events.PlayInten
 // as "<artist[0].name> - <name>" from our dict even when item_id is
 // the URL.
 func (d *Dispatcher) playViaMAWS(ctx context.Context, uri string, p *events.PlayIntent) error {
-	title, _ := p.Metadata["title"].(string)
-	channel, _ := p.Metadata["channel"].(string)
-	thumb, _ := p.Metadata["thumbnail"].(string)
-	videoID, _ := p.Metadata["video_id"].(string)
-	durationVal, _ := p.Metadata["duration"].(float64)
+	item := d.buildMediaItem(uri, p.TrackID, p.Metadata)
+	// Clear-then-play-then-seek over a single MA WS connection. MA
+	// processes commands in receipt order on a single connection, so
+	// the seek lands on our new queue item — not the prior cast's or
+	// some stale library track. No 500 ms HA-REST delay needed: WS
+	// commands are typically acknowledged in <50 ms each, and the
+	// player handler waits for the queue item to load before applying
+	// transport commands.
+	log := d.Logger.With("path", "ma-ws")
+	if err := d.MAWS.ClearQueue(ctx, d.MAPlayerQueue); err != nil {
+		log.Warn("dispatcher: queue clear failed (continuing)", "err", err)
+	}
+	log.Info("ma: PlayMediaItem", "queue_id", d.MAPlayerQueue,
+		"name", item.Name, "provider", item.Provider,
+		"start_position", p.StartPosition)
+	if err := d.MAWS.PlayQueueMedia(ctx, d.MAPlayerQueue, item, "play"); err != nil {
+		return err
+	}
+	if p.StartPosition > 0.5 {
+		if err := d.MAWS.Seek(ctx, d.MAPlayerQueue, p.StartPosition); err != nil {
+			log.Warn("dispatcher: post-play seek failed", "position", p.StartPosition, "err", err)
+		} else {
+			log.Info("dispatcher: post-play seek issued (WS)",
+				"position", p.StartPosition, "queue_id", d.MAPlayerQueue)
+		}
+	}
+	return nil
+}
 
-	// item_id must be the URL so MA's builtin provider can stream it
-	// (its get_stream_details treats non-URL ids as filesystem paths).
-	itemID := uri
-	_ = videoID // kept available in metadata for future routing changes
+// dispatchQueueAdd appends a pre-resolved upcoming track to MA's queue.
+// Called by the yt-cast adapter after a successful DoPlay so MA auto-
+// advances to YouTube's "next" instead of MA's library autoplay when
+// the current track ends. Skipped silently when MA WS isn't available
+// — HA REST has no equivalent, and the consequence is just no preload,
+// not a broken playback.
+func (d *Dispatcher) dispatchQueueAdd(ctx context.Context, p *events.QueueAddIntent) {
+	if !d.maWSReady() {
+		d.Logger.Debug("dispatcher: queue add dropped (MA WS not ready)",
+			"track_id", p.TrackID)
+		return
+	}
+	uri := p.URL
+	if uri == "" {
+		d.Logger.Debug("dispatcher: queue add dropped (empty URL)",
+			"track_id", p.TrackID)
+		return
+	}
+	item := d.buildMediaItem(uri, p.TrackID, p.Metadata)
+	log := d.Logger.With("path", "ma-ws-queue-add")
+	log.Info("ma: AddToQueueMedia",
+		"queue_id", d.MAPlayerQueue,
+		"name", item.Name,
+		"track_id", p.TrackID)
+	if err := d.MAWS.AddToQueueMedia(ctx, d.MAPlayerQueue, item); err != nil {
+		log.Warn("dispatcher: queue add failed", "err", err)
+	}
+}
+
+// buildMediaItem assembles a MA-shaped MediaItem from a stream URL +
+// metadata map. Extracted so the play and queue-add paths share the
+// same construction logic.
+func (d *Dispatcher) buildMediaItem(uri, trackID string, meta map[string]any) ma.MediaItem {
+	title, _ := meta["title"].(string)
+	channel, _ := meta["channel"].(string)
+	thumb, _ := meta["thumbnail"].(string)
+	durationVal, _ := meta["duration"].(float64)
+	_ = trackID // reserved for future routing decisions
 
 	contentType := guessAudioContentType(uri)
 	mapping := ma.MediaItemProviderMapping{
-		ItemID:           itemID,
+		ItemID:           uri,
 		ProviderDomain:   "builtin",
 		ProviderInstance: "builtin",
 		Available:        true,
@@ -239,12 +263,12 @@ func (d *Dispatcher) playViaMAWS(ctx context.Context, uri string, p *events.Play
 	}
 
 	item := ma.MediaItem{
-		ItemID:           itemID,
+		ItemID:           uri,
 		Provider:         "builtin",
 		Name:             title,
 		Version:          "",
 		MediaType:        "track",
-		URI:              "builtin://track/" + itemID,
+		URI:              "builtin://track/" + uri,
 		Available:        true,
 		IsPlayable:       true,
 		Favorite:         false,
@@ -270,7 +294,7 @@ func (d *Dispatcher) playViaMAWS(ctx context.Context, uri string, p *events.Play
 			RemotelyAccessible: true,
 		}}
 	}
-	return ma.PlayMediaItem(ctx, d.MAWsURL, d.MAToken, d.MAPlayerQueue, item, d.Logger.With("path", "ma-ws"))
+	return item
 }
 
 // guessAudioContentType derives an MA-style content_type from the URL.
@@ -378,6 +402,43 @@ func metadataExtra(meta map[string]any) map[string]any {
 }
 
 func (d *Dispatcher) dispatchTransport(ctx context.Context, t *events.TransportCommand) {
+	// MA WS path — preferred when the long-lived connection is up.
+	if d.maWSReady() {
+		var err error
+		switch t.Command {
+		case "play":
+			err = d.MAWS.PlayerPlay(ctx, d.MAPlayerQueue)
+		case "pause":
+			err = d.MAWS.PlayerPause(ctx, d.MAPlayerQueue)
+		case "stop":
+			err = d.MAWS.PlayerStop(ctx, d.MAPlayerQueue)
+		case "next":
+			err = d.MAWS.PlayerNext(ctx, d.MAPlayerQueue)
+		case "previous":
+			err = d.MAWS.PlayerPrevious(ctx, d.MAPlayerQueue)
+		case "seek":
+			if t.Position != nil {
+				err = d.MAWS.Seek(ctx, d.MAPlayerQueue, *t.Position)
+			}
+		case "clear_queue":
+			// No HA equivalent — clear is MA-WS-only. Quietly skip if
+			// WS isn't connected (we're probably mid-shutdown).
+			err = d.MAWS.ClearQueue(ctx, d.MAPlayerQueue)
+		default:
+			d.Logger.Warn("dispatcher: unknown transport command", "command", t.Command)
+			return
+		}
+		if err == nil {
+			return
+		}
+		d.Logger.Warn("dispatcher: MA WS transport failed, falling back to HA REST",
+			"command", t.Command, "err", err)
+	}
+	if t.Command == "clear_queue" {
+		// No HA REST equivalent. Best-effort only.
+		return
+	}
+	// Fallback: HA REST.
 	svc, ok := transportToService[t.Command]
 	if !ok {
 		d.Logger.Warn("dispatcher: unknown transport command", "command", t.Command)
@@ -393,6 +454,28 @@ func (d *Dispatcher) dispatchTransport(ctx context.Context, t *events.TransportC
 }
 
 func (d *Dispatcher) dispatchVolume(ctx context.Context, v *events.VolumeCommand) {
+	// MA WS path — preferred when the long-lived connection is up.
+	if d.maWSReady() {
+		var firstErr error
+		if v.Muted != nil {
+			if err := d.MAWS.SetMute(ctx, d.MAPlayerQueue, *v.Muted); err != nil {
+				firstErr = err
+			}
+		}
+		if v.Level != nil {
+			// MA expects integer 0-100; we receive 0.0-1.0.
+			level := int(*v.Level*100 + 0.5)
+			if err := d.MAWS.SetVolume(ctx, d.MAPlayerQueue, level); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		if firstErr == nil {
+			return
+		}
+		d.Logger.Warn("dispatcher: MA WS volume failed, falling back to HA REST",
+			"err", firstErr)
+	}
+	// Fallback: HA REST.
 	if v.Muted != nil {
 		if err := d.HA.MediaPlayerCommand(ctx, d.EntityID, "volume_mute",
 			map[string]any{"is_volume_muted": *v.Muted}); err != nil {
