@@ -1,5 +1,45 @@
 # Changelog
 
+## Version 0.1.9 (2026-05-11)
+
+### Local position estimation + seek/volume visibility
+
+Two issues from the v0.1.8 live test:
+
+**1. Position snaps to 0:00 on the first pause after play.** Even with
+the v0.1.8 `subscribe_events` fix, HA does not emit `state_changed` for
+a `media_player` entity until MA has actually started streaming
+(typically 2–10 seconds after our `play_media` call). If the user pauses
+during that gap, the engine calls `DoGetPosition`, our cachedState is
+still empty, and we return 0 — the phone's progress bar snaps to 0:00
+in both YouTube *and* the MA UI on the first pause. Once playback runs
+long enough for HA to emit position attributes, sync becomes correct.
+
+`cmd/yt-cast/player.go`: the adapter now tracks a local wall-clock
+position estimator alongside the cached state. `DoGetPosition` prefers
+the cached value when available (MA's truth), and falls back to the
+estimator otherwise. Estimator is seeded by `DoPlay` (with the
+sender-supplied start position), frozen by `DoPause`, advanced by
+`DoResume` (absorbing the pause duration), rebased by `DoSeek`, and
+cleared by `DoStop`.
+
+The result: the phone always sees a sensible non-zero position from
+the moment the cast lands, even during the initial gap before MA
+reports back.
+
+**2. Seek and volume traces went to debug.** Logging on `DoSeek` and
+`DoSetVolume` is now info-level so we can diagnose the inconsistent
+"no sound after scrub" / "volume slider doesn't move the speaker"
+reports from the live device. Position rebasing on `DoSeek` is
+described above.
+
+These changes do **not** address the lingering "MA UI shows the raw
+videoplayback URL as title" issue — MA's URL provider doesn't honour
+metadata extras regardless of the shape we send. The next escalation
+is replacing `media_player.play_media` (HA-routed) with MA's native
+WS `player_queues/play_media` command and a full MediaItem object;
+that's tracked for v0.1.10.
+
 ## Version 0.1.8 (2026-05-11)
 
 ### subscribe_events instead of subscribe_trigger; flat-and-nested play_media metadata

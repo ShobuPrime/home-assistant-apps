@@ -74,6 +74,19 @@ type adapter struct {
 	// external position / volume / duration updates from Music
 	// Assistant flow back to the phone as Lounge messages. May be nil.
 	onStateChange func(context.Context)
+
+	// Local position tracking. HA's state_changed events for the MA
+	// player carry an accurate media_position, but they only fire after
+	// MA actually starts streaming (typically 2–10 s after our
+	// play_media call) and not at all when the user pauses immediately
+	// after pressing play. To prevent the phone's progress bar from
+	// snapping to 0:00 in that gap we keep a wall-clock estimate
+	// here and only fall back to it when cachedState has no position.
+	playbackBasePos    float64    // position passed to DoPlay (sender-supplied)
+	playbackStartedAt  *time.Time // when playback began (or resumed)
+	playbackPaused     bool       // true between DoPause and DoResume
+	playbackPauseStart *time.Time // when the current pause began
+	playbackPauseAccum time.Duration // total time spent paused this session
 }
 
 // newAdapter constructs an adapter that emits events with source =
@@ -186,7 +199,10 @@ func resolveIntent(video types.Video, source string) *events.PlayIntent {
 // The resolution is in-band (typically 1–2s) so the receiver's PLAYING
 // state matches reality. Title resolution remains async — that path
 // is purely cosmetic.
-func (a *adapter) DoPlay(ctx context.Context, video types.Video, _ float64) error {
+//
+// We also seed the local position estimator with the sender-supplied
+// start position; see DoGetPosition for how the estimator is used.
+func (a *adapter) DoPlay(ctx context.Context, video types.Video, position float64) error {
 	intent := resolveIntent(video, a.source)
 	a.mu.Lock()
 	log := a.log
@@ -260,6 +276,18 @@ func (a *adapter) DoPlay(ctx context.Context, video types.Video, _ float64) erro
 	if err := a.send(intent); err != nil {
 		return err
 	}
+	// Seed the local position estimator now that play_media has been
+	// dispatched. cachedState.Position takes over the moment HA emits
+	// its first state_changed for the entity; until then this fills
+	// the gap so the phone's progress bar doesn't snap to 0:00.
+	a.mu.Lock()
+	now := time.Now()
+	a.playbackBasePos = position
+	a.playbackStartedAt = &now
+	a.playbackPaused = false
+	a.playbackPauseStart = nil
+	a.playbackPauseAccum = 0
+	a.mu.Unlock()
 	go a.logResolvedTitle(video.ID, intent.Provider)
 	return nil
 }
@@ -291,23 +319,66 @@ func (a *adapter) logResolvedTitle(videoID, provider string) {
 		"provider", provider)
 }
 
-// DoPause emits a pause TransportCommand.
+// DoPause emits a pause TransportCommand. We also freeze the local
+// position estimator at the current effective position so the phone
+// doesn't see the timer keep advancing before MA reports back the
+// paused state.
 func (a *adapter) DoPause(_ context.Context) error {
+	a.mu.Lock()
+	if !a.playbackPaused {
+		now := time.Now()
+		a.playbackPaused = true
+		a.playbackPauseStart = &now
+	}
+	a.mu.Unlock()
 	return a.send(&events.TransportCommand{Command: "pause", Source: a.source})
 }
 
-// DoResume emits a play TransportCommand.
+// DoResume emits a play TransportCommand. Resumes the local position
+// estimator by absorbing the time spent paused into the accumulator
+// so future DoGetPosition calls don't count it as playback.
 func (a *adapter) DoResume(_ context.Context) error {
+	a.mu.Lock()
+	if a.playbackPaused && a.playbackPauseStart != nil {
+		a.playbackPauseAccum += time.Since(*a.playbackPauseStart)
+	}
+	a.playbackPaused = false
+	a.playbackPauseStart = nil
+	a.mu.Unlock()
 	return a.send(&events.TransportCommand{Command: "play", Source: a.source})
 }
 
-// DoStop emits a stop TransportCommand.
+// DoStop emits a stop TransportCommand and clears the local
+// position estimator.
 func (a *adapter) DoStop(_ context.Context) error {
+	a.mu.Lock()
+	a.playbackStartedAt = nil
+	a.playbackBasePos = 0
+	a.playbackPaused = false
+	a.playbackPauseStart = nil
+	a.playbackPauseAccum = 0
+	a.mu.Unlock()
 	return a.send(&events.TransportCommand{Command: "stop", Source: a.source})
 }
 
-// DoSeek emits a seek TransportCommand with the requested position.
+// DoSeek emits a seek TransportCommand with the requested position
+// and rebases the local position estimator on the new value so the
+// phone's UI doesn't jump back to the pre-seek position while we
+// wait for MA to confirm the new state via HA.
 func (a *adapter) DoSeek(_ context.Context, position float64) error {
+	a.mu.Lock()
+	log := a.log
+	now := time.Now()
+	a.playbackBasePos = position
+	a.playbackStartedAt = &now
+	a.playbackPauseAccum = 0
+	a.playbackPauseStart = nil
+	// Don't change a.playbackPaused — if we were paused, stay paused.
+	a.mu.Unlock()
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Info("yt-cast: DoSeek", "position", position)
 	p := position
 	return a.send(&events.TransportCommand{
 		Command:  "seek",
@@ -318,9 +389,20 @@ func (a *adapter) DoSeek(_ context.Context, position float64) error {
 
 // DoSetVolume emits a VolumeCommand. The upstream wire range for
 // `level` is 0-100; the dispatcher expects 0.0-1.0, so we rescale.
+// Logged at info so we can see when the phone actually asks for a
+// volume change — the YouTube cast UI sometimes throttles or skips
+// the command depending on how the user drags the slider.
 func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error {
 	level := float64(volume.Level) / 100.0
 	muted := volume.Muted
+	a.mu.Lock()
+	log := a.log
+	a.mu.Unlock()
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Info("yt-cast: DoSetVolume",
+		"level_raw", volume.Level, "level_normalized", level, "muted", muted)
 	return a.send(&events.VolumeCommand{
 		Level:  &level,
 		Muted:  &muted,
@@ -342,13 +424,45 @@ func (a *adapter) DoGetVolume(_ context.Context) (pkgplayer.Volume, error) {
 	return out, nil
 }
 
-// DoGetPosition returns the cached position in seconds.
+// DoGetPosition returns the current playback position in seconds.
+//
+// Preference order:
+//
+//  1. cachedState.Position — the truth from MA via HA's state_changed
+//     events. Available once MA has actually started streaming and HA
+//     has emitted at least one media_position update for the entity.
+//
+//  2. Local wall-clock estimate — derived from when we last called
+//     DoPlay / DoSeek / DoResume and how much time has elapsed since,
+//     minus any accumulated pause time. This covers the 2-10 second
+//     gap between play_media and MA's first state_changed report, and
+//     the moment between a pause command and HA reflecting the paused
+//     state. Without this fallback the phone's progress bar snaps to
+//     0:00 on first pause-after-play, which is jarring.
+//
+//  3. 0 — nothing else known.
 func (a *adapter) DoGetPosition(_ context.Context) (float64, error) {
-	st := a.snapshotState()
-	if st.Position != nil {
-		return *st.Position, nil
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cachedState.Position != nil {
+		return *a.cachedState.Position, nil
 	}
-	return 0, nil
+	if a.playbackStartedAt == nil {
+		return 0, nil
+	}
+	now := time.Now()
+	elapsed := now.Sub(*a.playbackStartedAt)
+	if a.playbackPaused && a.playbackPauseStart != nil {
+		// Currently paused — exclude both the accumulated pause time
+		// AND the time since the current pause started.
+		elapsed -= a.playbackPauseAccum + now.Sub(*a.playbackPauseStart)
+	} else {
+		elapsed -= a.playbackPauseAccum
+	}
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	return a.playbackBasePos + elapsed.Seconds(), nil
 }
 
 // DoGetDuration returns the cached duration in seconds.
