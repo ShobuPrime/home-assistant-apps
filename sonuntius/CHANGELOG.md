@@ -1,5 +1,53 @@
 # Changelog
 
+## Version 0.1.18 (2026-05-11)
+
+### Volume passthrough + revert play_media option to "play" (with explicit queue clear)
+
+**1. Strip volume calculations — pass raw value straight to MA.** Per
+user direction. Earlier versions tried rounding, delta tracking, and
+optimistic echo; every variation introduced a different artifact
+(feedback loop in v0.1.14, stuttering ref in v0.1.17 because MA's
+state events overwrote the delta-tracking reference). The simplest
+behavior — forward the cast sender's raw value untouched — leaves
+the cast UI authoritative over its own slider and MA authoritative
+over the speaker. No more "press multiple times for it to feel
+natural".
+
+Removed: `volumeStep` adapter field, `setVolumeStep`,
+`computeVolumeOutput`, `roundToStep`, `volume_step` addon option,
+`Options.VolumeStep` / `EffectiveVolumeStep`,
+`cmd/yt-cast/volume_test.go`.
+
+**2. `player_queues/play_media` option reverted to `"play"`.** v0.1.14
+switched to `"replace"` to keep MA's queue clean per cast, but the
+user reported v0.1.17 regression: casting at a non-zero start
+position (scrubbed to 7:28 then cast) started the speaker at 0:00.
+`"replace"`'s full queue reset was racing the subsequent
+`media_seek` and dropping it.
+
+To preserve the clean-queue behavior without `"replace"`, the
+dispatcher now sends `player_queues/clear` explicitly before
+`play_media`. Two WS round-trips instead of one, but it's a few
+extra ms on the cast-start path and avoids the seek race.
+
+New `ma.ClearQueue(ctx, url, token, queueID, log)` in
+`internal/ma/client.go`. `dispatcher.dispatchPlay` calls it on
+the MA-WS path; on the HA-REST fallback path the queue clear is
+skipped (HA's `media_player.play_media` doesn't have an equivalent).
+
+### Future work (still tracked)
+
+- Direct MA WS for volume / transport (the major refactor): cuts
+  the 6-hop volume path to 4 hops, ~30-40 ms saved per command.
+  Requires long-lived MA WS connection in ma-bridge, fallback to
+  HA REST when MA unreachable, reconnect/retry. Significant
+  enough to deserve its own PR.
+- Queue mirroring from YouTube cast app: needs engine hooks
+  into `onAutoplayUpNext` / playlist events, `option: "add"`
+  per upcoming video, and reverse "remove from queue"
+  translation.
+
 ## Version 0.1.17 (2026-05-11)
 
 ### Session reset on sender disconnect

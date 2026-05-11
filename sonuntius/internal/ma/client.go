@@ -545,15 +545,16 @@ func PlayMediaItem(ctx context.Context, url, token, queueID string, item MediaIt
 		"args": map[string]any{
 			"queue_id": queueID,
 			"media":    []MediaItem{item},
-			// "replace" clears MA's existing queue and plays our item
-			// as the only entry. We want this — MA's library may have
-			// leftover tracks (favourites, library autoplay, an
-			// earlier cast) that would otherwise auto-advance when
-			// our cast ends. With "play" (MA's default) MA only
-			// replaces the *current* item and keeps the rest of the
-			// queue, which caused stale tracks to take over after
-			// each cast. See v0.1.14 CHANGELOG.
-			"option": "replace",
+			// "play" replaces the current item but keeps any queue
+			// position state MA had. The earlier "replace" caused a
+			// regression where casting at a non-zero start position
+			// (user scrubbed to 7:28 then cast) ignored the
+			// subsequent media_seek — MA's full queue reset raced
+			// the seek and dropped it. To keep the "clean queue"
+			// behavior we explicitly call `player_queues/clear`
+			// before this command (see ClearQueue) so the queue is
+			// empty when our item lands.
+			"option": "play",
 		},
 	}
 	log.Info("ma: PlayMediaItem", "queue_id", queueID,
@@ -794,6 +795,93 @@ func containsFold(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+// ClearQueue sends `player_queues/clear` for the given queue. Used
+// before PlayMediaItem so a fresh cast is the only item on the
+// queue — without this, leftover tracks (MA library autoplay,
+// previous casts, favourites) auto-advance when our cast ends.
+//
+// Errors are returned but ClearQueue is best-effort: a failure here
+// shouldn't block the play_media that follows; the caller logs and
+// continues.
+func ClearQueue(ctx context.Context, url, token, queueID string, log *slog.Logger) error {
+	if log == nil {
+		log = slog.Default()
+	}
+	cfg, err := websocket.NewConfig(url, origin())
+	if err != nil {
+		return fmt.Errorf("ma: ws config: %w", err)
+	}
+	conn, err := websocket.DialConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("ma: ws dial: %w", err)
+	}
+	defer conn.Close()
+
+	info, err := readServerInfo(conn)
+	if err != nil {
+		return fmt.Errorf("ma: server info: %w", err)
+	}
+	if info.SchemaVersion >= authSchemaVersion && token == "" {
+		return fmt.Errorf("%w (server schema=%d)", ErrAuthRequired, info.SchemaVersion)
+	}
+	if info.SchemaVersion >= authSchemaVersion && token != "" {
+		msgID, mErr := randHex(16)
+		if mErr != nil {
+			return fmt.Errorf("ma: msg id: %w", mErr)
+		}
+		if err := websocket.JSON.Send(conn, map[string]any{
+			"message_id": msgID,
+			"command":    authCommand,
+			"args":       map[string]any{"token": token},
+		}); err != nil {
+			return fmt.Errorf("ma: auth send: %w", err)
+		}
+		if err := conn.SetReadDeadline(time.Now().Add(connectReadTimeout)); err != nil {
+			return err
+		}
+		var authResp map[string]any
+		if err := websocket.JSON.Receive(conn, &authResp); err != nil {
+			return fmt.Errorf("ma: auth recv: %w", err)
+		}
+		_ = conn.SetReadDeadline(time.Time{})
+		if ec, ok := authResp["error_code"]; ok && ec != nil {
+			if isAuthRequiredCode(ec) {
+				return fmt.Errorf("%w: %v", ErrAuthRequired, authResp)
+			}
+			return fmt.Errorf("ma: auth rejected: %v", authResp)
+		}
+	}
+
+	msgID, err := randHex(16)
+	if err != nil {
+		return fmt.Errorf("ma: msg id: %w", err)
+	}
+	if err := websocket.JSON.Send(conn, map[string]any{
+		"message_id": msgID,
+		"command":    "player_queues/clear",
+		"args":       map[string]any{"queue_id": queueID},
+	}); err != nil {
+		return fmt.Errorf("ma: clear send: %w", err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
+	defer conn.SetReadDeadline(time.Time{})
+	for {
+		var resp map[string]any
+		if err := websocket.JSON.Receive(conn, &resp); err != nil {
+			return fmt.Errorf("ma: clear recv: %w", err)
+		}
+		if respID, _ := resp["message_id"].(string); respID == msgID {
+			if ec, ok := resp["error_code"]; ok && ec != nil {
+				return fmt.Errorf("ma: clear error: %v", ec)
+			}
+			log.Info("ma: queue cleared", "queue_id", queueID)
+			return nil
+		}
+	}
 }
 
 // DerivePlayerID returns MA's internal player_id derived from the

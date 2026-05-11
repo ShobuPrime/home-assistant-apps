@@ -1,6 +1,6 @@
 name: "Sonuntius"
 description: "Cast/DIAL to Music Assistant bridge for Sendspin playback"
-version: "0.1.17"
+version: "0.1.18"
 slug: "sonuntius"
 url: "https://github.com/ShobuPrime/home-assistant-apps/tree/master/sonuntius"
 init: false
@@ -29,7 +29,6 @@ options:
   cast_key_path: "/share/sonuntius/airreceiver_key.pem"
   yt_cast_dial_port: 8008
   cast_receiver_tls_port: 8009
-  volume_step: 5
   ha_base_url: ""
   ha_token: ""
   ma_ws_url: ""
@@ -52,7 +51,6 @@ schema:
   cast_key_path: str
   yt_cast_dial_port: port
   cast_receiver_tls_port: port
-  volume_step: int(1,50)?
   ha_base_url: str?
   ha_token: password?
   ma_ws_url: str?

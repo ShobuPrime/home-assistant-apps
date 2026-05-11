@@ -73,9 +73,6 @@ func main() {
 	// --- Build the adapter and connect to the IPC broker. ----------
 	adapt := newAdapter(nil)
 	adapt.setLogger(log.With("component", "player"))
-	adapt.setVolumeStep(opts.AddonOptions.EffectiveVolumeStep())
-	log.Info("yt-cast: volume quantisation configured",
-		"volume_step", opts.AddonOptions.EffectiveVolumeStep())
 	conn := newIPCConnector(adapt, log.With("component", "ipc"))
 	conn.run(ctx)
 

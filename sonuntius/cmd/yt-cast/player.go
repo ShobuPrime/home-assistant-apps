@@ -75,13 +75,6 @@ type adapter struct {
 	// Assistant flow back to the phone as Lounge messages. May be nil.
 	onStateChange func(context.Context)
 
-	// volumeStep is the quantisation increment for DoSetVolume. Phone
-	// cast apps (especially YouTube) emit volume changes at every
-	// slider tick — without rounding we'd flood MA with sub-second
-	// 33→36→33→36 sequences. Defaults to 5.
-	volumeStep int
-
-
 	// Local position tracking. HA's state_changed events for the MA
 	// player carry an accurate media_position, but they only fire after
 	// MA actually starts streaming (typically 2–10 s after our
@@ -101,29 +94,15 @@ type adapter struct {
 // itself because the wrapper main keeps connection lifecycle.
 func newAdapter(client *ipc.Client) *adapter {
 	return &adapter{
-		ipcClient:  client,
-		source:     "yt-cast",
-		metadata:   newMetadataResolver(),
-		stream:     newStreamResolver(),
-		volumeStep: 5,
+		ipcClient: client,
+		source:    "yt-cast",
+		metadata:  newMetadataResolver(),
+		stream:    newStreamResolver(),
 	}
 }
 
 // setVolumeStep configures the quantisation step for DoSetVolume. 0 or
 // negative values fall back to the default (5).
-func (a *adapter) setVolumeStep(step int) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if step <= 0 {
-		a.volumeStep = 5
-		return
-	}
-	if step > 50 {
-		step = 50
-	}
-	a.volumeStep = step
-}
-
 // setLogger attaches a logger used for the async title-resolution
 // callback. Optional — without a logger the resolver still populates
 // PlayIntent.Metadata, but the human-name log line is skipped.
@@ -606,128 +585,33 @@ func (a *adapter) DoSeek(_ context.Context, position float64) error {
 	})
 }
 
-// DoSetVolume emits a VolumeCommand. Volume routing is delta-based,
-// not absolute-round, so step quantisation never traps the user
-// inside a bucket.
-//
-// Background: the YouTube cast sender's slider steps in ~3-unit
-// increments. If we round naively (raw→nearest multiple of step)
-// AND echo the rounded value back to the phone, the phone is
-// snapped to e.g. 50 every time, so the user's "down" press from
-// the phone's perspective (50 → 47) gets re-rounded to 50, echoed
-// back to the phone, and the user is stuck — every press sends 47,
-// we keep sending 50.
-//
-// New algorithm:
-//
-//  1. Compare incoming raw to our last echoed value (the volume
-//     the phone is currently showing, mirrored in cachedState).
-//  2. If the raw moved by less than `step`, treat it as a single
-//     button press in that direction and bump our output by one
-//     step in the same direction.
-//  3. If the raw moved by `step` or more, treat it as a slider
-//     drag and snap to round(raw, step) — the user's targeting
-//     a specific value, not nudging.
-//  4. Echo the result back to the phone (cachedState + fire
-//     onStateChange) so the slider tracks our quantised output.
-//
-// This way every press the user makes produces exactly one step
-// change in the speaker volume, regardless of how small the cast
-// sender's slider step is.
+// DoSetVolume emits a VolumeCommand with the raw value from the
+// sender, untouched. Earlier versions tried to be clever (round to
+// volume_step, echo bucket boundaries back to the phone, delta-track
+// presses) but every variation created a different artifact: the
+// optimistic echo caused a feedback loop where the phone slider got
+// snapped back inside its current bucket, and delta tracking
+// stuttered when MA's state events overwrote our reference. The
+// simplest behavior — pass raw straight through — leaves the cast
+// app authoritative over its own UI, MA authoritative over the
+// speaker, and avoids the user having to "press multiple times for
+// it to feel natural" reported on v0.1.17.
 func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error {
+	level := float64(volume.Level) / 100.0
+	muted := volume.Muted
 	a.mu.Lock()
 	log := a.log
-	step := a.volumeStep
-	if step <= 0 {
-		step = 5
-	}
-	raw := volume.Level
-	// Reference: the volume the phone currently thinks it's at —
-	// which is whatever we last echoed via cachedState.
-	reference := -1
-	if a.cachedState.Volume != nil {
-		reference = int(*a.cachedState.Volume*100 + 0.5)
-	}
-	output := computeVolumeOutput(raw, step, reference)
-	normLevel := float64(output) / 100.0
-	mutedCopy := volume.Muted
-	a.cachedState.Volume = &normLevel
-	a.cachedState.Muted = &mutedCopy
-	fn := a.onStateChange
 	a.mu.Unlock()
 	if log == nil {
 		log = slog.Default()
 	}
 	log.Info("yt-cast: DoSetVolume",
-		"raw", raw, "reference", reference, "output", output,
-		"step", step, "muted", mutedCopy)
-	if fn != nil {
-		fn(context.Background())
-	}
+		"raw", volume.Level, "level", level, "muted", muted)
 	return a.send(&events.VolumeCommand{
-		Level:  &normLevel,
-		Muted:  &mutedCopy,
+		Level:  &level,
+		Muted:  &muted,
 		Source: a.source,
 	})
-}
-
-// computeVolumeOutput applies the delta-based rounding rule
-// described in DoSetVolume. reference is the previously-echoed
-// value (in 0-100 wire units); pass -1 when unknown (first call).
-func computeVolumeOutput(raw, step, reference int) int {
-	if step <= 0 {
-		step = 5
-	}
-	if reference < 0 {
-		// No prior state — round to nearest bucket.
-		return roundToStep(raw, step)
-	}
-	delta := raw - reference
-	if delta == 0 {
-		// Phone repeated the same value — keep our output put.
-		return reference
-	}
-	abs := delta
-	if abs < 0 {
-		abs = -abs
-	}
-	if abs >= step {
-		// Big movement (slider drag or large jump): snap to the
-		// rounded raw value.
-		return roundToStep(raw, step)
-	}
-	// Small movement (single button press inside a bucket): bump
-	// our output by one step in the direction of the change.
-	var out int
-	if delta > 0 {
-		out = reference + step
-	} else {
-		out = reference - step
-	}
-	out = max(out, 0)
-	out = min(out, 100)
-	// Round-defensive: caller's `reference` was always a multiple
-	// of step at last echo, so out should already be a multiple,
-	// but normalise just in case the user changed step at runtime.
-	return roundToStep(out, step)
-}
-
-// roundToStep returns the nearest multiple of step in [0, 100].
-func roundToStep(level, step int) int {
-	if step <= 1 {
-		if level < 0 {
-			return 0
-		}
-		if level > 100 {
-			return 100
-		}
-		return level
-	}
-	half := step / 2
-	rounded := ((level + half) / step) * step
-	rounded = max(rounded, 0)
-	rounded = min(rounded, 100)
-	return rounded
 }
 
 // DoGetVolume returns the cached volume + muted state, rescaled from
