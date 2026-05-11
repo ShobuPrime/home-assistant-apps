@@ -504,15 +504,22 @@ func (a *adapter) DoSeek(_ context.Context, position float64) error {
 	})
 }
 
-// DoSetVolume emits a VolumeCommand. The phone's cast UI emits volume
-// changes at every slider drag tick — without rounding we'd flood MA
-// with sub-second 33→36→33→36 sequences which the speaker can't keep
-// up with (it steps in 10s on its own physical buttons). We quantise
-// to the configured volume_step (default 5) and dedup back-to-back
-// repeats so MA gets a clean stream of meaningful updates.
+// DoSetVolume emits a VolumeCommand. We quantise the phone-supplied
+// 0–100 level to the configured volume_step (default 5) and rescale
+// to the 0.0–1.0 dispatcher range.
 //
-// Upstream wire range for `level` is 0–100; the dispatcher expects
-// 0.0–1.0, so we rescale.
+// Optimistic echo: as soon as the rounded value is computed, we
+// update our cached PlayerState and fire onStateChange so the engine
+// pushes the new volume back to the YouTube sender immediately. The
+// phone's slider then snaps to the bucket boundary (e.g. 23→20,
+// 28→30) without waiting for the HA REST → MA → state_changed →
+// IPC round-trip (~hundreds of ms). Without the echo, the slider
+// trailed the user's drag and felt sticky even though every press
+// was being forwarded.
+//
+// MA's eventual state_changed will reconcile the cached value with
+// the speaker's actual setting — typically a no-op since MA also
+// rounds to its own provider step, but a useful safety net.
 func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error {
 	a.mu.Lock()
 	log := a.log
@@ -521,23 +528,26 @@ func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error 
 		step = 5
 	}
 	rounded := roundToStep(volume.Level, step)
+	normLevel := float64(rounded) / 100.0
+	mutedCopy := volume.Muted
+	a.cachedState.Volume = &normLevel
+	a.cachedState.Muted = &mutedCopy
+	fn := a.onStateChange
 	a.mu.Unlock()
 	if log == nil {
 		log = slog.Default()
 	}
-	// No dedup: every phone-side adjustment is forwarded to MA as-is
-	// (after rounding to the configured step). Repeats are
-	// idempotent on MA's end — set the same level twice and the
-	// speaker stays put. The earlier dedup made the slider feel
-	// sticky inside a bucket (e.g. with step=10, anything 45-54
-	// folded to 50 and intermediate user actions were dropped).
-	level := float64(rounded) / 100.0
-	muted := volume.Muted
 	log.Info("yt-cast: DoSetVolume",
-		"raw", volume.Level, "rounded", rounded, "step", step, "muted", muted)
+		"raw", volume.Level, "rounded", rounded, "step", step, "muted", mutedCopy)
+	// Push the rounded value back to the phone right away. This is
+	// fire-and-forget — if no Lounge sender is connected yet, the
+	// EmitPlayerState call is a cheap no-op.
+	if fn != nil {
+		fn(context.Background())
+	}
 	return a.send(&events.VolumeCommand{
-		Level:  &level,
-		Muted:  &muted,
+		Level:  &normLevel,
+		Muted:  &mutedCopy,
 		Source: a.source,
 	})
 }
