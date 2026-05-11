@@ -1,5 +1,23 @@
 # Changelog
 
+## Version 0.1.1 (2026-05-11)
+
+### Configurable listen ports — Music Assistant port-3000 conflict fix
+
+- New options `yt_cast_dial_port` (default `8008`) and
+  `cast_receiver_tls_port` (default `8009`). Both plumbed through
+  `internal/config` and consumed by the matching cmd binaries.
+- The DIAL HTTP default changed from upstream's `3000` to `8008`
+  because Music Assistant — which runs with `host_network: true` and
+  binds host port 3000 for its frontend — was causing yt-cast's
+  `Server.Start` to fail with `bind: address already in use` and
+  enter the retry-with-backoff loop on every fresh install.
+- DIAL discovery does not require a specific port; the SSDP
+  advertisement carries the actual port via the `LOCATION` header,
+  so cast senders find the receiver regardless of the new default.
+- 4 new unit tests in `internal/config/config_test.go` covering the
+  effective-port helpers (default, user override, partial override).
+
 ## Version 0.1.0 (2026-05-11)
 
 ### Phase 6 — Polish (health endpoint + persistent state + direct MA WS)

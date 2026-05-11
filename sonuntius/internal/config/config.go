@@ -36,6 +36,8 @@ type Options struct {
 	EnableTidalProxy      bool           `json:"enable_tidal_proxy"`
 	CastCertPath          string         `json:"cast_cert_path"`
 	CastKeyPath           string         `json:"cast_key_path"`
+	YTCastDialPort        int            `json:"yt_cast_dial_port"`
+	CastReceiverTLSPort   int            `json:"cast_receiver_tls_port"`
 	HABaseURL             string         `json:"ha_base_url"`
 	HAToken               string         `json:"ha_token"`
 	MAWsURL               string         `json:"ma_ws_url"`
@@ -150,6 +152,29 @@ func ResolveLogLevel(name string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+// EffectiveYTCastDialPort returns the configured DIAL HTTP listen port
+// for the yt-cast service, or the addon default (8008) when unset. The
+// upstream library defaults to 3000, but on a Home Assistant host that
+// also runs Music Assistant (which binds 3000 for its frontend) 3000 is
+// already taken — so the addon picks 8008, which is the Chromecast
+// reference DIAL port and is far less likely to collide.
+func (o Options) EffectiveYTCastDialPort() int {
+	if o.YTCastDialPort > 0 {
+		return o.YTCastDialPort
+	}
+	return 8008
+}
+
+// EffectiveCastReceiverTLSPort returns the configured CASTV2 TLS listen
+// port for the cast-receiver service, or the addon default (8009 — the
+// Chromecast standard) when unset.
+func (o Options) EffectiveCastReceiverTLSPort() int {
+	if o.CastReceiverTLSPort > 0 {
+		return o.CastReceiverTLSPort
+	}
+	return 8009
 }
 
 // Validate returns an error if any required field is missing.

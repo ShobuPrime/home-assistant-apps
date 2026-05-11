@@ -43,6 +43,24 @@ Whether to advertise the CASTV2 Cast endpoint used by the Tidal proxy.
 Requires the user-supplied AirReceiver cert/key (see below).
 Default: `true`.
 
+### `yt_cast_dial_port`
+
+TCP port the `yt-cast` service binds for its DIAL HTTP listener.
+Default: `8008` (the Chromecast reference DIAL port). The upstream
+`yt-cast-receiver` library defaults to 3000, but on a Home Assistant
+host that also runs **Music Assistant** (which binds 3000 for its
+frontend with `host_network: true`) that port is already taken — so
+the addon picks 8008. Change this if 8008 conflicts with anything else
+on your host. DIAL discovery does not require a specific port; the
+SSDP advertisement carries the actual port via the `LOCATION` header.
+
+### `cast_receiver_tls_port`
+
+TCP port the `cast-receiver` service binds for its CASTV2 TLS listener.
+Default: `8009` — the Chromecast standard. Change this only if 8009 is
+already in use on your host. Cast senders discover the port via the
+mDNS `_googlecast._tcp` SRV record we publish, so any port works.
+
 ### `cast_cert_path` / `cast_key_path`
 
 Filesystem paths inside the container for the AirReceiver
