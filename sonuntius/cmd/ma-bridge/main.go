@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -95,6 +96,13 @@ func main() {
 
 	disp := dispatcher.New(haCli, opts.MAPlayerID, logger.With("component", "dispatcher"))
 
+	// Construct the IPC server up-front so the MA WS event handler
+	// (declared below) can reference it. Start() is deferred until
+	// after the MA WS path is wired so the dispatcher's queue_id is
+	// known by the time a sender's first PlayIntent is processed.
+	srv := ipc.NewServer(ipc.SocketPath(), logger.With("component", "ipc"))
+	srv.Handler = disp.Dispatch
+
 	// Configure MA WS direct play_media path for url-provider intents.
 	// MA's HA integration strips metadata when routing
 	// media_player.play_media through HA's service registry, so for
@@ -117,8 +125,38 @@ func main() {
 		if maPlayURL != "" {
 			queueID := resolveMAQueueID(ctx, maPlayURL, opts, logger.With("component", "ma-discovery"))
 			if queueID != "" {
+				// MA WS event handler: when MA fires a player_updated
+				// for OUR queue, decode it and broadcast a PlayerState
+				// over the IPC bus so the yt-cast adapter sees pause /
+				// resume / volume / position changes that originate
+				// inside MA (e.g. user paused in MA's UI). Closes the
+				// bidirectional sync loop that v0.2.0 left to HA core
+				// WS — which doesn't fire reliably for MA-internal
+				// state changes.
+				logCtx := logger.With("component", "ma-ws-events")
+				maEventHandler := func(eventName, objectID string, data json.RawMessage) {
+					switch eventName {
+					case "player_updated", "player_added", "player_queue_time_updated":
+					default:
+						logCtx.Debug("ma ws event: ignoring", "event", eventName, "object_id", objectID)
+						return
+					}
+					if objectID != "" && objectID != queueID {
+						return
+					}
+					ps := ma.PlayerStateFromMAEvent(data)
+					if ps == nil {
+						return
+					}
+					logCtx.Debug("ma ws event: broadcasting PlayerState",
+						"event", eventName,
+						"state", ps.State,
+						"title", ps.Title,
+						"track_id", ps.TrackID)
+					srv.Broadcast(ps)
+				}
 				maClient = ma.NewWSClient(maPlayURL, opts.MAToken,
-					logger.With("component", "ma-ws"), nil)
+					logger.With("component", "ma-ws"), maEventHandler)
 				maClient.Start(ctx)
 				disp.SetMAWS(maClient, queueID)
 				logger.Info("dispatcher: MA WS direct path enabled",
@@ -129,9 +167,6 @@ func main() {
 			}
 		}
 	}
-	srv := ipc.NewServer(ipc.SocketPath(), logger.With("component", "ipc"))
-	srv.Handler = disp.Dispatch
-
 	if err := srv.Start(ctx); err != nil {
 		logger.Error("ipc start failed", "err", err)
 		healthSrv.Set("ipc", false, "start failed: "+err.Error())
