@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -74,21 +75,47 @@ func SupervisorToken() string {
 
 // Load attempts to read options from disk first, then from the
 // Supervisor API. An empty Options is returned (with a logged warning)
-// if neither path produces a usable result.
+// if neither path produces a usable result. Every string field is
+// trimmed of surrounding whitespace before returning — Home Assistant's
+// addon options UI happily preserves stray spaces from copy/paste, and
+// a leading space on (for example) ma_player_id is otherwise an
+// invisible failure (HA rejects the entity_id as unknown).
 func Load(ctx context.Context, logger *slog.Logger) (Options, error) {
 	if opts, ok := loadFromFile(OptionsPath(), logger); ok {
+		opts.normalize()
 		logger.Info("config: loaded from file", "path", OptionsPath())
 		return opts, nil
 	}
 	token := SupervisorToken()
 	if token != "" {
 		if opts, ok := loadFromSupervisor(ctx, token, logger); ok {
+			opts.normalize()
 			logger.Info("config: loaded from supervisor API")
 			return opts, nil
 		}
 	}
 	logger.Warn("config: no options source available, using defaults")
 	return Options{}, nil
+}
+
+// normalize strips surrounding whitespace from every string field so a
+// stray space typed into the addon options UI does not turn into an
+// invisible failure mode downstream.
+func (o *Options) normalize() {
+	o.LogLevel = strings.TrimSpace(o.LogLevel)
+	o.MAPlayerID = strings.TrimSpace(o.MAPlayerID)
+	o.FriendlyNameYouTube = strings.TrimSpace(o.FriendlyNameYouTube)
+	o.FriendlyNameTidal = strings.TrimSpace(o.FriendlyNameTidal)
+	o.CastCertPath = strings.TrimSpace(o.CastCertPath)
+	o.CastKeyPath = strings.TrimSpace(o.CastKeyPath)
+	o.HABaseURL = strings.TrimSpace(o.HABaseURL)
+	o.HAToken = strings.TrimSpace(o.HAToken)
+	o.MAWsURL = strings.TrimSpace(o.MAWsURL)
+	o.MAToken = strings.TrimSpace(o.MAToken)
+	o.TidalFallback.BinaryTarballPath = strings.TrimSpace(o.TidalFallback.BinaryTarballPath)
+	o.TidalFallback.CertFilename = strings.TrimSpace(o.TidalFallback.CertFilename)
+	o.TidalFallback.FriendlyName = strings.TrimSpace(o.TidalFallback.FriendlyName)
+	o.TidalFallback.SendspinServerURL = strings.TrimSpace(o.TidalFallback.SendspinServerURL)
 }
 
 func loadFromFile(path string, logger *slog.Logger) (Options, bool) {
