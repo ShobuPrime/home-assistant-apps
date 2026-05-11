@@ -75,6 +75,19 @@ type adapter struct {
 	// Assistant flow back to the phone as Lounge messages. May be nil.
 	onStateChange func(context.Context)
 
+	// peekNextVideo returns the engine's "what plays next" guess, or
+	// nil if no neighbour. Used by DoPlay to pre-load the upcoming
+	// track into MA's queue so MA auto-advances to our pick instead
+	// of its library autoplay. Set by main.go which has the
+	// receiver/engine handle.
+	peekNextVideo func() *types.Video
+
+	// preloadGen counts cast events. When DoPlay starts a background
+	// preload it captures the current generation; the goroutine
+	// aborts if the generation has advanced (a newer cast started),
+	// so we never insert a stale +1 into the freshly-rebuilt queue.
+	preloadGen uint64
+
 	// Local position tracking. HA's state_changed events for the MA
 	// player carry an accurate media_position, but they only fire after
 	// MA actually starts streaming (typically 2–10 s after our
@@ -123,6 +136,14 @@ func (a *adapter) setOnStateChange(fn func(context.Context)) {
 	a.mu.Unlock()
 }
 
+// setPeekNextVideo registers the engine-aware callback used by DoPlay
+// to determine the upcoming track to pre-load into MA's queue.
+func (a *adapter) setPeekNextVideo(fn func() *types.Video) {
+	a.mu.Lock()
+	a.peekNextVideo = fn
+	a.mu.Unlock()
+}
+
 // setIPCClient swaps the underlying writer. nil means "broker is
 // offline" — Do* methods return an error in that case so the receiver
 // can surface a sensible failure to senders.
@@ -160,6 +181,17 @@ func (a *adapter) resetSession() {
 	a.mu.Unlock()
 	if log != nil {
 		log.Info("yt-cast: session state reset — adapter ready for next sender")
+	}
+	// Also clear MA's queue so a brand-new sender that connects in
+	// the future doesn't briefly see the previous cast's items in
+	// MA's UI. Fire-and-forget — the dispatcher will route to
+	// MAWS.ClearQueue when configured.
+	if err := a.send(&events.TransportCommand{
+		Command: "clear_queue",
+		Source:  a.source,
+	}); err != nil && log != nil {
+		log.Debug("yt-cast: clear_queue dispatch failed (likely IPC offline)",
+			"err", err)
 	}
 }
 
@@ -457,13 +489,122 @@ func (a *adapter) DoPlay(ctx context.Context, video types.Video, position float6
 		a.cachedState.Duration = &d
 	}
 	fn := a.onStateChange
+	a.preloadGen++
+	preloadGen := a.preloadGen
+	peek := a.peekNextVideo
 	a.mu.Unlock()
 	if fn != nil {
 		fn(context.Background())
 	}
 	go a.logResolvedTitle(video.ID, intent.Provider)
+	// Pre-load the engine's "what plays next" into MA's queue so MA
+	// auto-advances to YouTube's choice when the current track ends
+	// (instead of falling back to MA's library autoplay or stopping).
+	// Runs in a goroutine because yt-dlp URL resolution can take
+	// 1-5s, and we don't want to block the play path.
+	if peek != nil {
+		go a.preloadUpcoming(preloadGen, peek)
+	}
 	return nil
 }
+
+// preloadUpcoming resolves the engine's upcoming-video URL via yt-dlp
+// and dispatches a QueueAddIntent so the dispatcher appends it to
+// MA's queue. gen is the preload generation at the time DoPlay was
+// called; if it has advanced (i.e. a newer cast started) we abort
+// without dispatching to avoid inserting a stale +1 into the
+// freshly-rebuilt queue.
+func (a *adapter) preloadUpcoming(gen uint64, peek func() *types.Video) {
+	a.mu.Lock()
+	log := a.log
+	a.mu.Unlock()
+	if log == nil {
+		log = slog.Default()
+	}
+	video := peek()
+	if video == nil {
+		log.Debug("yt-cast: no upcoming video to preload")
+		return
+	}
+	// Currently only YouTube-classic (the cl theme) needs URL
+	// resolution; YT Music tracks are routed to MA via the ytmusic
+	// provider URI and don't need pre-resolution. Music tracks are
+	// also already known to MA so adding to queue is unnecessary
+	// (MA would auto-advance through ytmusic anyway).
+	if video.Client.Theme != "cl" {
+		log.Debug("yt-cast: skipping preload (not yt-classic)",
+			"video_id", video.ID,
+			"theme", video.Client.Theme)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Stream URL — the expensive call, but necessary so MA's
+	// builtin provider can stream the item when transitioned to.
+	if a.stream == nil {
+		return
+	}
+	info, err := a.stream.Resolve(ctx, video.ID)
+	if err != nil {
+		log.Warn("yt-cast: preload stream URL resolve failed (no auto-advance)",
+			"video_id", video.ID, "err", err)
+		return
+	}
+
+	// Abort if a newer cast started while we were resolving — the
+	// queue has been rebuilt by that newer DoPlay and adding now
+	// would insert a stale entry.
+	a.mu.Lock()
+	current := a.preloadGen
+	a.mu.Unlock()
+	if current != gen {
+		log.Debug("yt-cast: preload aborted (newer cast superseded)",
+			"video_id", video.ID, "started_gen", gen, "current_gen", current)
+		return
+	}
+
+	metaCtx, metaCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	meta, mErr := a.metadata.Resolve(metaCtx, video.ID)
+	metaCancel()
+
+	intent := &events.QueueAddIntent{
+		Provider: "url",
+		TrackID:  video.ID,
+		URL:      info.URL,
+		Source:   a.source,
+		Metadata: map[string]any{
+			"source":   "youtube",
+			"video_id": video.ID,
+		},
+	}
+	if info.Duration > 0 {
+		intent.Metadata["duration"] = info.Duration
+	}
+	if mErr == nil {
+		if meta.Title != "" {
+			intent.Metadata["title"] = meta.Title
+		}
+		if meta.Channel != "" {
+			intent.Metadata["channel"] = meta.Channel
+		}
+		if meta.ThumbnailURL != "" {
+			intent.Metadata["thumbnail"] = meta.ThumbnailURL
+		} else {
+			intent.Metadata["thumbnail"] = "https://i.ytimg.com/vi/" + video.ID + "/hqdefault.jpg"
+		}
+	}
+	if err := a.send(intent); err != nil {
+		log.Debug("yt-cast: preload QueueAddIntent dispatch failed",
+			"err", err, "video_id", video.ID)
+		return
+	}
+	log.Info("yt-cast: preloaded upcoming track",
+		"video_id", video.ID,
+		"title", intent.Metadata["title"],
+		"duration", info.Duration)
+}
+
 
 // logResolvedTitle runs out-of-band so the play path stays optimistic.
 // Resolution failures degrade to a single warn line carrying the ID.

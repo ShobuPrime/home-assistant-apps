@@ -115,6 +115,10 @@ func main() {
 			log.Debug("yt-cast: EmitPlayerState failed (likely no active sender)", "err", err)
 		}
 	})
+	// Hand the adapter a way to peek the engine's upcoming video so
+	// DoPlay can pre-load MA's queue with the +1. Cheap and cached
+	// inside the engine — no I/O here.
+	adapt.setPeekNextVideo(receiver.UpcomingVideo)
 
 	// Subscribe to sender connect/disconnect events on the receiver
 	// bus. When every sender has gone away we wipe per-cast state in

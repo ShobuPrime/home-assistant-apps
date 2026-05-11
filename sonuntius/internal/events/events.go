@@ -31,6 +31,22 @@ type PlayIntent struct {
 // EventType implements Event.
 func (PlayIntent) EventType() string { return "PlayIntent" }
 
+// QueueAddIntent is a pre-resolved upcoming track to append to MA's
+// queue. Carries the same fields as PlayIntent minus StartPosition
+// (queued items always start at 0) — the dispatcher forwards it to
+// MA via player_queues/play_media with option:"add" so the speaker
+// will auto-advance to it when the currently-playing item ends.
+type QueueAddIntent struct {
+	Provider string         `json:"provider"`
+	TrackID  string         `json:"track_id,omitempty"`
+	URL      string         `json:"url,omitempty"`
+	Source   string         `json:"source,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+// EventType implements Event.
+func (QueueAddIntent) EventType() string { return "QueueAddIntent" }
+
 // TransportCommand carries play/pause/skip/seek from a sender.
 type TransportCommand struct {
 	Command  string   `json:"command"`
@@ -70,6 +86,7 @@ func (PlayerState) EventType() string { return "PlayerState" }
 
 var factories = map[string]func() Event{
 	"PlayIntent":       func() Event { return &PlayIntent{} },
+	"QueueAddIntent":   func() Event { return &QueueAddIntent{} },
 	"TransportCommand": func() Event { return &TransportCommand{} },
 	"VolumeCommand":    func() Event { return &VolumeCommand{} },
 	"PlayerState":      func() Event { return &PlayerState{} },

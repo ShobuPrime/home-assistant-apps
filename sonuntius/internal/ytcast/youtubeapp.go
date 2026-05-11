@@ -265,6 +265,26 @@ func NewYouTubeApp(host pkgplayer.Player, opts AppOptions) *YouTubeApp {
 // Bus exposes the app's event channel.
 func (a *YouTubeApp) Bus() *AppEventBus { return a.bus }
 
+// UpcomingVideo returns the engine's best-guess "what plays next" —
+// the explicit user-queued Next video if present, otherwise the
+// autoplay candidate. Returns nil when no neighbour is available
+// (single video, queue tail with autoplay off, etc.).
+//
+// Used by hosts that want to pre-load the next track somewhere
+// downstream (e.g., adding it to Music Assistant's queue so MA
+// auto-advances to our pick instead of its own library autoplay
+// when the current item ends).
+func (a *YouTubeApp) UpcomingVideo() *types.Video {
+	state := a.engine.Queue().GetState()
+	if state.Next != nil {
+		return state.Next
+	}
+	if state.Autoplay != nil {
+		return state.Autoplay
+	}
+	return nil
+}
+
 // LoungeEvents exposes the underlying lounge event bus (for hosts that
 // want raw lounge events — primarily diagnostics).
 func (a *YouTubeApp) LoungeEvents() *lounge.EventBus { return a.loungeEvents }

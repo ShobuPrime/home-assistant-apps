@@ -1,5 +1,113 @@
 # Changelog
 
+## Version 0.2.0 (2026-05-11)
+
+### Direct MA WebSocket — bypass HA REST for all MA-bound traffic
+
+Major refactor of the command path. ma-bridge now opens a single
+long-lived WebSocket to Music Assistant and routes play_media, seek,
+transport (play/pause/stop/next/previous), volume, mute, and queue
+clear directly to MA. HA REST remains as a fallback when the MA WS
+is unavailable.
+
+Motivating bug: v0.1.18 logs showed a `media_seek` via HA REST
+taking ~3.4 seconds to return because HA waits for MA's Python
+integration to round-trip. Casting at 34 minutes in started the
+speaker at 0:00 because the seek arrived seconds after playback
+had begun. With the new direct WS path, the seek-after-play
+issued on the same connection lands while MA is still loading the
+queue item — observed cast-start latencies in the few-hundred-ms
+range.
+
+`internal/ma/wsclient.go` (new):
+- `WSClient` — long-lived MA WS with auth handshake, reconnect
+  with exponential backoff, command/response correlation by
+  `message_id`, and event-push fanout to a registered handler.
+- Methods: `PlayQueueMedia`, `AddToQueueMedia`, `ClearQueue`,
+  `Seek`, `PlayerPlay`, `PlayerPause`, `PlayerStop`, `PlayerNext`,
+  `PlayerPrevious`, `SetVolume`, `SetMute`.
+- `Send(command, args)` is concurrency-safe; in-flight callers
+  receive `ErrDisconnected` if the connection drops.
+
+`internal/dispatcher/dispatcher.go`:
+- `SetMAWS(*WSClient, queueID)` replaces the old `SetMAWS(url,
+  token, queueID)`.
+- `playViaMAWS` now does ClearQueue → PlayQueueMedia → Seek over
+  the same connection (no 500 ms HA-REST delay).
+- `dispatchTransport` and `dispatchVolume` prefer the WS path and
+  fall back to HA REST on failure.
+- New `clear_queue` transport command routes to `WSClient.ClearQueue`.
+
+`cmd/ma-bridge/main.go`:
+- Constructs and `Start()`s the `WSClient` after `resolveMAQueueID`.
+- Removed the redundant `ma.Watcher` connect-probe — the WSClient's
+  own connect logs surface schema / server-version / auth state.
+- `maClient.Stop()` on shutdown.
+
+`cmd/yt-cast/player.go::resetSession`:
+- Now also emits a `clear_queue` transport command so MA's queue
+  is wiped when every sender disconnects — preserving the "clean
+  slate for the next sender" invariant from v0.1.17 with a
+  matching action on the MA side.
+
+### Performance / hops
+
+Before:
+
+    yt-cast → IPC → ma-bridge → HA REST → HA → MA → speaker     (6 hops)
+    media_seek over HA REST: ~3.4 s observed
+
+After:
+
+    yt-cast → IPC → ma-bridge → MA WS → speaker                 (4 hops)
+    play_queues/seek over MA WS: ~50 ms typical
+
+For volume/transport during steady-state casting, the MA WS path
+replaces the HA REST roundtrip entirely — measurably more
+responsive on rapid press-and-hold.
+
+### Sliding +1 queue preload
+
+After a successful DoPlay, the adapter spawns a background goroutine
+that:
+
+1. Asks the engine for the upcoming video (`receiver.UpcomingVideo`,
+   which returns `Queue.GetState().Next` or `.Autoplay`).
+2. Resolves its googlevideo stream URL via yt-dlp (1-5 s).
+3. Resolves title/channel/thumbnail via oEmbed.
+4. Dispatches a new `events.QueueAddIntent` event over IPC.
+
+The dispatcher consumes `QueueAddIntent` and calls
+`WSClient.AddToQueueMedia` — MA's queue then contains
+`[current, next]`, so when the current item ends MA auto-advances to
+the YouTube-app-supplied next instead of falling back to MA's
+library autoplay.
+
+A monotonic `preloadGen` counter aborts in-flight preloads when a
+newer cast lands (rapid skip-next): the goroutine drops the result
+instead of corrupting the freshly-rebuilt queue.
+
+Scope: only `+1` (next) for now. The `-1` (previous) mirroring is a
+small future addition — same plumbing, accessor for
+`Queue.GetState().Previous`.
+
+`internal/events/events.go`: new `QueueAddIntent` event type.
+`internal/dispatcher/dispatcher.go`: new `dispatchQueueAdd` path
+plus a shared `buildMediaItem` helper (deduped from `playViaMAWS`).
+`internal/ytcast/{youtubeapp,receiver}.go`: new `UpcomingVideo()`
+method on the App and Receiver.
+`cmd/yt-cast/{player,main}.go`: `setPeekNextVideo` hook,
+`preloadUpcoming` goroutine.
+
+### Future work (deferred from this PR)
+
+- **`-1` previous mirroring**: when the user presses "previous"
+  on the speaker the prior track is already in MA's queue, no
+  re-resolve needed. Same plumbing as `+1`.
+- **Dead-code cleanup** of the obsolete `ma.PlayMediaItem`,
+  `ma.ClearQueue`, and `ma.Watcher` types now superseded by
+  `WSClient`. Mechanical follow-up.
+
 ## Version 0.1.18 (2026-05-11)
 
 ### Volume passthrough + revert play_media option to "play" (with explicit queue clear)
