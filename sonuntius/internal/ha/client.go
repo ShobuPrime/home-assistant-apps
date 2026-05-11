@@ -58,8 +58,11 @@ func NewClientWithBaseURL(baseURL, token string, logger *slog.Logger) *Client {
 }
 
 // PlayMedia calls media_player.play_media for entityID with the given
-// MA-flavored content URI.
-func (c *Client) PlayMedia(ctx context.Context, entityID, contentID, contentType string) error {
+// MA-flavored content URI. extra is forwarded as the service's `extra`
+// argument (per-integration shape — for Music Assistant the metadata
+// sub-object should hold title / artist / image keys so MA's UI shows
+// the real song name instead of the raw content_id). Pass nil to skip.
+func (c *Client) PlayMedia(ctx context.Context, entityID, contentID, contentType string, extra map[string]any) error {
 	if contentType == "" {
 		contentType = "music"
 	}
@@ -68,7 +71,10 @@ func (c *Client) PlayMedia(ctx context.Context, entityID, contentID, contentType
 		"media_content_id":   contentID,
 		"media_content_type": contentType,
 	}
-	c.Logger.Info("ha: play_media", "entity_id", entityID, "content_id", contentID)
+	if len(extra) > 0 {
+		body["extra"] = extra
+	}
+	c.Logger.Info("ha: play_media", "entity_id", entityID, "content_id", contentID, "has_extra", len(extra) > 0)
 	return c.postService(ctx, "media_player/play_media", body)
 }
 

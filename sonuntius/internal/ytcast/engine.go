@@ -447,6 +447,16 @@ func (e *playerEngine) setStatusAndEmit(ctx context.Context, status constants.Pl
 	return e.emitState(ctx, aid)
 }
 
+// EmitCurrentState publishes a fresh state event without changing
+// status. Used by the host (the Player adapter) when the underlying
+// player's position / volume / duration changed out-of-band — typically
+// because Music Assistant reported a state update over the IPC bus —
+// so the orchestrator can forward the new values to connected senders
+// as onStateChange / onVolumeChanged / nowPlaying messages.
+func (e *playerEngine) EmitCurrentState(ctx context.Context) error {
+	return e.emitState(ctx, nil)
+}
+
 // emitState publishes a state event with the cached previous frame.
 func (e *playerEngine) emitState(ctx context.Context, aid *int) error {
 	cur, err := e.GetState(ctx)

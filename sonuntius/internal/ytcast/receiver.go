@@ -202,6 +202,16 @@ func NewReceiver(opts Options) (*Receiver, error) {
 // Bus exposes the receiver's event bus to hosts.
 func (r *Receiver) Bus() *ReceiverBus { return r.bus }
 
+// EmitPlayerState forces the engine to re-emit its current state to
+// the orchestrator's state-event bus. Hosts call this when the
+// underlying player's position / volume / duration changed
+// out-of-band (e.g. Music Assistant updated the entity over WS) so
+// the orchestrator can forward the new values to connected senders
+// as onStateChange / onVolumeChanged / nowPlaying Lounge messages.
+func (r *Receiver) EmitPlayerState(ctx context.Context) error {
+	return r.app.engine.EmitCurrentState(ctx)
+}
+
 // Status returns the lifecycle state.
 func (r *Receiver) Status() constants.Status {
 	r.mu.Lock()

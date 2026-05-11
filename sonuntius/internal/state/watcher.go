@@ -12,6 +12,7 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -42,7 +43,8 @@ type Watcher struct {
 	IPC      Broadcaster
 	Logger   *slog.Logger
 
-	connected atomic.Bool
+	connected     atomic.Bool
+	firstBroadcst atomic.Bool
 }
 
 // New constructs a Watcher with the default Supervisor-proxy WS URL.
@@ -229,8 +231,31 @@ func (w *Watcher) handleFrame(raw []byte) {
 	if ps == nil {
 		return
 	}
-	w.Logger.Debug("state: broadcasting", "state", ps.State, "title", ps.Title)
+	// First broadcast for the configured entity is logged at info level
+	// so users can confirm the HA→sonuntius state pipeline is alive
+	// without flipping to debug. Subsequent updates stay at debug to
+	// avoid log spam (a playing track ticks position every few seconds).
+	if !w.firstBroadcst.Swap(true) {
+		w.Logger.Info("state: first HA state update received — broadcasting to IPC clients",
+			"entity_id", w.EntityID,
+			"state", ps.State,
+			"title", ps.Title,
+			"track_id", ps.TrackID,
+			"position", stringOrEmpty(ps.Position),
+			"duration", stringOrEmpty(ps.Duration),
+			"volume", stringOrEmpty(ps.Volume))
+	} else {
+		w.Logger.Debug("state: broadcasting", "state", ps.State,
+			"position", stringOrEmpty(ps.Position))
+	}
 	w.IPC.Broadcast(ps)
+}
+
+func stringOrEmpty(f *float64) string {
+	if f == nil {
+		return ""
+	}
+	return fmt.Sprintf("%.2f", *f)
 }
 
 func playerStateFrom(s *haEntityState) *events.PlayerState {

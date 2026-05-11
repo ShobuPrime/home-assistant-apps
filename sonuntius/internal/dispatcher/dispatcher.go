@@ -75,9 +75,45 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 			"provider", p.Provider, "track_id", p.TrackID, "url", p.URL)
 		return
 	}
-	if err := d.HA.PlayMedia(ctx, d.EntityID, uri, "music"); err != nil {
+	extra := metadataExtra(p.Metadata)
+	if err := d.HA.PlayMedia(ctx, d.EntityID, uri, "music", extra); err != nil {
 		d.Logger.Error("dispatcher: play_media failed", "err", err)
 	}
+}
+
+// metadataExtra translates PlayIntent.Metadata (populated by the
+// receivers with title / channel / thumbnail / video_id / source) into
+// the shape Music Assistant's play_media service accepts as its
+// `extra.metadata.*` sub-object. Returns nil when there is nothing to
+// pass through so the dispatcher omits the field instead of sending an
+// empty map.
+func metadataExtra(meta map[string]any) map[string]any {
+	if len(meta) == 0 {
+		return nil
+	}
+	md := map[string]any{}
+	if v, ok := meta["title"].(string); ok && v != "" {
+		md["title"] = v
+	}
+	if v, ok := meta["channel"].(string); ok && v != "" {
+		// MA's media item model uses `artist`; "channel" is the
+		// YouTube-side equivalent we receive from the oEmbed lookup.
+		md["artist"] = v
+	}
+	if v, ok := meta["thumbnail"].(string); ok && v != "" {
+		md["image"] = v
+		md["thumb"] = v
+	}
+	if v, ok := meta["video_id"].(string); ok && v != "" {
+		md["external_id"] = v
+	}
+	if v, ok := meta["source"].(string); ok && v != "" {
+		md["source"] = v
+	}
+	if len(md) == 0 {
+		return nil
+	}
+	return map[string]any{"metadata": md}
 }
 
 func (d *Dispatcher) dispatchTransport(ctx context.Context, t *events.TransportCommand) {

@@ -68,6 +68,12 @@ type adapter struct {
 	// log is the slog logger used for the async title-resolution
 	// callback. May be nil; falls back to slog.Default().
 	log *slog.Logger
+
+	// onStateChange fires after every updateCachedState call so the
+	// host can ask the engine to re-emit player state — this is how
+	// external position / volume / duration updates from Music
+	// Assistant flow back to the phone as Lounge messages. May be nil.
+	onStateChange func(context.Context)
 }
 
 // newAdapter constructs an adapter that emits events with source =
@@ -91,6 +97,17 @@ func (a *adapter) setLogger(l *slog.Logger) {
 	a.mu.Unlock()
 }
 
+// setOnStateChange registers a callback that fires after the adapter
+// caches a new PlayerState from IPC. The host wires this to
+// receiver.EmitPlayerState so external state updates (position, volume,
+// duration, etc.) propagate back to connected senders as Lounge
+// messages.
+func (a *adapter) setOnStateChange(fn func(context.Context)) {
+	a.mu.Lock()
+	a.onStateChange = fn
+	a.mu.Unlock()
+}
+
 // setIPCClient swaps the underlying writer. nil means "broker is
 // offline" — Do* methods return an error in that case so the receiver
 // can surface a sensible failure to senders.
@@ -100,11 +117,18 @@ func (a *adapter) setIPCClient(c *ipc.Client) {
 	a.mu.Unlock()
 }
 
-// updateCachedState replaces the cached PlayerState frame.
+// updateCachedState replaces the cached PlayerState frame and fires
+// the onStateChange callback (if any) so the host can re-emit player
+// state to connected senders. The callback runs synchronously on the
+// IPC reader goroutine — it should be cheap and non-blocking.
 func (a *adapter) updateCachedState(ps events.PlayerState) {
 	a.mu.Lock()
 	a.cachedState = ps
+	fn := a.onStateChange
 	a.mu.Unlock()
+	if fn != nil {
+		fn(context.Background())
+	}
 }
 
 // snapshotState returns a copy of the cached state.
@@ -164,23 +188,59 @@ func resolveIntent(video types.Video, source string) *events.PlayIntent {
 // is purely cosmetic.
 func (a *adapter) DoPlay(ctx context.Context, video types.Video, _ float64) error {
 	intent := resolveIntent(video, a.source)
-	if a.stream != nil && intent.Provider == "url" && video.Client.Theme == "cl" {
-		a.mu.Lock()
-		log := a.log
-		a.mu.Unlock()
-		if log == nil {
-			log = slog.Default()
+	a.mu.Lock()
+	log := a.log
+	a.mu.Unlock()
+	if log == nil {
+		log = slog.Default()
+	}
+
+	// For YouTube-classic casts pre-resolve metadata + stream URL
+	// synchronously so the dispatcher can hand MA both rich metadata
+	// (title / channel) and a direct audio stream URL.
+	if intent.Provider == "url" && video.Client.Theme == "cl" {
+		// Title / channel via oEmbed — cheap, cached. ~200ms cold,
+		// near-zero on cache hit. We populate Metadata so the
+		// dispatcher can attach it to media_player.play_media's
+		// `extra.metadata.*` fields and MA's UI shows the real song
+		// name instead of the raw URL.
+		if a.metadata != nil {
+			metaCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			if m, mErr := a.metadata.Resolve(metaCtx, video.ID); mErr == nil {
+				if intent.Metadata == nil {
+					intent.Metadata = make(map[string]any)
+				}
+				if m.Title != "" {
+					intent.Metadata["title"] = m.Title
+				}
+				if m.Channel != "" {
+					intent.Metadata["channel"] = m.Channel
+				}
+				intent.Metadata["source"] = "youtube"
+				intent.Metadata["video_id"] = video.ID
+				intent.Metadata["thumbnail"] = "https://i.ytimg.com/vi/" + video.ID + "/hqdefault.jpg"
+			} else {
+				log.Debug("yt-cast: metadata pre-resolve failed (non-fatal)",
+					"video_id", video.ID, "err", mErr)
+			}
+			cancel()
 		}
-		streamURL, err := a.stream.Resolve(ctx, video.ID)
-		if err != nil {
-			log.Error("yt-cast: stream URL pre-resolve failed — MA will reject the watch URL",
-				"video_id", video.ID, "err", err)
-		} else {
-			log.Info("yt-cast: stream URL pre-resolved via yt-dlp",
-				"video_id", video.ID, "stream_url", truncateString(streamURL, 120))
-			intent.URL = streamURL
+
+		// Stream URL via yt-dlp — the larger ~1–5s cost, but MA needs
+		// it to actually play the audio.
+		if a.stream != nil {
+			streamURL, err := a.stream.Resolve(ctx, video.ID)
+			if err != nil {
+				log.Error("yt-cast: stream URL pre-resolve failed — MA will reject the watch URL",
+					"video_id", video.ID, "err", err)
+			} else {
+				log.Info("yt-cast: stream URL pre-resolved via yt-dlp",
+					"video_id", video.ID, "stream_url", truncateString(streamURL, 120))
+				intent.URL = streamURL
+			}
 		}
 	}
+
 	if err := a.send(intent); err != nil {
 		return err
 	}
