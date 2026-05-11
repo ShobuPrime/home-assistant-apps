@@ -14,6 +14,16 @@ chmod 755 /data/sonuntius
 mkdir -p /run/sonuntius
 chmod 755 /run/sonuntius
 
+# Bootstrap /share/sonuntius so the user has a known location to drop
+# the AirReceiver cert (Phase 3 Tidal proxy) and the iFi Tidal Connect
+# tarball (Phase 5 fallback) into. The directory itself never carries
+# secrets — it's an empty staging area. /share/ is mapped rw in
+# config.yaml so this is allowed.
+if [[ -d /share ]]; then
+    mkdir -p /share/sonuntius
+    chmod 755 /share/sonuntius
+fi
+
 if [[ ! -x /usr/local/bin/ma-bridge ]]; then
     bashio::log.error "ma-bridge binary missing from /usr/local/bin/"
     exit 1
