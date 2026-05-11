@@ -73,6 +73,14 @@ Resolution adds ~200ms on cold cache (oEmbed call) but the existing
 yt-dlp stream resolve already takes 1–5s in the same path, so the
 incremental cost is negligible.
 
+Thumbnail handling: `cmd/yt-cast/metadata.go` now also captures
+`thumbnail_url` / `thumbnail_width` / `thumbnail_height` from the
+oEmbed payload — YouTube's officially-recommended preview image for
+the video. The player adapter prefers that over the hard-coded
+`https://i.ytimg.com/vi/<id>/hqdefault.jpg` fallback, and the
+dispatcher forwards it as both `extra.metadata.image` and
+`extra.metadata.thumb` so MA's UI can render proper cover art.
+
 ## Version 0.1.6 (2026-05-11)
 
 ### Pre-resolve YouTube watch URLs to direct stream URLs via yt-dlp

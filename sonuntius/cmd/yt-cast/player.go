@@ -218,7 +218,23 @@ func (a *adapter) DoPlay(ctx context.Context, video types.Video, _ float64) erro
 				}
 				intent.Metadata["source"] = "youtube"
 				intent.Metadata["video_id"] = video.ID
-				intent.Metadata["thumbnail"] = "https://i.ytimg.com/vi/" + video.ID + "/hqdefault.jpg"
+				// Prefer the thumbnail URL YouTube returned in the oEmbed
+				// payload (it's YouTube's officially-recommended preview
+				// for the video). Fall back to the well-known
+				// `hqdefault.jpg` URL form when oEmbed didn't include
+				// one — every public YouTube video has an hqdefault
+				// thumbnail at that path.
+				if m.ThumbnailURL != "" {
+					intent.Metadata["thumbnail"] = m.ThumbnailURL
+					if m.ThumbnailWidth > 0 {
+						intent.Metadata["thumbnail_width"] = m.ThumbnailWidth
+					}
+					if m.ThumbnailHeight > 0 {
+						intent.Metadata["thumbnail_height"] = m.ThumbnailHeight
+					}
+				} else {
+					intent.Metadata["thumbnail"] = "https://i.ytimg.com/vi/" + video.ID + "/hqdefault.jpg"
+				}
 			} else {
 				log.Debug("yt-cast: metadata pre-resolve failed (non-fatal)",
 					"video_id", video.ID, "err", mErr)
