@@ -94,6 +94,26 @@ func main() {
 	}
 
 	disp := dispatcher.New(haCli, opts.MAPlayerID, logger.With("component", "dispatcher"))
+
+	// Configure MA WS direct play_media path for url-provider intents.
+	// MA's HA integration strips metadata when routing
+	// media_player.play_media through HA's service registry, so for
+	// rich-metadata casts (e.g. the YouTube watch URL we hand MA) we
+	// prefer MA's native WS API with a fully-formed MediaItem. The
+	// queue_id is MA's internal player_id, derived from the HA
+	// entity_id by stripping `media_player.` and any trailing `_N`.
+	if opts.MAPlayerID != "" {
+		maQueue := ma.DerivePlayerID(opts.MAPlayerID)
+		maPlayURL := opts.MAWsURL
+		if maPlayURL == "" && maHost != "" {
+			maPlayURL = ma.URLFromHost(maHost)
+		}
+		if maPlayURL != "" {
+			disp.SetMAWS(maPlayURL, opts.MAToken, maQueue)
+			logger.Info("dispatcher: MA WS play_media path enabled",
+				"queue_id", maQueue, "url", maPlayURL)
+		}
+	}
 	srv := ipc.NewServer(ipc.SocketPath(), logger.With("component", "ipc"))
 	srv.Handler = disp.Dispatch
 

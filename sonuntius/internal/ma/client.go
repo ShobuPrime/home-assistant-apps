@@ -381,6 +381,167 @@ func randHex(bytes int) (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
+// MediaItemImage is the image sub-object of a MediaItem.
+type MediaItemImage struct {
+	Type     string `json:"type"`     // "thumb", "cover", "logo"
+	Path     string `json:"path"`     // URL
+	Provider string `json:"provider"` // "url" for remote
+}
+
+// MediaItem mirrors the subset of MA's MediaItem schema we populate
+// when dispatching a play_media via the native WS API. Bypassing
+// HA's media_player.play_media wrapper preserves the rich metadata
+// fields (name, image, artist) which would otherwise be stripped on
+// the way through the HA integration's `extra` field — the URL
+// provider then falls back to ffmpeg-probed metadata which is empty
+// for a googlevideo.com signed URL.
+type MediaItem struct {
+	ItemID    string          `json:"item_id"`
+	Provider  string          `json:"provider"` // "builtin" for arbitrary URLs
+	Name      string          `json:"name,omitempty"`
+	MediaType string          `json:"media_type,omitempty"` // "track"
+	Image     *MediaItemImage `json:"image,omitempty"`
+	Artists   []string        `json:"artists,omitempty"`
+	URI       string          `json:"uri,omitempty"`
+}
+
+// PlayMediaItem sends `player_queues/play_media` to MA's WebSocket
+// with a fully-formed MediaItem. queueID is MA's internal player_id
+// (NOT the HA entity_id). Returns nil on success.
+//
+// We open a short-lived connection per call rather than multiplexing
+// on the long-running Watcher's read loop — MA's WS is on the local
+// addon network, so the dial + auth handshake is sub-millisecond,
+// and the simplicity of one-connection-per-call avoids us building a
+// request/response correlator on top of the event-stream read loop.
+func PlayMediaItem(ctx context.Context, url, token, queueID string, item MediaItem, log *slog.Logger) error {
+	if log == nil {
+		log = slog.Default()
+	}
+	cfg, err := websocket.NewConfig(url, origin())
+	if err != nil {
+		return fmt.Errorf("ma: ws config: %w", err)
+	}
+	conn, err := websocket.DialConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("ma: ws dial: %w", err)
+	}
+	defer conn.Close()
+
+	info, err := readServerInfo(conn)
+	if err != nil {
+		return fmt.Errorf("ma: server info: %w", err)
+	}
+	if info.SchemaVersion >= authSchemaVersion && token != "" {
+		msgID, mErr := randHex(16)
+		if mErr != nil {
+			return fmt.Errorf("ma: msg id: %w", mErr)
+		}
+		if err := websocket.JSON.Send(conn, map[string]any{
+			"message_id": msgID,
+			"command":    authCommand,
+			"args":       map[string]any{"token": token},
+		}); err != nil {
+			return fmt.Errorf("ma: auth send: %w", err)
+		}
+		var authResp map[string]any
+		if err := conn.SetReadDeadline(time.Now().Add(connectReadTimeout)); err != nil {
+			return err
+		}
+		if err := websocket.JSON.Receive(conn, &authResp); err != nil {
+			return fmt.Errorf("ma: auth recv: %w", err)
+		}
+		_ = conn.SetReadDeadline(time.Time{})
+		if errCode, ok := authResp["error_code"]; ok && errCode != nil {
+			return fmt.Errorf("ma: auth rejected: %v", authResp)
+		}
+	}
+
+	msgID, err := randHex(16)
+	if err != nil {
+		return fmt.Errorf("ma: msg id: %w", err)
+	}
+	body := map[string]any{
+		"message_id": msgID,
+		"command":    "player_queues/play_media",
+		"args": map[string]any{
+			"queue_id": queueID,
+			"media":    []MediaItem{item},
+			"option":   "play",
+		},
+	}
+	log.Info("ma: PlayMediaItem", "queue_id", queueID,
+		"item_id_short", truncate(item.ItemID, 80),
+		"name", item.Name, "provider", item.Provider)
+	if err := websocket.JSON.Send(conn, body); err != nil {
+		return fmt.Errorf("ma: command send: %w", err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
+		return err
+	}
+	defer conn.SetReadDeadline(time.Time{})
+	// MA may push event frames before responding to our command. Loop
+	// until we see a frame whose message_id matches our command.
+	for {
+		var resp map[string]any
+		if err := websocket.JSON.Receive(conn, &resp); err != nil {
+			return fmt.Errorf("ma: command recv: %w", err)
+		}
+		if respID, ok := resp["message_id"].(string); ok && respID == msgID {
+			if ec, ok := resp["error_code"]; ok && ec != nil {
+				details, _ := resp["details"].(string)
+				return fmt.Errorf("ma: play_media error: %v %s", ec, details)
+			}
+			return nil
+		}
+		// non-matching frame — most likely a player_updated event
+		// MA pushed in response to our command. Ignore and keep
+		// reading.
+	}
+}
+
+// DerivePlayerID returns MA's internal player_id derived from the
+// HA media_player entity_id. The rule is:
+//
+//   "media_player.<player_id>" → "<player_id>"
+//   "media_player.<player_id>_N" (where N is a small integer disambiguator
+//        HA adds when multiple integrations expose the same player) →
+//        "<player_id>".
+//
+// This is the standard convention MA's HA integration uses to name
+// the entities it registers. Caller should still treat the result as
+// best-effort; if MA rejects the queue_id, fall back to HA REST.
+func DerivePlayerID(entityID string) string {
+	const prefix = "media_player."
+	if len(entityID) <= len(prefix) || entityID[:len(prefix)] != prefix {
+		return entityID
+	}
+	id := entityID[len(prefix):]
+	// Strip "_N" suffix where N is 1-3 digits.
+	for i := len(id) - 1; i >= 0; i-- {
+		if id[i] == '_' {
+			tail := id[i+1:]
+			if len(tail) >= 1 && len(tail) <= 3 && allDigits(tail) {
+				return id[:i]
+			}
+			break
+		}
+		if id[i] < '0' || id[i] > '9' {
+			break
+		}
+	}
+	return id
+}
+
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s

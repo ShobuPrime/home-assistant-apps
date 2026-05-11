@@ -33,12 +33,40 @@ reports back.
 reports from the live device. Position rebasing on `DoSeek` is
 described above.
 
-These changes do **not** address the lingering "MA UI shows the raw
-videoplayback URL as title" issue — MA's URL provider doesn't honour
-metadata extras regardless of the shape we send. The next escalation
-is replacing `media_player.play_media` (HA-routed) with MA's native
-WS `player_queues/play_media` command and a full MediaItem object;
-that's tracked for v0.1.10.
+### MA-WS native `play_media` for rich metadata (the RAW URL fix)
+
+v0.1.8 confirmed that MA's URL provider strips metadata extras passed
+through HA's `media_player.play_media` service regardless of the
+shape (flat or nested) — the title in MA's UI still showed the raw
+`videoplayback?…` URL.
+
+The route that bypasses the stripping is **MA's native WebSocket
+`player_queues/play_media` command** with a fully-formed `MediaItem`
+object. New `internal/ma/PlayMediaItem(ctx, url, token, queueID,
+MediaItem, logger)`: opens a short-lived WS connection per call,
+handles the schema-aware auth handshake, sends the command, waits
+for the matching `message_id` response. `internal/ma` also gains a
+`MediaItem` + `MediaItemImage` struct mirroring the subset of MA's
+schema we populate (`item_id`, `provider`, `name`, `media_type`,
+`image`, `artists`, `uri`).
+
+The dispatcher now tries the MA-WS path first for url-provider
+intents when `MAWsURL` + `MAPlayerQueue` are configured, falling
+back to the HA-routed `media_player.play_media` on any error so
+configuration regressions degrade gracefully.
+
+To bridge HA entity_id → MA player_id (the WS command needs MA's
+internal id), `ma.DerivePlayerID` strips `media_player.` and any
+trailing `_N` disambiguator HA adds when multiple integrations
+register the same player — e.g.
+`media_player.3rspk_a8e29151e187_2` → `3rspk_a8e29151e187`. Covered
+by a test matrix in `internal/ma/derive_player_id_test.go`.
+
+`cmd/ma-bridge/main.go` wires this up at startup when both an MA
+hostname is discovered (or `ma_ws_url` is set) and `ma_player_id` is
+configured. A new log line on startup —
+`dispatcher: MA WS play_media path enabled` — confirms the bypass
+is active.
 
 ## Version 0.1.8 (2026-05-11)
 
