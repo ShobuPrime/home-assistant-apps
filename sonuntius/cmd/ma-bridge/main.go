@@ -104,10 +104,21 @@ func main() {
 	}
 	healthSrv.Set("ipc", true, "listening on "+srv.Path)
 
-	// Player state subscription: try MA direct WS first (plan §10 Path B,
-	// richer state) and fall back to the HA core WS (Path A) when MA is
-	// unreachable. Either watcher self-reconnects, so a flaky endpoint
-	// does not disrupt the REST dispatch path.
+	// Player state subscription:
+	//
+	// The HA core WS (state.Watcher) is ALWAYS started — it subscribes by
+	// HA entity_id (the value the user puts in `ma_player_id`) and is the
+	// reliable source of media_position / media_duration / media_title /
+	// volume_level updates because HA aggregates MA's reports into the
+	// entity state. Without this path the yt-cast adapter's cachedState
+	// stays empty and the phone's playback timer perpetually shows 0.
+	//
+	// The MA direct WS (ma.Watcher) is OPTIONAL and additive. MA's WS
+	// uses MA's own internal player IDs, not HA entity_ids, so filtering
+	// it by `ma_player_id` would drop every event. For v0.1.7 we keep
+	// only the connect-probe (so the `ma: connected` log line surfaces
+	// the MA server version + schema as a sanity check) but we do not
+	// run the long-lived watcher — HA core WS carries the data we need.
 	maURL := opts.MAWsURL
 	if maURL == "" && maHost != "" {
 		maURL = ma.URLFromHost(maHost)
@@ -115,23 +126,19 @@ func main() {
 	if maURL != "" {
 		probe := ma.NewWatcher(maURL, opts.MAToken, opts.MAPlayerID, srv, logger.With("component", "ma"))
 		probeCtx, cancel := context.WithTimeout(ctx, 7*time.Second)
-		err := probe.TryConnect(probeCtx)
-		cancel()
-		if err == nil {
-			logger.Info("state: using direct MA WebSocket", "url", maURL)
-			healthSrv.Set("state", true, "direct MA WebSocket: "+maURL)
-			go probe.Run(ctx)
-			goto running
+		if err := probe.TryConnect(probeCtx); err == nil {
+			logger.Info("ma: direct WS reachable (advisory only — state subscription uses HA core WS)",
+				"url", maURL)
+		} else {
+			logger.Warn("ma: direct WS unreachable (advisory only — state subscription uses HA core WS)",
+				"url", maURL, "err", err)
 		}
-		logger.Warn("state: MA direct WS unreachable — falling back to HA core WS",
-			"url", maURL, "err", err)
+		cancel()
 	}
-	{
-		watcher := state.NewWithURL(opts.HAWebSocketURL(), haToken, opts.MAPlayerID, srv, logger.With("component", "state"))
-		healthSrv.Set("state", true, "HA core WebSocket: "+opts.HAWebSocketURL())
-		go watcher.Run(ctx)
-	}
-running:
+
+	watcher := state.NewWithURL(opts.HAWebSocketURL(), haToken, opts.MAPlayerID, srv, logger.With("component", "state"))
+	healthSrv.Set("state", true, "HA core WebSocket: "+opts.HAWebSocketURL()+" (entity="+opts.MAPlayerID+")")
+	go watcher.Run(ctx)
 
 	logger.Info("ma-bridge online", "socket", srv.Path, "log_level", level.String())
 

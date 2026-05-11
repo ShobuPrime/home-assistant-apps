@@ -30,15 +30,21 @@ import (
 
 // videoMetadata is the small subset of the oEmbed payload we surface.
 type videoMetadata struct {
-	Title   string
-	Channel string
+	Title           string
+	Channel         string
+	ThumbnailURL    string
+	ThumbnailWidth  int
+	ThumbnailHeight int
 }
 
 // oEmbedResponse mirrors the YouTube oEmbed JSON envelope fields we care
 // about. Extra fields are ignored.
 type oEmbedResponse struct {
-	Title      string `json:"title"`
-	AuthorName string `json:"author_name"`
+	Title           string `json:"title"`
+	AuthorName      string `json:"author_name"`
+	ThumbnailURL    string `json:"thumbnail_url"`
+	ThumbnailWidth  int    `json:"thumbnail_width"`
+	ThumbnailHeight int    `json:"thumbnail_height"`
 }
 
 // metadataResolver fetches and caches YouTube video metadata.
@@ -98,7 +104,13 @@ func (r *metadataResolver) Resolve(ctx context.Context, videoID string) (videoMe
 	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 		return videoMetadata{}, fmt.Errorf("oembed decode: %w", err)
 	}
-	m := videoMetadata{Title: env.Title, Channel: env.AuthorName}
+	m := videoMetadata{
+		Title:           env.Title,
+		Channel:         env.AuthorName,
+		ThumbnailURL:    env.ThumbnailURL,
+		ThumbnailWidth:  env.ThumbnailWidth,
+		ThumbnailHeight: env.ThumbnailHeight,
+	}
 
 	r.mu.Lock()
 	r.cache[videoID] = m

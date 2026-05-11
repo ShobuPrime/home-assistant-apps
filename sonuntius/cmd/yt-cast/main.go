@@ -101,6 +101,21 @@ func main() {
 		return
 	}
 
+	// Wire external state updates back into the engine's state event
+	// bus. Whenever the IPC connector caches a fresh PlayerState (i.e.
+	// Music Assistant reported a position / volume / duration change
+	// over HA's WebSocket), the adapter calls this hook and the
+	// engine re-emits its current state to the orchestrator, which
+	// forwards onStateChange / onVolumeChanged / nowPlaying to the
+	// connected sender's Lounge protocol. Without this hook, the
+	// phone only sees state updates on engine-side transitions
+	// (play / pause / stop) and external changes are invisible.
+	adapt.setOnStateChange(func(ctx context.Context) {
+		if err := receiver.EmitPlayerState(ctx); err != nil {
+			log.Debug("yt-cast: EmitPlayerState failed (likely no active sender)", "err", err)
+		}
+	})
+
 	// --- Start the receiver with retry-with-backoff. ---------------
 	startReceiverLoop(ctx, receiver, log)
 

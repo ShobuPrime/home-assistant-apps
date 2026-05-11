@@ -1,5 +1,86 @@
 # Changelog
 
+## Version 0.1.7 (2026-05-11)
+
+### Bidirectional player-state sync + rich MA metadata
+
+A first end-to-end success of v0.1.6 (audio actually playing on a real
+MA player) surfaced three UX gaps that all trace back to two missing
+hooks. Both are fixed in this release.
+
+**Problem 1 — phone's position counter resets to 0 on every transition.**
+Phase 6a switched the state subscription to MA's direct WS instead of
+HA's core WS. MA's WS events identify players by MA's *internal* player
+id, not the HA `media_player.*` entity_id we configured in
+`ma_player_id`, so the watcher silently filtered out every event and
+the adapter's cached PlayerState never updated. With nothing in the
+cache, `DoGetPosition` / `DoGetDuration` / `DoGetVolume` returned 0
+and the phone's UI extrapolated from there.
+
+Fix: `cmd/ma-bridge/main.go` now **always runs the HA core WS state
+watcher** (`internal/state`). HA subscribes by entity_id and aggregates
+MA's reports — `media_position`, `media_duration`, `media_title`,
+`volume_level` all flow through reliably. The MA-direct WS connection
+probe is kept as an advisory log line ("ma: direct WS reachable") for
+visibility into the MA server version / schema, but no longer carries
+the state subscription.
+
+`internal/state/watcher.go` now logs an info-level line on the first
+broadcast for a given entity (subsequent updates stay at debug to
+avoid log spam) so confirmation that the chain is live is visible at
+the default log level.
+
+**Problem 2 — external state changes (pause/resume from MA's UI, volume
+changes from the speaker, seek-by-double-tap on the phone) never made
+it back to the phone's Lounge UI even when the cache was updated.**
+The yt-cast engine only emits state events on engine-side transitions
+(play / pause / stop), not when the host's cached state changes
+externally.
+
+Fix: new `receiver.EmitPlayerState(ctx)` exposes the engine's state
+emission. The adapter now fires an `onStateChange` callback every time
+`updateCachedState` is called from the IPC connector. `cmd/yt-cast/main.go`
+wires that callback to `receiver.EmitPlayerState`, so every MA-driven
+state update propagates back through:
+
+```
+HA state_changed → state.Watcher → IPC → adapter.updateCachedState
+                                          → receiver.EmitPlayerState
+                                            → engine.EmitCurrentState
+                                              → orchestrator builds
+                                                onStateChange / onVolumeChanged
+                                                / nowPlaying messages
+                                              → Lounge POST to phone
+```
+
+This is what makes volume sync, seek accuracy, and continuous
+position display work bidirectionally.
+
+**Problem 3 — Music Assistant's UI showed the raw `videoplayback?…`
+URL as the track title.** MA's URL provider just plays whatever it's
+handed and has no out-of-band metadata source for YouTube URLs.
+
+Fix: synchronously resolve title + channel via the existing oEmbed
+helper before emitting the `PlayIntent`, populate
+`PlayIntent.Metadata` with `title` / `channel` / `thumbnail` /
+`video_id` / `source`. `internal/dispatcher` reads those and passes
+them through to `media_player.play_media` as
+`extra.metadata.{title, artist, image, thumb, external_id, source}`,
+matching MA's expected schema. `internal/ha/client.PlayMedia` grew an
+`extra` parameter.
+
+Resolution adds ~200ms on cold cache (oEmbed call) but the existing
+yt-dlp stream resolve already takes 1–5s in the same path, so the
+incremental cost is negligible.
+
+Thumbnail handling: `cmd/yt-cast/metadata.go` now also captures
+`thumbnail_url` / `thumbnail_width` / `thumbnail_height` from the
+oEmbed payload — YouTube's officially-recommended preview image for
+the video. The player adapter prefers that over the hard-coded
+`https://i.ytimg.com/vi/<id>/hqdefault.jpg` fallback, and the
+dispatcher forwards it as both `extra.metadata.image` and
+`extra.metadata.thumb` so MA's UI can render proper cover art.
+
 ## Version 0.1.6 (2026-05-11)
 
 ### Pre-resolve YouTube watch URLs to direct stream URLs via yt-dlp
