@@ -32,7 +32,8 @@ RUN apk upgrade --no-cache \
         curl \
         jq \
         alsa-utils \
-        tar
+        tar \
+        yt-dlp
 
 # Phase 5 — iFi Tidal Connect binary fallback (opt-in). The ARMv7 iFi
 # binary needs glibc-compatible shims on aarch64; libc6-compat provides
