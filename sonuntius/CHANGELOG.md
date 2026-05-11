@@ -1,5 +1,46 @@
 # Changelog
 
+## Version 0.1.6 (2026-05-11)
+
+### Pre-resolve YouTube watch URLs to direct stream URLs via yt-dlp
+
+A first live v0.1.5 test with `ma_player_id` correctly set surfaced
+the next blocker:
+
+```
+[music_assistant.player_queues] Skipping https://www.youtube.com/watch?v=...:
+  Unable to retrieve info (Invalid data found when processing input)
+[music_assistant.webserver] player_queues/play_media: No playable items found
+```
+
+Music Assistant's "URL" provider expects a direct audio stream URL
+(mp3 / m4a / `googlevideo.com` / etc.) and ffmpeg-probes it. Handing
+MA a raw `https://www.youtube.com/watch?v=...` URL fails because MA
+gets HTML instead of audio bytes. The v0.1.3 commit-message claim
+that MA's stream extractor handles raw YouTube watch URLs was wrong.
+
+Fix: install `yt-dlp` in the addon image (apk package) and pre-resolve
+the watch URL to a direct audio stream URL in the yt-cast Player
+adapter's `DoPlay` before emitting the `PlayIntent`. yt-dlp's signed
+googlevideo.com URLs are then handed to MA, which can ffmpeg-probe
+them successfully and play.
+
+The resolution is synchronous — it adds ~1–2s before the engine's
+LOADING → PLAYING transition, which is the correct UX (the phone's
+status genuinely is LOADING while we resolve). If resolution fails
+(network error, video unavailable, etc.) we emit the bare watch URL
+and log the failure so MA's "No playable items found" log line is
+preceded by a clear root cause from our side.
+
+Existing tests:
+- `streamresolve_test.go` covers empty-id, missing-binary, and
+  timeout-propagation paths.
+- The resolver is only invoked for `Theme == "cl"` (regular YouTube
+  app), so the YouTube Music path (`ytmusic://track/<id>`) is
+  unchanged.
+
+Image size impact: ~5 MB for `yt-dlp` + its Python deps via apk.
+
 ## Version 0.1.5 (2026-05-11)
 
 ### Trim whitespace from every string option

@@ -59,6 +59,12 @@ type adapter struct {
 	// endpoint. May be nil — DoPlay falls back to logging just the ID.
 	metadata *metadataResolver
 
+	// stream pre-resolves YouTube watch URLs to direct audio stream
+	// URLs via yt-dlp, because Music Assistant's URL provider cannot
+	// ffmpeg-probe a YouTube watch URL directly. May be nil — DoPlay
+	// then emits the bare watch URL and lets MA log the failure.
+	stream *streamResolver
+
 	// log is the slog logger used for the async title-resolution
 	// callback. May be nil; falls back to slog.Default().
 	log *slog.Logger
@@ -72,6 +78,7 @@ func newAdapter(client *ipc.Client) *adapter {
 		ipcClient: client,
 		source:    "yt-cast",
 		metadata:  newMetadataResolver(),
+		stream:    newStreamResolver(),
 	}
 }
 
@@ -148,12 +155,32 @@ func resolveIntent(video types.Video, source string) *events.PlayIntent {
 	return intent
 }
 
-// DoPlay emits a PlayIntent. After dispatching the event we fire an
-// async metadata fetch via the oEmbed endpoint and log the resolved
-// title — the play path itself never blocks on the network roundtrip,
-// matching upstream's optimistic Player.play() behavior.
-func (a *adapter) DoPlay(_ context.Context, video types.Video, _ float64) error {
+// DoPlay emits a PlayIntent. For YouTube-classic casts we synchronously
+// pre-resolve the watch URL to a direct audio stream URL via yt-dlp —
+// Music Assistant's URL provider needs that to actually play the audio
+// (a bare watch URL fails MA's ffmpeg-probe with "Invalid data found").
+// The resolution is in-band (typically 1–2s) so the receiver's PLAYING
+// state matches reality. Title resolution remains async — that path
+// is purely cosmetic.
+func (a *adapter) DoPlay(ctx context.Context, video types.Video, _ float64) error {
 	intent := resolveIntent(video, a.source)
+	if a.stream != nil && intent.Provider == "url" && video.Client.Theme == "cl" {
+		a.mu.Lock()
+		log := a.log
+		a.mu.Unlock()
+		if log == nil {
+			log = slog.Default()
+		}
+		streamURL, err := a.stream.Resolve(ctx, video.ID)
+		if err != nil {
+			log.Error("yt-cast: stream URL pre-resolve failed — MA will reject the watch URL",
+				"video_id", video.ID, "err", err)
+		} else {
+			log.Info("yt-cast: stream URL pre-resolved via yt-dlp",
+				"video_id", video.ID, "stream_url", truncateString(streamURL, 120))
+			intent.URL = streamURL
+		}
+	}
 	if err := a.send(intent); err != nil {
 		return err
 	}
