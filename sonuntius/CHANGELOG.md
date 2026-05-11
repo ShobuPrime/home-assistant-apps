@@ -1,5 +1,73 @@
 # Changelog
 
+## Version 0.1.9 (2026-05-11)
+
+### Local position estimation + seek/volume visibility
+
+Two issues from the v0.1.8 live test:
+
+**1. Position snaps to 0:00 on the first pause after play.** Even with
+the v0.1.8 `subscribe_events` fix, HA does not emit `state_changed` for
+a `media_player` entity until MA has actually started streaming
+(typically 2–10 seconds after our `play_media` call). If the user pauses
+during that gap, the engine calls `DoGetPosition`, our cachedState is
+still empty, and we return 0 — the phone's progress bar snaps to 0:00
+in both YouTube *and* the MA UI on the first pause. Once playback runs
+long enough for HA to emit position attributes, sync becomes correct.
+
+`cmd/yt-cast/player.go`: the adapter now tracks a local wall-clock
+position estimator alongside the cached state. `DoGetPosition` prefers
+the cached value when available (MA's truth), and falls back to the
+estimator otherwise. Estimator is seeded by `DoPlay` (with the
+sender-supplied start position), frozen by `DoPause`, advanced by
+`DoResume` (absorbing the pause duration), rebased by `DoSeek`, and
+cleared by `DoStop`.
+
+The result: the phone always sees a sensible non-zero position from
+the moment the cast lands, even during the initial gap before MA
+reports back.
+
+**2. Seek and volume traces went to debug.** Logging on `DoSeek` and
+`DoSetVolume` is now info-level so we can diagnose the inconsistent
+"no sound after scrub" / "volume slider doesn't move the speaker"
+reports from the live device. Position rebasing on `DoSeek` is
+described above.
+
+### MA-WS native `play_media` for rich metadata (the RAW URL fix)
+
+v0.1.8 confirmed that MA's URL provider strips metadata extras passed
+through HA's `media_player.play_media` service regardless of the
+shape (flat or nested) — the title in MA's UI still showed the raw
+`videoplayback?…` URL.
+
+The route that bypasses the stripping is **MA's native WebSocket
+`player_queues/play_media` command** with a fully-formed `MediaItem`
+object. New `internal/ma/PlayMediaItem(ctx, url, token, queueID,
+MediaItem, logger)`: opens a short-lived WS connection per call,
+handles the schema-aware auth handshake, sends the command, waits
+for the matching `message_id` response. `internal/ma` also gains a
+`MediaItem` + `MediaItemImage` struct mirroring the subset of MA's
+schema we populate (`item_id`, `provider`, `name`, `media_type`,
+`image`, `artists`, `uri`).
+
+The dispatcher now tries the MA-WS path first for url-provider
+intents when `MAWsURL` + `MAPlayerQueue` are configured, falling
+back to the HA-routed `media_player.play_media` on any error so
+configuration regressions degrade gracefully.
+
+To bridge HA entity_id → MA player_id (the WS command needs MA's
+internal id), `ma.DerivePlayerID` strips `media_player.` and any
+trailing `_N` disambiguator HA adds when multiple integrations
+register the same player — e.g.
+`media_player.3rspk_a8e29151e187_2` → `3rspk_a8e29151e187`. Covered
+by a test matrix in `internal/ma/derive_player_id_test.go`.
+
+`cmd/ma-bridge/main.go` wires this up at startup when both an MA
+hostname is discovered (or `ma_ws_url` is set) and `ma_player_id` is
+configured. A new log line on startup —
+`dispatcher: MA WS play_media path enabled` — confirms the bypass
+is active.
+
 ## Version 0.1.8 (2026-05-11)
 
 ### subscribe_events instead of subscribe_trigger; flat-and-nested play_media metadata

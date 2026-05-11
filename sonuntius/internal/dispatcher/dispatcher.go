@@ -8,6 +8,7 @@ import (
 
 	"github.com/shobuprime/sonuntius/internal/events"
 	"github.com/shobuprime/sonuntius/internal/ha"
+	"github.com/shobuprime/sonuntius/internal/ma"
 )
 
 // uriTemplates maps event provider names to MA's content_id schemes.
@@ -28,11 +29,22 @@ var transportToService = map[string]string{
 	"seek":     "media_seek",
 }
 
-// Dispatcher routes events to the HA client.
+// Dispatcher routes events to the HA client. When MAWsURL is set the
+// dispatcher also has a direct path to MA's WebSocket so url-provider
+// PlayIntents can be sent as a fully-formed MediaItem (preserving
+// title / artist / image), bypassing HA's media_player.play_media
+// wrapper which strips metadata for the URL provider.
 type Dispatcher struct {
 	HA       *ha.Client
 	EntityID string
 	Logger   *slog.Logger
+
+	// MA-WS direct path (optional). When MAWsURL is non-empty the
+	// dispatcher tries this first for url-provider intents and falls
+	// back to the HA REST path on any error.
+	MAWsURL       string
+	MAToken       string
+	MAPlayerQueue string
 }
 
 // New constructs a Dispatcher.
@@ -41,6 +53,15 @@ func New(haClient *ha.Client, entityID string, logger *slog.Logger) *Dispatcher 
 		logger = slog.Default()
 	}
 	return &Dispatcher{HA: haClient, EntityID: entityID, Logger: logger}
+}
+
+// SetMAWS configures the MA WS direct path. queueID is MA's internal
+// player_id (NOT the HA entity_id); use ma.DerivePlayerID to derive
+// it from the entity_id, or accept an explicit override from config.
+func (d *Dispatcher) SetMAWS(url, token, queueID string) {
+	d.MAWsURL = url
+	d.MAToken = token
+	d.MAPlayerQueue = queueID
 }
 
 // Ready reports whether the dispatcher has a target entity configured.
@@ -75,10 +96,56 @@ func (d *Dispatcher) dispatchPlay(ctx context.Context, p *events.PlayIntent) {
 			"provider", p.Provider, "track_id", p.TrackID, "url", p.URL)
 		return
 	}
+
+	// For url-provider intents prefer MA's native WS play_media when
+	// it's configured. MA's URL provider strips most metadata when
+	// routed through HA's media_player.play_media service; the WS
+	// path accepts a full MediaItem, so the title / artist / image
+	// land in MA's UI.
+	if p.Provider == "url" && d.MAWsURL != "" && d.MAPlayerQueue != "" {
+		if err := d.playViaMAWS(ctx, uri, p); err == nil {
+			return
+		} else {
+			d.Logger.Warn("dispatcher: MA WS play_media failed, falling back to HA REST",
+				"err", err)
+		}
+	}
+
 	extra := metadataExtra(p.Metadata)
 	if err := d.HA.PlayMedia(ctx, d.EntityID, uri, "music", extra); err != nil {
 		d.Logger.Error("dispatcher: play_media failed", "err", err)
 	}
+}
+
+// playViaMAWS sends a fully-formed MediaItem to MA's native WS
+// `player_queues/play_media` command. Used for url-provider intents
+// where rich metadata would otherwise be lost.
+func (d *Dispatcher) playViaMAWS(ctx context.Context, uri string, p *events.PlayIntent) error {
+	title, _ := p.Metadata["title"].(string)
+	channel, _ := p.Metadata["channel"].(string)
+	thumb, _ := p.Metadata["thumbnail"].(string)
+	source, _ := p.Metadata["source"].(string)
+	if source == "" {
+		source = "builtin"
+	}
+	item := ma.MediaItem{
+		ItemID:    uri,
+		Provider:  "builtin",
+		Name:      title,
+		MediaType: "track",
+		URI:       uri,
+	}
+	if channel != "" {
+		item.Artists = []string{channel}
+	}
+	if thumb != "" {
+		item.Image = &ma.MediaItemImage{
+			Type:     "thumb",
+			Path:     thumb,
+			Provider: "url",
+		}
+	}
+	return ma.PlayMediaItem(ctx, d.MAWsURL, d.MAToken, d.MAPlayerQueue, item, d.Logger.With("path", "ma-ws"))
 }
 
 // metadataExtra translates PlayIntent.Metadata (populated by the
