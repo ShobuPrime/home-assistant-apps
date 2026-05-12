@@ -212,6 +212,20 @@ func (r *Receiver) EmitPlayerState(ctx context.Context) error {
 	return r.app.engine.EmitCurrentState(ctx)
 }
 
+// NotifyExternalStatus updates the engine's tracked player status and
+// emits a fresh state event to all connected senders. Use this when
+// playback transitions happen outside the receiver (e.g. the user
+// paused the speaker via Music Assistant's own UI) so the cast sender
+// reflects the new state instead of the engine's last-known status.
+//
+// EmitPlayerState by itself only re-emits the cached status — calling
+// it after an MA-side pause leaves the phone showing the old status.
+// NotifyExternalStatus is the right call when MA's queue event signals
+// a real status transition (idle/paused/playing/buffering).
+func (r *Receiver) NotifyExternalStatus(ctx context.Context, status constants.PlayerStatus) error {
+	return r.app.engine.NotifyExternalStateChange(ctx, &status)
+}
+
 // Status returns the lifecycle state.
 func (r *Receiver) Status() constants.Status {
 	r.mu.Lock()

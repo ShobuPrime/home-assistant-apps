@@ -219,9 +219,7 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 	// families with different field-presence patterns — e.g.
 	// player_updated frequently arrives with an empty current_item,
 	// which would otherwise clobber our title/artist/track_id with
-	// blank strings. The HA core WS state watcher emits full
-	// snapshots; the MA WS events emit partials. Both should
-	// coexist by merging, not replacing.
+	// blank strings.
 	merged := prev
 	if ps.State != "" {
 		merged.State = ps.State
@@ -244,20 +242,41 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 	if ps.Duration != nil {
 		merged.Duration = ps.Duration
 	}
-	// Volume echo suppression: if the user is actively pressing
-	// volume buttons (last DoSetVolume within volumeInputWindow),
-	// drop MA's volume / muted echoes so they don't snap the phone
-	// slider back onto a stale value while the user is mid-input.
-	// The user's optimistic value (set by DoSetVolume itself) stays
-	// authoritative for the duration of the window.
-	if ps.Volume != nil && (a.lastVolumeSentAt.IsZero() ||
-		time.Since(a.lastVolumeSentAt) >= volumeInputWindow) {
+	// Volume / muted: we still cache MA's reported values so
+	// DoGetVolume has a sensible answer at fresh-connect time. But
+	// see below — we DON'T fire onStateChange for volume-only
+	// changes; the phone's slider is authoritative during a session,
+	// and only the initial-connect sync should push MA's value out.
+	if ps.Volume != nil {
 		merged.Volume = ps.Volume
 	}
-	if ps.Muted != nil && (a.lastVolumeSentAt.IsZero() ||
-		time.Since(a.lastVolumeSentAt) >= volumeInputWindow) {
+	if ps.Muted != nil {
 		merged.Muted = ps.Muted
 	}
+	// Decide whether to fire onStateChange (which pushes to the phone
+	// via the engine):
+	//
+	//   - non-volume change (state, title, position, etc.) → ALWAYS fire.
+	//     Pause-from-MA reaches the phone immediately, even mid-input.
+	//   - volume change → fire only if we're NOT in the active-input
+	//     window. During the window MA is echoing our recent
+	//     commands and snapping the phone's slider back would
+	//     undo the user's still-evolving input. After the window
+	//     (~2 s of no DoSetVolume calls) MA's value resyncs to the
+	//     phone, so adjusting volume in MA's UI mid-session works.
+	nonVolumeChanged := merged.State != prev.State ||
+		merged.Title != prev.Title ||
+		merged.Artist != prev.Artist ||
+		merged.TrackID != prev.TrackID ||
+		merged.Provider != prev.Provider ||
+		!floatPtrEqual(merged.Position, prev.Position) ||
+		!floatPtrEqual(merged.Duration, prev.Duration)
+	volumeChanged := !floatPtrEqual(merged.Volume, prev.Volume) ||
+		!boolPtrEqual(merged.Muted, prev.Muted)
+	inUserInputWindow := !a.lastVolumeSentAt.IsZero() &&
+		time.Since(a.lastVolumeSentAt) < volumeInputWindow
+	pushVolume := volumeChanged && !inUserInputWindow
+	shouldFire := nonVolumeChanged || pushVolume
 	ps = merged
 	a.cachedState = ps
 	// When the track has ended (MA reports idle/stopped/off after
@@ -312,15 +331,42 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 		attrs = append(attrs, "prev_state", prev.State)
 	}
 	log.Debug("yt-cast: cachedState updated", attrs...)
-	if fn != nil {
+	if fn != nil && shouldFire {
 		fn(context.Background())
 	}
 }
 
+// floatPtrEqual returns true when two *float64 represent the same
+// value (either both nil, or both non-nil with equal payload).
+func floatPtrEqual(a, b *float64) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+// boolPtrEqual returns true when two *bool represent the same value
+// (either both nil, or both non-nil with equal payload).
+func boolPtrEqual(a, b *bool) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
 // volumeInputWindow is how long after a user-initiated volume change
-// we suppress MA's volume state echoes from reaching the phone. The
-// echo would otherwise overwrite the user's still-evolving slider
-// position when they're pressing rapidly.
+// we suppress MA's lagging volume echoes from pushing back to the
+// phone. The echo would otherwise overwrite the user's still-evolving
+// slider position. After the window expires, MA's volume is treated
+// as authoritative again — so adjusting volume in MA's UI mid-session
+// (or pressing physical buttons on the speaker) propagates to the
+// phone as expected.
 const volumeInputWindow = 2 * time.Second
 
 // isTrackEndedState reports whether s is one of the MA / HA state
@@ -802,23 +848,18 @@ func (a *adapter) DoSeek(_ context.Context, position float64) error {
 // speaker, and avoids the user having to "press multiple times for
 // it to feel natural" reported on v0.1.17.
 func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error {
+	// Speaker is the source of truth — we forward the user's press
+	// to MA and nothing more (no cache write, no optimistic echo).
+	// We mark lastVolumeSentAt so updateCachedState knows to
+	// suppress MA's lagging volume echo from reaching the phone
+	// during the active-input window. Once the window expires (or
+	// the user changes volume in MA's UI directly), MA's authoritative
+	// value flows back to the phone normally.
 	level := float64(volume.Level) / 100.0
 	muted := volume.Muted
 	a.mu.Lock()
 	log := a.log
 	a.lastVolumeSentAt = time.Now()
-	// Optimistic echo: write the user-requested value into cachedState
-	// immediately so the engine's next state push reports the user's
-	// intent, not whatever MA last echoed. Without this the phone
-	// slider gets snapped back onto MA's pre-command volume (lags
-	// 100-400 ms behind), so rapid sequential presses appear to "lose"
-	// increments. The suppression check above in updateCachedState
-	// then keeps MA's lagging echoes from overriding this value during
-	// the active-input window.
-	levelCopy := level
-	mutedCopy := muted
-	a.cachedState.Volume = &levelCopy
-	a.cachedState.Muted = &mutedCopy
 	a.mu.Unlock()
 	if log == nil {
 		log = slog.Default()

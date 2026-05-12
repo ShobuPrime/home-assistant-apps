@@ -1,5 +1,75 @@
 # Changelog
 
+## Version 0.2.3 (2026-05-11)
+
+### Pause via NotifyExternalStatus + idle/active → paused mapping + volume race fix
+
+Three concrete fixes for the v0.2.2 live log.
+
+**1. Pause-from-MA never reached the engine's state machine.** v0.2.2
+broadcasted `state=paused` to the IPC bus, but the only path back to
+the phone was `Receiver.EmitPlayerState` — which re-emits whatever
+the *engine* thinks the status is. The engine still had
+`PlayerStatusPlaying` (last set when our DoPlay landed); MA's pause
+event never propagated.
+
+`internal/ytcast/receiver.go`: new `Receiver.NotifyExternalStatus(ctx,
+PlayerStatus)` that calls into the engine's
+`NotifyExternalStateChange` — actually *setting* the engine's
+internal status and emitting to all senders.
+
+`cmd/yt-cast/main.go`: new `mapMAStateToPlayerStatus(string)` and
+`adapt.setOnStateChange` now calls `NotifyExternalStatus` (rather
+than `EmitPlayerState`) when the cached state has a known status
+mapping.
+
+**2. MA's Universal Player + Sendspin reports "pause" as
+`state=idle`.** The live log confirmed: the queue stays
+`active=true` with a `current_item`, but `state` shows `idle`
+instead of `paused`. The phone naturally interprets `idle` as
+"stopped", not "paused".
+
+`internal/ma/client.go::PlayerStateFromQueueEvent`: when MA reports
+`state=idle` AND `active=true` AND `current_item != nil`, translate
+to `paused`. A truly-stopped queue clears `active` or `current_item`.
+
+**3. Volume — push MA changes to phone, but pause the push during
+user-driven input.** The user clarified the desired model:
+
+> "the volume level on the speaker is the source of truth — and
+> Music Assistant in my experience is pretty good at remembering it,
+> so I think for volume we should get rid of the caching entirely
+> and on fresh connection we sync the volume state from MA to the
+> phone app"
+>
+> "why can't we also do the same for speaker volume if I update it
+> directly in the MA UI?"
+
+Both true: bidirectional during a session, with no fighting on the
+phone-input path.
+
+`cmd/yt-cast/player.go::DoSetVolume`: stops writing to cachedState
+(no optimistic echo). Just stamps `lastVolumeSentAt` and forwards.
+
+`cmd/yt-cast/player.go::updateCachedState`: split firing decision —
+non-volume changes (state, title, position) **always** fire so
+pause-from-MA reaches the phone immediately. Volume changes fire
+ONLY when no DoSetVolume happened in the last 2 s. During the
+window, MA echoes our recent commands and pushing them back would
+snap the slider; after the window, volume from MA's UI (or physical
+speaker buttons) propagates to the phone normally.
+
+Result: rapid press-and-hold on phone → no snap-back. Pause in MA UI
+→ phone reflects immediately. Volume change in MA UI → phone slider
+follows (after ~2 s of input quiet).
+
+### Deferred to v0.2.4 / future
+
+- **Queue mirroring still a no-op for playlists.** The engine's
+  `Queue.GetState().Next` and `.Autoplay` remain nil for casts
+  even from a YouTube playlist. The engine port's playlist
+  tracking likely needs deeper work — separate effort.
+
 ## Version 0.2.2 (2026-05-11)
 
 ### Real bidirectional sync — handle MA's queue events; merge state updates; optimistic volume echo

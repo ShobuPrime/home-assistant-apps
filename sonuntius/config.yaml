@@ -1,6 +1,6 @@
 name: "Sonuntius"
 description: "Cast/DIAL to Music Assistant bridge for Sendspin playback"
-version: "0.2.2"
+version: "0.2.3"
 slug: "sonuntius"
 url: "https://github.com/ShobuPrime/home-assistant-apps/tree/master/sonuntius"
 init: false
