@@ -1,5 +1,56 @@
 # Changelog
 
+## Version 0.2.1 (2026-05-11)
+
+### Close the bi-directional sync loop + suppress volume-echo races
+
+Three issues from the v0.2.0 live test.
+
+**1. Pause-in-MA didn't reach the phone.** The user paused playback
+inside MA's UI; the YouTube app continued showing the timeline
+ticking with a Play icon. Cause: v0.2.0 sent commands via MA WS but
+state events still flowed back through HA's core WS state.Watcher,
+and HA's MA integration silently drops/coalesces MA-internal state
+transitions. The 60-min log search returned **zero** `state=paused`
+broadcasts even though the user paused multiple times.
+
+`cmd/ma-bridge/main.go`: the long-lived `WSClient`'s `OnEvent`
+handler now decodes MA's `player_updated` (and
+`player_queue_time_updated`, `player_added`) events directly and
+broadcasts a `PlayerState` over the IPC bus. v0.2.0 passed `OnEvent:
+nil` — MA's events were arriving and being silently dropped.
+
+`internal/ma/client.go`: extracted `PlayerStateFromMAEvent(raw)` —
+the same translation logic the deprecated `Watcher.translateEvent`
+used, now reusable from the bridge.
+
+HA's core-WS state.Watcher remains active as a redundant feed —
+useful as a fallback when MA WS drops, and for the few attributes
+HA aggregates that MA's player_updated doesn't carry.
+
+**2. Rapid volume presses lose increments.** Live log showed phone
+oscillating 49 → 52 → 49 → 52 even when the user pressed "up up up".
+MA's volume state events race the phone's next press and snap the
+slider back into a previous bucket.
+
+`cmd/yt-cast/player.go`: new `lastVolumeSentAt` timestamp + a
+2-second `volumeInputWindow`. While the window is active,
+`updateCachedState` preserves the previous `Volume`/`Muted` from
+cachedState — so the engine doesn't push `onVolumeChanged` to the
+phone using a stale MA echo. After 2 s of input quiet, the next
+state event resyncs the slider to the speaker's actual setting.
+
+**3. Queue preload often a no-op.** Log shows
+`no upcoming video to preload` for single-video casts because
+`Queue.GetState().Next` and `.Autoplay` are both nil — the YouTube
+cast app didn't supply an up-next. Not a bug; correct behaviour.
+Elevated the log line from debug to info so users can correlate
+"queue not added to MA" reports with this reason.
+
+A deeper fix (synthesise a candidate via YouTube's "related videos"
+when the cast app doesn't supply one) needs engine-port investigation
+and is deferred.
+
 ## Version 0.2.0 (2026-05-11)
 
 ### Direct MA WebSocket — bypass HA REST for all MA-bound traffic

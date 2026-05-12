@@ -300,6 +300,48 @@ func (w *Watcher) handleFrame(raw []byte) {
 	w.translateEvent(env)
 }
 
+// PlayerStateFromMAEvent decodes the `data` field of an MA WS event
+// push (player_updated, player_queue_time_updated, etc.) into a
+// portable events.PlayerState. The exported variant of the same
+// logic used by the deprecated `Watcher.translateEvent`. Returns nil
+// when the payload is unparseable or doesn't carry usable fields.
+//
+// Suppliers: hosts should match `eventName` against
+// ("player_updated"|"player_added"|"player_queue_time_updated") and
+// drop frames for other event names. ObjectID filtering against the
+// configured player_id is the caller's job.
+func PlayerStateFromMAEvent(raw json.RawMessage) *events.PlayerState {
+	var p playerUpdate
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return nil
+	}
+	ps := &events.PlayerState{State: p.State}
+	if p.Volume > 0 {
+		v := p.Volume
+		ps.Volume = &v
+	}
+	if p.Muted {
+		m := p.Muted
+		ps.Muted = &m
+	}
+	if p.CurrentItem != nil {
+		ps.Title = p.CurrentItem.MediaItem.Name
+		if len(p.CurrentItem.MediaItem.Artists) > 0 {
+			ps.Artist = p.CurrentItem.MediaItem.Artists[0].Name
+		}
+		ps.TrackID = p.CurrentItem.MediaItem.ItemID
+		if p.CurrentItem.MediaItem.Duration > 0 {
+			d := p.CurrentItem.MediaItem.Duration
+			ps.Duration = &d
+		}
+		if p.CurrentItem.StreamDetails.Position > 0 {
+			pos := p.CurrentItem.StreamDetails.Position
+			ps.Position = &pos
+		}
+	}
+	return ps
+}
+
 // playerUpdate mirrors the subset of MA's player payload we care about
 // for state translation. Unknown fields are ignored.
 //

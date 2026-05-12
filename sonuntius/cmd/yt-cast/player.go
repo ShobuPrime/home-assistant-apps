@@ -88,6 +88,14 @@ type adapter struct {
 	// so we never insert a stale +1 into the freshly-rebuilt queue.
 	preloadGen uint64
 
+	// lastVolumeSentAt is when we last forwarded a DoSetVolume to MA.
+	// updateCachedState uses this to suppress MA's own volume echoes
+	// during an active user-input window: while the user is rapidly
+	// pressing volume buttons, MA's state events lag the phone's
+	// next press and snap the slider back into a previous bucket
+	// (the "press up up up only one increment registers" complaint).
+	lastVolumeSentAt time.Time
+
 	// Local position tracking. HA's state_changed events for the MA
 	// player carry an accurate media_position, but they only fire after
 	// MA actually starts streaming (typically 2–10 s after our
@@ -206,6 +214,18 @@ func (a *adapter) resetSession() {
 func (a *adapter) updateCachedState(ps events.PlayerState) {
 	a.mu.Lock()
 	prev := a.cachedState
+	// Volume echo suppression: if the user is actively pressing
+	// volume buttons (last DoSetVolume within volumeInputWindow),
+	// MA's state event reflecting the previous setting will race
+	// the next press and snap the phone's slider back. Keep the
+	// previous cached volume so the engine doesn't push a stale
+	// onVolumeChanged to the sender. The next state event after
+	// the window passes will resync.
+	if ps.Volume != nil && !a.lastVolumeSentAt.IsZero() &&
+		time.Since(a.lastVolumeSentAt) < volumeInputWindow {
+		ps.Volume = prev.Volume
+		ps.Muted = prev.Muted
+	}
 	a.cachedState = ps
 	// When the track has ended (MA reports idle/stopped/off after
 	// previously being playing/buffering/paused) the local estimator
@@ -263,6 +283,12 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 		fn(context.Background())
 	}
 }
+
+// volumeInputWindow is how long after a user-initiated volume change
+// we suppress MA's volume state echoes from reaching the phone. The
+// echo would otherwise overwrite the user's still-evolving slider
+// position when they're pressing rapidly.
+const volumeInputWindow = 2 * time.Second
 
 // isTrackEndedState reports whether s is one of the MA / HA state
 // strings that indicates the queue item finished or was stopped.
@@ -523,7 +549,12 @@ func (a *adapter) preloadUpcoming(gen uint64, peek func() *types.Video) {
 	}
 	video := peek()
 	if video == nil {
-		log.Debug("yt-cast: no upcoming video to preload")
+		// Engine doesn't have a Next or Autoplay candidate. This is
+		// expected for single-video casts where the YouTube app
+		// didn't supply an up-next list. Logged at info so the user
+		// can correlate "queue not added to MA" reports with this
+		// reason in the log.
+		log.Info("yt-cast: preload skipped — no upcoming video supplied by YouTube cast app")
 		return
 	}
 	// Currently only YouTube-classic (the cl theme) needs URL
@@ -742,6 +773,7 @@ func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error 
 	muted := volume.Muted
 	a.mu.Lock()
 	log := a.log
+	a.lastVolumeSentAt = time.Now()
 	a.mu.Unlock()
 	if log == nil {
 		log = slog.Default()
