@@ -214,18 +214,51 @@ func (a *adapter) resetSession() {
 func (a *adapter) updateCachedState(ps events.PlayerState) {
 	a.mu.Lock()
 	prev := a.cachedState
+	// Merge ps into prev: only overwrite a field when the incoming
+	// event actually carries a value. MA emits different event
+	// families with different field-presence patterns — e.g.
+	// player_updated frequently arrives with an empty current_item,
+	// which would otherwise clobber our title/artist/track_id with
+	// blank strings. The HA core WS state watcher emits full
+	// snapshots; the MA WS events emit partials. Both should
+	// coexist by merging, not replacing.
+	merged := prev
+	if ps.State != "" {
+		merged.State = ps.State
+	}
+	if ps.Title != "" {
+		merged.Title = ps.Title
+	}
+	if ps.Artist != "" {
+		merged.Artist = ps.Artist
+	}
+	if ps.TrackID != "" {
+		merged.TrackID = ps.TrackID
+	}
+	if ps.Provider != "" {
+		merged.Provider = ps.Provider
+	}
+	if ps.Position != nil {
+		merged.Position = ps.Position
+	}
+	if ps.Duration != nil {
+		merged.Duration = ps.Duration
+	}
 	// Volume echo suppression: if the user is actively pressing
 	// volume buttons (last DoSetVolume within volumeInputWindow),
-	// MA's state event reflecting the previous setting will race
-	// the next press and snap the phone's slider back. Keep the
-	// previous cached volume so the engine doesn't push a stale
-	// onVolumeChanged to the sender. The next state event after
-	// the window passes will resync.
-	if ps.Volume != nil && !a.lastVolumeSentAt.IsZero() &&
-		time.Since(a.lastVolumeSentAt) < volumeInputWindow {
-		ps.Volume = prev.Volume
-		ps.Muted = prev.Muted
+	// drop MA's volume / muted echoes so they don't snap the phone
+	// slider back onto a stale value while the user is mid-input.
+	// The user's optimistic value (set by DoSetVolume itself) stays
+	// authoritative for the duration of the window.
+	if ps.Volume != nil && (a.lastVolumeSentAt.IsZero() ||
+		time.Since(a.lastVolumeSentAt) >= volumeInputWindow) {
+		merged.Volume = ps.Volume
 	}
+	if ps.Muted != nil && (a.lastVolumeSentAt.IsZero() ||
+		time.Since(a.lastVolumeSentAt) >= volumeInputWindow) {
+		merged.Muted = ps.Muted
+	}
+	ps = merged
 	a.cachedState = ps
 	// When the track has ended (MA reports idle/stopped/off after
 	// previously being playing/buffering/paused) the local estimator
@@ -774,6 +807,18 @@ func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error 
 	a.mu.Lock()
 	log := a.log
 	a.lastVolumeSentAt = time.Now()
+	// Optimistic echo: write the user-requested value into cachedState
+	// immediately so the engine's next state push reports the user's
+	// intent, not whatever MA last echoed. Without this the phone
+	// slider gets snapped back onto MA's pre-command volume (lags
+	// 100-400 ms behind), so rapid sequential presses appear to "lose"
+	// increments. The suppression check above in updateCachedState
+	// then keeps MA's lagging echoes from overriding this value during
+	// the active-input window.
+	levelCopy := level
+	mutedCopy := muted
+	a.cachedState.Volume = &levelCopy
+	a.cachedState.Muted = &mutedCopy
 	a.mu.Unlock()
 	if log == nil {
 		log = slog.Default()

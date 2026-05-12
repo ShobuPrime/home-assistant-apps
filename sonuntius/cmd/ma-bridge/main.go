@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+
+	"github.com/shobuprime/sonuntius/internal/events"
 	"os"
 	"os/signal"
 	"strings"
@@ -135,16 +137,31 @@ func main() {
 				// state changes.
 				logCtx := logger.With("component", "ma-ws-events")
 				maEventHandler := func(eventName, objectID string, data json.RawMessage) {
+					// queue_updated and queue_time_updated carry the
+					// authoritative state (playing / paused / idle /
+					// buffering) and elapsed_time. The Player object's
+					// state is the speaker on/off mirror and can lag
+					// queue transitions by one frame.
+					//
+					// player_updated still gives us volume/muted echo
+					// and the speaker-level state — useful as a
+					// fallback when the queue path is silent.
+					var ps *events.PlayerState
 					switch eventName {
-					case "player_updated", "player_added", "player_queue_time_updated":
+					case "queue_updated", "queue_time_updated":
+						if objectID != "" && objectID != queueID {
+							return
+						}
+						ps = ma.PlayerStateFromQueueEvent(data)
+					case "player_updated", "player_added":
+						if objectID != "" && objectID != queueID {
+							return
+						}
+						ps = ma.PlayerStateFromPlayerEvent(data)
 					default:
 						logCtx.Debug("ma ws event: ignoring", "event", eventName, "object_id", objectID)
 						return
 					}
-					if objectID != "" && objectID != queueID {
-						return
-					}
-					ps := ma.PlayerStateFromMAEvent(data)
 					if ps == nil {
 						return
 					}

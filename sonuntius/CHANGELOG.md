@@ -1,5 +1,68 @@
 # Changelog
 
+## Version 0.2.2 (2026-05-11)
+
+### Real bidirectional sync — handle MA's queue events; merge state updates; optimistic volume echo
+
+Three concrete bugs caught in the v0.2.1 live log.
+
+**1. MA's pause state arrives on `queue_updated`, not `player_updated`.**
+v0.2.1 wired `OnEvent` but only handled `player_updated`. MA's
+PlayerQueue object (the authoritative source for
+playing/paused/idle/buffering transitions) is broadcast on
+`queue_updated` and `queue_time_updated`. The log shows dozens of
+those events being ignored:
+
+    ma ws event: ignoring component=ma-ws-events event=queue_updated
+    ma ws event: ignoring component=ma-ws-events event=queue_time_updated
+
+When the user paused inside MA, MA fired `queue_updated` with
+`state=paused` inside the PlayerQueue dict. We dropped it on the
+floor, so the phone never saw pause.
+
+Fix: new `PlayerStateFromQueueEvent` decoder in
+`internal/ma/client.go` for the `queue_updated` /
+`queue_time_updated` payload shape (different from Player).
+`cmd/ma-bridge/main.go` dispatches by event name: queue events to
+the queue decoder, player events to the player decoder.
+
+**2. `player_updated` was clobbering title/track_id with empty strings.**
+Log:
+
+    ma ws event: broadcasting PlayerState event=player_updated state=playing title="" track_id=""
+    yt-cast: cachedState updated state=playing title="" artist="" track_id=""
+
+Then the HA core WS state watcher would emit a *full* snapshot a
+few ms later with the right title — but the engine had already
+pushed an empty title to the phone in that window.
+
+Fix: `updateCachedState` now **merges** the incoming PlayerState
+into the previous cached value instead of replacing wholesale.
+Empty strings / nil pointers preserve the previous field; only
+non-empty fields overwrite. MA's partial events (volume-only,
+state-only) leave title/artist/track_id intact.
+
+**3. Volume oscillation persisted despite v0.2.1's input-window suppression.**
+The window suppressed updates to cachedState.Volume, but the
+*pre-existing* cachedState.Volume was MA's stale echo (e.g. 0.55
+while user wanted 0.58), and that stale value kept getting pushed
+back to the phone — which then snapped the slider to 55, computed
+55+3=58 on the next press, and entered a steady-state oscillation.
+
+Fix: `DoSetVolume` now writes the user-requested value into
+`cachedState.Volume` immediately (optimistic echo) so the engine's
+next state push to the phone reports the user's intent. The
+existing suppression keeps MA's lagging echoes from overriding it
+during the active-input window. After the window expires, MA's
+echo resyncs us to the actual speaker level.
+
+This re-introduces optimistic echo, BUT only for raw values (no
+rounding). The v0.1.14 feedback loop required rounding to be
+present (round-and-echo snapped to a bucket, phone got snapped
+back inside that bucket). With raw values, echoing what the user
+sent doesn't create a feedback loop — the phone's next computation
+is `current + step`, not `bucket + offset`.
+
 ## Version 0.2.1 (2026-05-11)
 
 ### Close the bi-directional sync loop + suppress volume-echo races
