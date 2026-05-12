@@ -314,6 +314,13 @@ func (w *Watcher) handleFrame(raw []byte) {
 // State / pause / playing transitions come from queue_updated only;
 // player_updated is the source for volume / muted (and best-effort
 // metadata when no queue event is available yet).
+//
+// Volume scale normalization: MA serialises `volume_level` as int
+// 0-100 in player events. JSON unmarshals into our `float64` field as
+// e.g. 48.0, which the receiver-side `DoGetVolume` would multiply by
+// 100 again → 4800 → clamped to 100, the phone would briefly snap to
+// max. Normalise to the 0.0-1.0 range that HA also uses and the rest
+// of the bridge expects.
 func PlayerStateFromPlayerEvent(raw json.RawMessage) *events.PlayerState {
 	var p playerUpdate
 	if err := json.Unmarshal(raw, &p); err != nil {
@@ -322,6 +329,9 @@ func PlayerStateFromPlayerEvent(raw json.RawMessage) *events.PlayerState {
 	ps := &events.PlayerState{} // intentionally no State
 	if p.Volume > 0 {
 		v := p.Volume
+		if v > 1.0 {
+			v = v / 100.0
+		}
 		ps.Volume = &v
 	}
 	if p.Muted {

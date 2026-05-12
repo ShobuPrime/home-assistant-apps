@@ -1,5 +1,70 @@
 # Changelog
 
+## Version 0.2.8 (2026-05-11)
+
+### Volume scale fix, yt-dlp speedups, parallel pre-resolve, sender-preserves-state
+
+**1. Volume scale mismatch fixed.** User caught `0.48` vs `48`
+appearing in the debug log. HA WS reports `volume_level: 0.48`
+(float 0-1, HA convention) but MA WS reports `volume_level: 48`
+(int 0-100, MA convention). Our decoder stored both into a
+`float64` cache that downstream code multiplies by 100 — so MA's
+48 became 4800, clamped to 100, briefly snapping the phone to max
+before the HA-WS-state-suppression kicked in.
+
+`internal/ma/client.go::PlayerStateFromPlayerEvent` now normalises:
+if the decoded volume_level is > 1.0, divide by 100. cachedState
+always holds 0.0-1.0.
+
+**2. yt-dlp speedups for the CM5.** Cast-start latency was floored
+by yt-dlp's Python startup + cold extractor (~1-3 s per call).
+Three stdlib-only wins:
+
+- `--cache-dir /data/sonuntius/yt-dlp-cache` — persistent cache
+  of extractor signatures and JS player code across calls.
+  First cast unchanged; subsequent casts on the CM5 ~30-50% faster.
+- `--no-call-home` — skip yt-dlp's update / phone-home checks.
+- `--socket-timeout 5` — fail fast on transient network issues
+  instead of hanging on the default ~minute timeout.
+
+`cmd/yt-cast/streamresolve.go`.
+
+**3. Parallel oEmbed + yt-dlp in DoPlay.** Two independent
+network-bound calls (~200 ms oEmbed, ~1-3 s yt-dlp) were running
+sequentially. Now parallel via a `sync.WaitGroup`; latency is
+`max(oEmbed, yt-dlp)` instead of `oEmbed + yt-dlp` — saves the
+full ~200 ms of oEmbed in the common case.
+
+`cmd/yt-cast/player.go::DoPlay`.
+
+**4. Sender-connected preserves session state.** Per user:
+
+> "I'm not sure if I enjoy the clearing the state if we're still
+> connected but the video is paused for too long. For as long as
+> the connection is alive, the entire state should remain alive"
+
+While at least one Cast sender is attached, the adapter now:
+
+- Promotes any MA-reported idle/stopped state to `paused` (so a
+  long-pause MA-side queue timeout doesn't degrade the phone's
+  view to "cast ended").
+- Skips the auto-clear of the local position estimator that
+  would otherwise fire on active → ended transitions.
+
+Only an explicit sender-disconnect (via `watchSenderLifecycle`'s
+`SenderDisconnectedEvent` → `resetSession`) actually tears the
+session down.
+
+`cmd/yt-cast/player.go`: new `senderConnected` atomic + flag flips
+in `watchSenderLifecycle`.
+
+### Skipped optimizations (still per stdlib-only policy)
+
+- Go-native YouTube extractor (would eliminate yt-dlp's Python
+  startup) — all options are third-party.
+- `sync.Pool` for IPC scanner buffers — microsecond scale, not
+  visible at the user level yet.
+
 ## Version 0.2.7 (2026-05-11)
 
 ### Async per-type dispatch + volume coalescing — every press lands, bursts deduped

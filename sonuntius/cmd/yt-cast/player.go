@@ -28,6 +28,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/shobuprime/sonuntius/internal/events"
@@ -114,6 +115,14 @@ type adapter struct {
 	// position 0.
 	lastMAStateAt time.Time
 
+	// senderConnected is true while at least one Cast sender is
+	// connected. Set by watchSenderLifecycle. While connected we
+	// preserve full session state even if MA reports idle (e.g.
+	// after a long pause MA may time out the queue); idle while
+	// sender is attached is treated as paused, the local position
+	// estimator isn't cleared, and cachedState fields stay populated.
+	senderConnected atomic.Bool
+
 	// Local position tracking. HA's state_changed events for the MA
 	// player carry an accurate media_position, but they only fire after
 	// MA actually starts streaming (typically 2–10 s after our
@@ -168,6 +177,14 @@ func (a *adapter) setPeekNextVideo(fn func() *types.Video) {
 	a.mu.Lock()
 	a.peekNextVideo = fn
 	a.mu.Unlock()
+}
+
+// setSenderConnected toggles the adapter's view of whether a Cast
+// sender is currently attached. While connected, MA-reported idle
+// states are treated as paused (we don't degrade to "cast ended")
+// and the local position estimator isn't auto-cleared.
+func (a *adapter) setSenderConnected(connected bool) {
+	a.senderConnected.Store(connected)
 }
 
 // setIPCClient swaps the underlying writer. nil means "broker is
@@ -245,6 +262,18 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 	if ps.Source == "ma-ws" && ps.State != "" {
 		a.lastMAStateAt = time.Now()
 	}
+	// Preserve full session state while a sender is connected: an
+	// incoming idle/stopped during a still-attached session is
+	// usually MA's "queue timed out" or a stale event, NOT the cast
+	// genuinely ending. Promote it to paused so the engine status
+	// stays at PlayerStatusPaused, the phone keeps showing the
+	// paused track, and the local position estimator isn't auto-
+	// cleared. Only an explicit sender disconnect (which calls
+	// resetSession) actually tears the session down.
+	if a.senderConnected.Load() && isTrackEndedState(ps.State) &&
+		(prev.TrackID != "" || prev.Title != "") {
+		ps.State = "paused"
+	}
 	// Merge ps into prev: only overwrite a field when the incoming
 	// event actually carries a value. MA emits different event
 	// families with different field-presence patterns — e.g.
@@ -317,7 +346,13 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 	// emitting media_position on idle, our cachedState.Position goes
 	// nil, and the engine falls back to a runaway estimator showing
 	// e.g. "3:44 / 1:27".
-	if isTrackEndedState(ps.State) && isActivePlaybackState(prev.State) {
+	if isTrackEndedState(ps.State) && isActivePlaybackState(prev.State) &&
+		!a.senderConnected.Load() {
+		// Only clear the local position estimator when the sender
+		// has gone away — otherwise an MA-side idle blip would
+		// reset the estimator mid-session and the phone would lose
+		// its position fallback (the "3:44 / 1:27" runaway from
+		// v0.1.15 only happens after disconnect, not during).
 		a.playbackStartedAt = nil
 		a.playbackBasePos = 0
 		a.playbackPaused = false
@@ -525,69 +560,74 @@ func (a *adapter) DoPlay(ctx context.Context, video types.Video, position float6
 	// For YouTube-classic casts pre-resolve metadata + stream URL
 	// synchronously so the dispatcher can hand MA both rich metadata
 	// (title / channel) and a direct audio stream URL.
+	//
+	// Both resolutions are network-bound and independent — oEmbed
+	// hits googleapis.com, yt-dlp hits the YouTube extractor. Run
+	// them in parallel so the cast-start latency is `max(oEmbed,
+	// yt-dlp)` instead of `oEmbed + yt-dlp` (~200 ms saved).
 	if intent.Provider == "url" && video.Client.Theme == "cl" {
-		// Title / channel via oEmbed — cheap, cached. ~200ms cold,
-		// near-zero on cache hit. We populate Metadata so the
-		// dispatcher can attach it to media_player.play_media's
-		// `extra.metadata.*` fields and MA's UI shows the real song
-		// name instead of the raw URL.
+		var (
+			m       videoMetadata
+			mErr    error
+			info    streamInfo
+			streamErr error
+			wg      sync.WaitGroup
+		)
 		if a.metadata != nil {
-			metaCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			if m, mErr := a.metadata.Resolve(metaCtx, video.ID); mErr == nil {
-				if intent.Metadata == nil {
-					intent.Metadata = make(map[string]any)
-				}
-				if m.Title != "" {
-					intent.Metadata["title"] = m.Title
-				}
-				if m.Channel != "" {
-					intent.Metadata["channel"] = m.Channel
-				}
-				intent.Metadata["source"] = "youtube"
-				intent.Metadata["video_id"] = video.ID
-				// Prefer the thumbnail URL YouTube returned in the oEmbed
-				// payload (it's YouTube's officially-recommended preview
-				// for the video). Fall back to the well-known
-				// `hqdefault.jpg` URL form when oEmbed didn't include
-				// one — every public YouTube video has an hqdefault
-				// thumbnail at that path.
-				if m.ThumbnailURL != "" {
-					intent.Metadata["thumbnail"] = m.ThumbnailURL
-					if m.ThumbnailWidth > 0 {
-						intent.Metadata["thumbnail_width"] = m.ThumbnailWidth
-					}
-					if m.ThumbnailHeight > 0 {
-						intent.Metadata["thumbnail_height"] = m.ThumbnailHeight
-					}
-				} else {
-					intent.Metadata["thumbnail"] = "https://i.ytimg.com/vi/" + video.ID + "/hqdefault.jpg"
-				}
-			} else {
-				log.Debug("yt-cast: metadata pre-resolve failed (non-fatal)",
-					"video_id", video.ID, "err", mErr)
-			}
-			cancel()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				metaCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				defer cancel()
+				m, mErr = a.metadata.Resolve(metaCtx, video.ID)
+			}()
 		}
-
-		// Stream URL via yt-dlp — the larger ~1–5s cost, but MA needs
-		// it to actually play the audio.
 		if a.stream != nil {
-			info, err := a.stream.Resolve(ctx, video.ID)
-			if err != nil {
-				log.Error("yt-cast: stream URL pre-resolve failed — MA will reject the watch URL",
-					"video_id", video.ID, "err", err)
-			} else {
-				log.Info("yt-cast: stream URL pre-resolved via yt-dlp",
-					"video_id", video.ID,
-					"stream_url", truncateString(info.URL, 120),
-					"duration", info.Duration)
-				intent.URL = info.URL
-				if info.Duration > 0 {
-					if intent.Metadata == nil {
-						intent.Metadata = make(map[string]any)
-					}
-					intent.Metadata["duration"] = info.Duration
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				info, streamErr = a.stream.Resolve(ctx, video.ID)
+			}()
+		}
+		wg.Wait()
+		if intent.Metadata == nil {
+			intent.Metadata = make(map[string]any)
+		}
+		intent.Metadata["source"] = "youtube"
+		intent.Metadata["video_id"] = video.ID
+		if mErr == nil && a.metadata != nil {
+			if m.Title != "" {
+				intent.Metadata["title"] = m.Title
+			}
+			if m.Channel != "" {
+				intent.Metadata["channel"] = m.Channel
+			}
+			if m.ThumbnailURL != "" {
+				intent.Metadata["thumbnail"] = m.ThumbnailURL
+				if m.ThumbnailWidth > 0 {
+					intent.Metadata["thumbnail_width"] = m.ThumbnailWidth
 				}
+				if m.ThumbnailHeight > 0 {
+					intent.Metadata["thumbnail_height"] = m.ThumbnailHeight
+				}
+			} else {
+				intent.Metadata["thumbnail"] = "https://i.ytimg.com/vi/" + video.ID + "/hqdefault.jpg"
+			}
+		} else if mErr != nil {
+			log.Debug("yt-cast: metadata pre-resolve failed (non-fatal)",
+				"video_id", video.ID, "err", mErr)
+		}
+		if streamErr != nil {
+			log.Error("yt-cast: stream URL pre-resolve failed — MA will reject the watch URL",
+				"video_id", video.ID, "err", streamErr)
+		} else if a.stream != nil {
+			log.Info("yt-cast: stream URL pre-resolved via yt-dlp",
+				"video_id", video.ID,
+				"stream_url", truncateString(info.URL, 120),
+				"duration", info.Duration)
+			intent.URL = info.URL
+			if info.Duration > 0 {
+				intent.Metadata["duration"] = info.Duration
 			}
 		}
 	}
