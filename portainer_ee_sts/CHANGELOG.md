@@ -1,5 +1,35 @@
 # Changelog
 
+## Version 2.41.1 (2026-05-12)
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+- Added Age as a sort option on the Home environments list and made it the default sort order, with "Oldest" (ascending by environment ID) and "Newest" (descending) toggles
+- Fixed the Talos Cluster Details page rendering blank by reverting the Omni cluster phase fields to int32 so they match the frontend OmniClusterPhase / OmniClusterUpgradePhase enum contract
+
+## Deprecated and removed features
+
+### Deprecated features
+
+None.
+
+### Removed features
+
+None
+
+---
+
+
 ## Version 2.41.0 (2026-04-30)
 
 ## Known issues
