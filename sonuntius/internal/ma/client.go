@@ -300,17 +300,13 @@ func (w *Watcher) handleFrame(raw []byte) {
 	w.translateEvent(env)
 }
 
-// PlayerStateFromMAEvent decodes the `data` field of an MA WS event
-// push (player_updated, player_queue_time_updated, etc.) into a
-// portable events.PlayerState. The exported variant of the same
-// logic used by the deprecated `Watcher.translateEvent`. Returns nil
-// when the payload is unparseable or doesn't carry usable fields.
-//
-// Suppliers: hosts should match `eventName` against
-// ("player_updated"|"player_added"|"player_queue_time_updated") and
-// drop frames for other event names. ObjectID filtering against the
-// configured player_id is the caller's job.
-func PlayerStateFromMAEvent(raw json.RawMessage) *events.PlayerState {
+// PlayerStateFromPlayerEvent decodes the `data` field of an MA
+// `player_updated` (or `player_added`) event. The Player object's
+// `state` is the speaker-on/off state; the player-level title/artist
+// info is best-effort here because MA often emits player_updated
+// events that omit current_item entirely. Callers should merge,
+// not replace, when applying this to cached state.
+func PlayerStateFromPlayerEvent(raw json.RawMessage) *events.PlayerState {
 	var p playerUpdate
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil
@@ -337,6 +333,80 @@ func PlayerStateFromMAEvent(raw json.RawMessage) *events.PlayerState {
 		if p.CurrentItem.StreamDetails.Position > 0 {
 			pos := p.CurrentItem.StreamDetails.Position
 			ps.Position = &pos
+		}
+	}
+	return ps
+}
+
+// PlayerStateFromMAEvent is the back-compat alias for the player_updated
+// decoder. New code should prefer the named variants
+// (PlayerStateFromPlayerEvent / PlayerStateFromQueueEvent).
+func PlayerStateFromMAEvent(raw json.RawMessage) *events.PlayerState {
+	return PlayerStateFromPlayerEvent(raw)
+}
+
+// queueUpdate mirrors the subset of MA's PlayerQueue payload we
+// translate. queue_updated and queue_time_updated event payloads
+// both decode against this shape.
+type queueUpdate struct {
+	QueueID      string      `json:"queue_id"`
+	Active       bool        `json:"active"`
+	State        string      `json:"state"` // idle / playing / paused / buffering
+	ElapsedTime  float64     `json:"elapsed_time"`
+	CurrentIndex *int        `json:"current_index"`
+	CurrentItem  *struct {
+		QueueItemID string `json:"queue_item_id"`
+		Name        string `json:"name"`
+		Duration    float64 `json:"duration"`
+		MediaItem   struct {
+			Name    string `json:"name"`
+			ItemID  string `json:"item_id"`
+			URI     string `json:"uri"`
+			Artists []struct {
+				Name string `json:"name"`
+			} `json:"artists"`
+			Duration float64 `json:"duration"`
+		} `json:"media_item"`
+	} `json:"current_item,omitempty"`
+	Items int `json:"items"`
+}
+
+// PlayerStateFromQueueEvent decodes the `data` field of an MA
+// `queue_updated` or `queue_time_updated` event. The PlayerQueue's
+// `state` is the authoritative source for pause/playing/buffering
+// transitions — MA's player_updated emissions don't always carry
+// that field (and when they do it can lag the queue state by a
+// frame or two).
+func PlayerStateFromQueueEvent(raw json.RawMessage) *events.PlayerState {
+	var q queueUpdate
+	if err := json.Unmarshal(raw, &q); err != nil {
+		return nil
+	}
+	ps := &events.PlayerState{State: q.State}
+	if q.ElapsedTime > 0 {
+		pos := q.ElapsedTime
+		ps.Position = &pos
+	}
+	if q.CurrentItem != nil {
+		// Prefer the embedded media_item's fields when present,
+		// otherwise fall back to QueueItem-level name/duration.
+		if name := q.CurrentItem.MediaItem.Name; name != "" {
+			ps.Title = name
+		} else if q.CurrentItem.Name != "" {
+			ps.Title = q.CurrentItem.Name
+		}
+		if len(q.CurrentItem.MediaItem.Artists) > 0 {
+			ps.Artist = q.CurrentItem.MediaItem.Artists[0].Name
+		}
+		if q.CurrentItem.MediaItem.ItemID != "" {
+			ps.TrackID = q.CurrentItem.MediaItem.ItemID
+		}
+		duration := q.CurrentItem.MediaItem.Duration
+		if duration == 0 {
+			duration = q.CurrentItem.Duration
+		}
+		if duration > 0 {
+			ps.Duration = &duration
 		}
 	}
 	return ps
