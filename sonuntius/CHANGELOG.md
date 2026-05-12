@@ -1,5 +1,56 @@
 # Changelog
 
+## Version 0.2.9 (2026-05-12)
+
+### Revert v0.2.7 per-type async dispatch — keep FAF, drop the flicker
+
+User report after v0.2.8 live test:
+
+> "the concurrency kind of messed up the playback experience just a
+> little bit — the app's play / pause flicker and the buttons are
+> still not as responsive as to where I want them to be. The prior
+> version, while slower, was more reliable with everything (except
+> the volume)"
+
+v0.2.7 introduced per-type worker goroutines for parallelism. They
+preserved FIFO *within* a type but ran types in parallel — which
+turned out to race MA's state events back to the phone for
+play/pause transitions and caused the flicker. The user's "prior
+version" (v0.2.6) had fire-and-forget on idempotent commands but
+synchronous dispatch on the IPC reader — slower in theory, much
+more reliable in practice.
+
+`internal/dispatcher/dispatcher.go`:
+- Removed: per-type channels (playCh, queueAddCh, transCh, volumeCh).
+- Removed: per-type worker goroutines (playWorker, queueAddWorker,
+  transportWorker, volumeWorker).
+- Removed: volume-burst coalescing in volumeWorker (was tied to
+  the worker pattern).
+- Removed: `Dispatcher.Start(ctx)` method.
+- Restored: synchronous `Dispatch` that routes to type-specific
+  handlers in order on the IPC reader goroutine.
+
+`cmd/ma-bridge/main.go`: dropped the `disp.Start(ctx)` call.
+
+### What's preserved from prior speed work
+
+- **v0.2.6 fire-and-forget** for idempotent commands stays: volume,
+  mute, pause, play, stop, next, previous all use
+  `WSClient.SendFireAndForget` — write the frame, return in <1 ms,
+  no response wait. This was always orthogonal to dispatch
+  concurrency; per-press latency stays at <1 ms.
+- **v0.2.8 yt-dlp speedups** stay: `--cache-dir /data/sonuntius/
+  yt-dlp-cache`, `--no-call-home`, `--socket-timeout 5`.
+- **v0.2.8 parallel oEmbed + yt-dlp** in DoPlay stays — two
+  independent network calls running in parallel goroutines is
+  fine; they're started and joined within a single DoPlay call,
+  so no cross-event ordering issue.
+- **v0.2.8 sender-preserves-state** stays: while a sender is
+  attached, MA-reported idle is promoted to paused.
+- **v0.2.8 volume scale normalization** stays.
+
+Net effect: same speed wins, no cross-event ordering hazard.
+
 ## Version 0.2.8 (2026-05-11)
 
 ### Volume scale fix, yt-dlp speedups, parallel pre-resolve, sender-preserves-state

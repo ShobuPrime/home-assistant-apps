@@ -39,19 +39,26 @@ var transportToService = map[string]string{
 // hop. HA REST remains the fallback when MA WS is unavailable (e.g.,
 // MA addon stopped) so the bridge still works in degraded mode.
 //
-// Concurrency model (v0.2.7+):
+// Concurrency model:
 //
-//   - Dispatch is non-blocking. It deposits the event onto one of four
-//     per-type channels (play, queue-add, transport, volume) and
-//     returns immediately.
-//   - One worker goroutine drains each channel. Within a type, events
-//     are processed FIFO. Between types, work runs in parallel, so a
-//     slow play_media + seek + clear_queue triple no longer blocks
-//     volume / transport presses sitting in the IPC buffer.
-//   - The volume worker non-blocking-drains additional pending volume
-//     events before sending, keeping only the latest. Coalesces
-//     slider-drag bursts; preserves discrete button presses because
-//     drain only fires when more events are already queued.
+//   - Dispatch runs synchronously on the IPC reader goroutine. This
+//     preserves strict event ordering across all event types — a
+//     pause followed by play, or a play_media followed by seek,
+//     always reaches MA in the order the sender issued them.
+//   - The speed-critical commands (volume, mute, transport) use the
+//     `WSClient.SendFireAndForget` path: write the WS frame, return
+//     immediately, no per-call response wait. Each idempotent
+//     command finishes in <1 ms even when MA's response would have
+//     taken 20-50 ms.
+//   - The cast-start path (play_media → seek → clear_queue) still
+//     waits for responses — we use them to decide whether to fall
+//     back to HA REST on auth-required / queue-not-found errors.
+//     One round-trip per cast, not per press.
+//
+// v0.2.7's per-type worker goroutines were removed in v0.2.9 after
+// they introduced play/pause flicker — out-of-order processing
+// across types raced MA's state events back to the phone. FAF +
+// synchronous dispatch keeps the speed wins and the ordering.
 type Dispatcher struct {
 	HA       *ha.Client
 	EntityID string
@@ -69,118 +76,14 @@ type Dispatcher struct {
 	// this the warning would fire on every PlayIntent — instead, log
 	// once at warn, and at debug on subsequent attempts.
 	authWarned atomic.Bool
-
-	// Per-type async channels and worker lifecycle. Initialised by
-	// New; workers are started by Start(ctx). Until Start is called,
-	// Dispatch falls back to synchronous handling so tests and
-	// short-lived callers keep working without extra wiring.
-	playCh     chan *events.PlayIntent
-	queueAddCh chan *events.QueueAddIntent
-	transCh    chan *events.TransportCommand
-	volumeCh   chan *events.VolumeCommand
-	started    atomic.Bool
 }
 
-// New constructs a Dispatcher. Channels are allocated up-front; call
-// Start(ctx) to begin draining them — without Start, Dispatch falls
-// back to synchronous handling so the dispatcher remains usable from
-// tests and one-shot callers.
+// New constructs a Dispatcher.
 func New(haClient *ha.Client, entityID string, logger *slog.Logger) *Dispatcher {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Dispatcher{
-		HA:         haClient,
-		EntityID:   entityID,
-		Logger:     logger,
-		playCh:     make(chan *events.PlayIntent, 16),
-		queueAddCh: make(chan *events.QueueAddIntent, 16),
-		transCh:    make(chan *events.TransportCommand, 64),
-		volumeCh:   make(chan *events.VolumeCommand, 256),
-	}
-}
-
-// Start kicks off the per-type worker goroutines. Safe to call once;
-// subsequent calls are a no-op. Workers exit when ctx is cancelled.
-func (d *Dispatcher) Start(ctx context.Context) {
-	if d.started.Swap(true) {
-		return
-	}
-	go d.playWorker(ctx)
-	go d.queueAddWorker(ctx)
-	go d.transportWorker(ctx)
-	go d.volumeWorker(ctx)
-}
-
-func (d *Dispatcher) playWorker(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case ev := <-d.playCh:
-			d.dispatchPlay(ctx, ev)
-		}
-	}
-}
-
-func (d *Dispatcher) queueAddWorker(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case ev := <-d.queueAddCh:
-			d.dispatchQueueAdd(ctx, ev)
-		}
-	}
-}
-
-func (d *Dispatcher) transportWorker(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case ev := <-d.transCh:
-			d.dispatchTransport(ctx, ev)
-		}
-	}
-}
-
-// volumeWorker coalesces rapid bursts of volume events by draining
-// any additional events that are immediately available before
-// sending. This is the only worker that applies coalescing:
-// transport / play / queue-add events each carry distinct intent
-// and must each be delivered. Volume is "latest wins" — a slider
-// drag emits many intermediate values that the speaker can't
-// audibly distinguish, so we keep only the final value in the
-// burst.
-//
-// The drain is non-blocking: when no further volume events are
-// queued, we send immediately. Discrete button presses (>5 ms
-// apart) all go through individually.
-func (d *Dispatcher) volumeWorker(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case ev := <-d.volumeCh:
-			coalesced := 0
-		drain:
-			for {
-				select {
-				case next := <-d.volumeCh:
-					ev = next
-					coalesced++
-				default:
-					break drain
-				}
-			}
-			if coalesced > 0 {
-				d.Logger.Debug("dispatcher: coalesced volume burst",
-					"dropped", coalesced)
-			}
-			d.dispatchVolume(ctx, ev)
-		}
-	}
+	return &Dispatcher{HA: haClient, EntityID: entityID, Logger: logger}
 }
 
 // SetMAWS configures the long-lived MA WS client and the MA-internal
@@ -202,55 +105,19 @@ func (d *Dispatcher) Ready() bool {
 	return d.EntityID != ""
 }
 
-// Dispatch routes one event to the appropriate worker channel. Returns
-// immediately — actual handling happens off-thread.
-//
-// When workers are not running (Start has not been called), falls back
-// to synchronous handling so tests and short-lived callers keep
-// working without extra wiring.
-//
-// Channel-full handling:
-//
-//   - Volume channel: buffer is large (256) — slider drag bursts are
-//     coalesced upstream by the volume worker. If somehow full, the
-//     event is dropped: a stale intermediate value isn't worth
-//     blocking the IPC reader.
-//   - Other channels: buffer 16-64. If full, we block — these events
-//     carry meaningful intent that we shouldn't lose.
+// Dispatch routes one event synchronously to the type-specific
+// handler. Synchronous keeps cross-type ordering intact (a pause then
+// play always reaches MA in that order, a play_media then seek always
+// in that order). The speed comes from the underlying WS path —
+// idempotent transport / volume / mute commands use
+// `WSClient.SendFireAndForget` which returns in <1 ms; only the
+// cast-start path (play_media, seek, clear_queue) waits for a
+// response, and only once per cast.
 func (d *Dispatcher) Dispatch(ctx context.Context, ev events.Event) {
 	if !d.Ready() {
 		d.Logger.Warn("dispatcher: idle (ma_player_id unset)", "type", ev.EventType())
 		return
 	}
-	if !d.started.Load() {
-		d.dispatchSync(ctx, ev)
-		return
-	}
-	switch e := ev.(type) {
-	case *events.PlayIntent:
-		d.playCh <- e
-	case *events.QueueAddIntent:
-		d.queueAddCh <- e
-	case *events.TransportCommand:
-		d.transCh <- e
-	case *events.VolumeCommand:
-		// Non-blocking send for volume: if the buffer is full
-		// (shouldn't happen at 256 deep) we drop the intermediate
-		// value rather than stall the IPC reader. The next press
-		// will land anyway.
-		select {
-		case d.volumeCh <- e:
-		default:
-			d.Logger.Debug("dispatcher: volume channel full — dropping intermediate")
-		}
-	default:
-		d.Logger.Debug("dispatcher: ignoring event", "type", ev.EventType())
-	}
-}
-
-// dispatchSync is the pre-v0.2.7 synchronous dispatch path, used when
-// Start has not been called (tests, smoke checks).
-func (d *Dispatcher) dispatchSync(ctx context.Context, ev events.Event) {
 	switch e := ev.(type) {
 	case *events.PlayIntent:
 		d.dispatchPlay(ctx, e)
