@@ -209,6 +209,7 @@ func watchSenderLifecycle(ctx context.Context, recv *ytcast.Receiver, adapt *ada
 				if e.Sender != nil && e.Sender.Client != nil {
 					name = e.Sender.Client.Name
 				}
+				adapt.setSenderConnected(true)
 				log.Info("sender connected", "client", name,
 					"remaining", len(recv.ConnectedSenders()))
 			case ytcast.SenderDisconnectedEvent:
@@ -221,6 +222,7 @@ func watchSenderLifecycle(ctx context.Context, recv *ytcast.Receiver, adapt *ada
 					"client", name, "implicit", e.Implicit,
 					"remaining", remaining)
 				if remaining == 0 {
+					adapt.setSenderConnected(false)
 					adapt.resetSession()
 				}
 			}
