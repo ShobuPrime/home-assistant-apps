@@ -1,5 +1,67 @@
 # Changelog
 
+## Version 0.3.2 (2026-05-12)
+
+### Pure v0.2.7 UX, only yt-dlp cache added
+
+User report after testing v0.3.0 (v0.2.7 + yt-dlp cache + sender-
+preserves-state):
+
+> "the playback behavior still feels like it seriously regressed
+> before we attempted the concurrency after 0.2.7 — please recreate
+> that UX exactly as it was"
+
+The likely culprit was v0.3.0's sender-preserves-state logic
+(promoting MA-reported `idle` → `paused` while a sender is
+attached). Between tracks, during buffering, or on natural
+transitions, MA briefly emits `state=idle`; promoting that to
+paused while a sender is connected caused phone-side flicker
+that wasn't there in pure v0.2.7.
+
+v0.3.2 is rooted at the v0.2.7 merge commit (07c7993) and applies
+**only** the yt-dlp `--cache-dir` flag. No behaviour changes
+beyond that single line — speed win on cast-start, zero impact on
+playback decisions, ordering, or state machine.
+
+Force-pushed master to this commit's tip to drop the v0.3.0 and
+v0.3.1 commits from history entirely.
+
+### What's preserved (i.e. the v0.2.7 UX intact)
+
+- Per-type async dispatcher (play / queue-add / transport / volume
+  worker goroutines).
+- Volume-burst coalescing.
+- v0.2.6 fire-and-forget on idempotent transport / volume / mute.
+- v0.2.5 HA-WS state suppression when MA-WS has spoken.
+- v0.2.4 merge-state-updates + DoGetVolume returns user intent
+  during input window.
+- v0.2.3 idle/active → paused mapping, NotifyExternalStatus, etc.
+
+### Added on top
+
+- `--cache-dir /data/sonuntius/yt-dlp-cache` — persistent yt-dlp
+  extractor cache. First cast unchanged; subsequent casts ~30-50%
+  faster as signatures and JS player code stay warm.
+
+### Added on top (the v0.3.1 config UX, isolated from v0.3.0's playback changes)
+
+- **Startup configuration banner.** `resolveMAQueueID` now always
+  queries `players/all` on every boot and prints a fenced
+  `============` block at INFO with:
+  - Configured `ma_player_id` / `ma_token` / `ma_queue_id` state.
+  - Every visible MA player (`player_id`, `display_name`,
+    `provider`, `available`, `type`).
+  - Inline tips mapping each addon-option field to what it does.
+
+  The banner is pure logging — no playback decisions, no state
+  changes. Safe to keep regardless of UX preferences.
+
+### Dropped
+
+- v0.3.0 sender-preserves-state (the suspected flicker source).
+  The cachedState clear and `idle → paused` promotion are both
+  gone.
+
 ## Version 0.2.7 (2026-05-11)
 
 ### Async per-type dispatch + volume coalescing — every press lands, bursts deduped
