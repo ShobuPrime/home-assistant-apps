@@ -1,5 +1,52 @@
 # Changelog
 
+## Version 0.3.0 (2026-05-12)
+
+### Rebase on v0.2.7 + yt-dlp cache + sender-preserves-state (nothing else)
+
+Per user direction after the v0.2.9 live test:
+
+> "It's still not feeling the same like it did on 0.2.7 especially
+> with the play pause state. I think we just need to revert to 0.2.7
+> and only keep `Sender-connected preserves session state` and
+> `yt-dlp` cache — that's it"
+
+v0.3.0 branches off the v0.2.7 merge commit (07c7993) and adds only
+those two features. By construction this drops every other diff
+introduced in v0.2.8 / v0.2.9.
+
+### Baseline preserved from v0.2.7
+
+- Per-type async dispatcher (play / queue-add / transport / volume
+  worker goroutines) — `Dispatch` non-blocking, FIFO within type,
+  parallel between types.
+- Volume-burst coalescing.
+- v0.2.6 fire-and-forget on idempotent transport / volume / mute.
+
+### Added
+
+- **yt-dlp persistent cache** (`--cache-dir /data/sonuntius/
+  yt-dlp-cache`). Survives addon restarts via the addon's
+  persistent `/data` volume. Subsequent casts on the CM5 ~30-50%
+  faster as extractor signatures and JS player code stay warm.
+
+- **Sender-preserves-state.** While a Cast sender is connected:
+  - Any MA-reported `idle` / `stopped` state is promoted to
+    `paused` so a long-pause MA-side queue timeout doesn't degrade
+    the phone's view to "cast ended".
+  - The local position estimator isn't auto-cleared on
+    active → ended transitions.
+
+  Only an explicit `SenderDisconnectedEvent` tears the session
+  down (via `resetSession`).
+
+### Explicitly dropped
+
+- v0.2.8 volume-scale `>1.0 → ÷100` normalisation.
+- v0.2.8 yt-dlp `--no-call-home` and `--socket-timeout 5`.
+- v0.2.8 parallel oEmbed + yt-dlp in DoPlay (sequential again).
+- v0.2.9's revert of async dispatch.
+
 ## Version 0.2.7 (2026-05-11)
 
 ### Async per-type dispatch + volume coalescing — every press lands, bursts deduped

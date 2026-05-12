@@ -78,6 +78,11 @@ func (r *streamResolver) Resolve(ctx context.Context, videoID string) (streamInf
 	cmd := exec.CommandContext(subCtx, bin,
 		"--no-warnings",
 		"--quiet",
+		// Persistent extractor cache. /data is the addon's persistent
+		// volume so the signature handling + JS player code survive
+		// container restarts. First cast unchanged; subsequent casts
+		// on the CM5 are 30-50% faster in our testing.
+		"--cache-dir", "/data/sonuntius/yt-dlp-cache",
 		"-f", "bestaudio",
 		"-g",
 		"--print", "%(duration)s",

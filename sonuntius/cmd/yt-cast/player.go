@@ -28,6 +28,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/shobuprime/sonuntius/internal/events"
@@ -114,6 +115,15 @@ type adapter struct {
 	// position 0.
 	lastMAStateAt time.Time
 
+	// senderConnected is true while at least one Cast sender is
+	// connected. Set by watchSenderLifecycle. While connected we
+	// preserve full session state even if MA reports idle (e.g.
+	// after a long pause MA may time out the queue): idle is
+	// promoted to paused, the local position estimator isn't auto-
+	// cleared, and cachedState fields stay populated. Only an
+	// explicit sender-disconnect tears the session down.
+	senderConnected atomic.Bool
+
 	// Local position tracking. HA's state_changed events for the MA
 	// player carry an accurate media_position, but they only fire after
 	// MA actually starts streaming (typically 2–10 s after our
@@ -140,8 +150,6 @@ func newAdapter(client *ipc.Client) *adapter {
 	}
 }
 
-// setVolumeStep configures the quantisation step for DoSetVolume. 0 or
-// negative values fall back to the default (5).
 // setLogger attaches a logger used for the async title-resolution
 // callback. Optional — without a logger the resolver still populates
 // PlayIntent.Metadata, but the human-name log line is skipped.
@@ -149,6 +157,14 @@ func (a *adapter) setLogger(l *slog.Logger) {
 	a.mu.Lock()
 	a.log = l
 	a.mu.Unlock()
+}
+
+// setSenderConnected toggles the adapter's view of whether a Cast
+// sender is currently attached. While connected, MA-reported idle
+// states are treated as paused (we don't degrade to "cast ended")
+// and the local position estimator isn't auto-cleared.
+func (a *adapter) setSenderConnected(connected bool) {
+	a.senderConnected.Store(connected)
 }
 
 // setOnStateChange registers a callback that fires after the adapter
@@ -245,6 +261,18 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 	if ps.Source == "ma-ws" && ps.State != "" {
 		a.lastMAStateAt = time.Now()
 	}
+	// Preserve full session state while a sender is connected: an
+	// incoming idle/stopped during a still-attached session is
+	// usually MA's "queue timed out" or a stale event, NOT the cast
+	// genuinely ending. Promote it to paused so the engine status
+	// stays at PlayerStatusPaused, the phone keeps showing the
+	// paused track, and the local position estimator isn't auto-
+	// cleared. Only an explicit sender-disconnect (resetSession)
+	// actually tears the session down.
+	if a.senderConnected.Load() && isTrackEndedState(ps.State) &&
+		(prev.TrackID != "" || prev.Title != "") {
+		ps.State = "paused"
+	}
 	// Merge ps into prev: only overwrite a field when the incoming
 	// event actually carries a value. MA emits different event
 	// families with different field-presence patterns — e.g.
@@ -317,7 +345,13 @@ func (a *adapter) updateCachedState(ps events.PlayerState) {
 	// emitting media_position on idle, our cachedState.Position goes
 	// nil, and the engine falls back to a runaway estimator showing
 	// e.g. "3:44 / 1:27".
-	if isTrackEndedState(ps.State) && isActivePlaybackState(prev.State) {
+	if isTrackEndedState(ps.State) && isActivePlaybackState(prev.State) &&
+		!a.senderConnected.Load() {
+		// Only clear the local position estimator when no sender is
+		// attached — otherwise an MA-side idle blip mid-session
+		// would reset the estimator and the phone would lose its
+		// position fallback. The original "3:44 / 1:27" runaway
+		// from v0.1.15 only happens after disconnect, not during.
 		a.playbackStartedAt = nil
 		a.playbackBasePos = 0
 		a.playbackPaused = false
