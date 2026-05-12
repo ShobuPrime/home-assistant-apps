@@ -165,6 +165,7 @@ func main() {
 					if ps == nil {
 						return
 					}
+					ps.Source = "ma-ws"
 					logCtx.Debug("ma ws event: broadcasting PlayerState",
 						"event", eventName,
 						"state", ps.State,

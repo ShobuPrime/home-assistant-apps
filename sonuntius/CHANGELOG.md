@@ -1,5 +1,46 @@
 # Changelog
 
+## Version 0.2.5 (2026-05-11)
+
+### Suppress HA-WS state when MA-WS has spoken — fixes the paused → idle → reset-to-0 flip
+
+v0.2.4 fixed `player_updated` from MA but left the **HA core WS state
+watcher** still broadcasting state with HA's view — which mirrors
+MA's `Player.state` (the speaker-on/off flag), reporting `idle` for
+a paused queue.
+
+Log timing made it obvious:
+
+    23:15:54.439  queue_updated state=paused        ← MA WS, correct
+    23:15:54.440  Pushing status=2 (paused)         ✓
+    23:15:54.457  Pushing status=-1 (idle)          ← HA-WS pushed idle 17 ms later
+    23:15:54.560  queue_updated state=paused        ← MA reasserts
+    23:15:54.560  Pushing status=2                  ✓ again
+    23:15:54.580  Pushing status=-1                 ← HA flips it back
+
+The engine flickered between paused and idle every queue tick.
+Whichever value the phone latched onto last (often `idle`) decided
+whether the next resume preserved position or kicked off a fresh
+play_now from 0.
+
+`internal/events/events.go`: new `PlayerState.Source` field
+(`"ma-ws"` / `"ha-ws"`) so receivers can prefer the more
+authoritative feed.
+
+`cmd/ma-bridge/main.go`: tags MA-WS broadcasts with `Source=ma-ws`.
+
+`internal/state/watcher.go`: tags HA-core-WS broadcasts with
+`Source=ha-ws`.
+
+`cmd/yt-cast/player.go::updateCachedState`: when an MA-WS state
+event has arrived in the last 15 s, drop the `State` field from
+incoming HA-WS events. Everything else (position, title, duration,
+volume) is still merged in — HA-WS remains useful for those, and
+becomes the full fallback again when MA-WS is silent for >15 s.
+
+Volume responsiveness from v0.2.4 is unchanged and continues to
+work correctly (the live log confirmed it).
+
 ## Version 0.2.4 (2026-05-11)
 
 ### Volume — DoGetVolume returns user intent during input window; player_updated stops driving state
