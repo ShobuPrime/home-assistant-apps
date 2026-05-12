@@ -1,5 +1,61 @@
 # Changelog
 
+## Version 0.2.7 (2026-05-11)
+
+### Async per-type dispatch + volume coalescing — every press lands, bursts deduped
+
+Two follow-on optimizations the user asked for after v0.2.6 (FAF):
+
+**1. Per-type worker goroutines in the dispatcher.** Until v0.2.7 the
+IPC reader called `Dispatcher.Dispatch` synchronously. With FAF each
+volume/transport call returned in <1 ms, but `play_media` /
+`seek` / `clear_queue` (which keep waiting for MA's response) could
+still hold the reader for a few hundred ms — during which time
+volume presses sat in the IPC kernel buffer.
+
+`internal/dispatcher/dispatcher.go`:
+- Four per-type channels (play=16, queue-add=16, transport=64, volume=256).
+- `Start(ctx)` launches one worker goroutine per channel.
+- `Dispatch` becomes non-blocking: deposits the event on the right
+  channel and returns immediately.
+- A slow `play_media` round-trip no longer blocks volume / transport
+  presses — they run in parallel from their own workers.
+
+If `Start` is never called (tests, one-shot callers), `Dispatch`
+falls back to the pre-v0.2.7 synchronous path.
+
+**2. Volume-burst coalescing.** The volume worker does a
+non-blocking drain of any additional volume events that are already
+queued before sending — keeping only the latest. Slider drag
+bursts (the YouTube cast app emits a tick per drag frame, faster
+than the speaker can audibly distinguish) collapse to a single
+final value; discrete button presses (>5 ms apart) all go through
+unchanged.
+
+Why volume only: transport / play / queue-add each carry distinct
+intent and must each be delivered. Volume is "latest wins" — the
+speaker can't audibly resolve a 50-ms ramp through 5 intermediate
+values, only the final position matters.
+
+### Bi-directional sync still intact
+
+FAF and async dispatch only change the **outbound** command path
+(us → MA). The **inbound** event path (MA → us → phone) is
+unchanged: WSClient's `OnEvent` still fires for
+`player_updated` / `queue_updated` / `queue_time_updated`, the
+adapter still receives state updates, the engine still pushes to
+the connected sender. Changes you make in MA's UI (pause, scrub,
+volume) continue to reach the phone in real time.
+
+### Stdlib-only optimizations considered but not shipped
+
+- **Faster JSON marshalling** (`easyjson` / `sonic`): excluded per
+  repo policy (stdlib-only). Microsecond-scale anyway.
+- **sync.Pool for IPC scanner buffers**: microsecond scale. Maybe
+  worth a follow-up if profiling ever shows allocation pressure.
+- **Pre-encoded WS frame templates** (volume_set takes one int —
+  could pre-marshal everything else): also microsecond-scale.
+
 ## Version 0.2.6 (2026-05-11)
 
 ### Fire-and-forget for idempotent MA commands — every rapid press registers
