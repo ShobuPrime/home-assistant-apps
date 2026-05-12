@@ -1,5 +1,57 @@
 # Changelog
 
+## Version 0.2.6 (2026-05-11)
+
+### Fire-and-forget for idempotent MA commands — every rapid press registers
+
+Real engineering bottleneck the user flagged:
+
+> "I would press the button twice really quickly and I have to wonder
+> if our existing integration just physically can't handle that speed
+> due to the number of hops we have to make."
+
+Yes — there was a real bottleneck. Each volume/transport command was
+going through `WSClient.Send`, which:
+
+1. Generates a message_id
+2. Registers a response channel in the pending map
+3. Sends the WS frame
+4. **Waits up to 15 s for MA's matching response** before returning
+
+Meanwhile, the IPC reader in ma-bridge processes events *serially*.
+A volume press from yt-cast lands in IPC, the reader pulls it,
+calls the dispatcher, the dispatcher calls `WSClient.Send` — which
+**blocks for the 20-50 ms WS round-trip**. The next volume press
+sits in the IPC buffer until the first one finishes. Two rapid
+presses meant ~100 ms before the second even reached MA. Three or
+four rapid presses meant some got coalesced or dropped by MA when
+they finally arrived as a burst.
+
+**Fix:** new `WSClient.SendFireAndForget(ctx, command, args)` —
+writes the WS frame and returns immediately, no pending-map entry,
+no response wait. Commands that don't need a response use it:
+
+- `players/cmd/volume_set`
+- `players/cmd/volume_mute`
+- `players/cmd/play` / `pause` / `stop` / `next` / `previous`
+
+Per-press latency drops from ~25 ms (round-trip) to <1 ms (write).
+Two rapid presses each fire-and-forget independently — no
+serialisation, no queueing, no coalescing.
+
+`internal/ma/wsclient.go`: new SendFireAndForget plus a refactor
+of all idempotent transport / volume / mute methods to use it.
+`PlayQueueMedia`, `ClearQueue`, `Seek`, `AddToQueueMedia` keep
+using `Send` (we use their responses for error handling).
+
+### What this doesn't change
+
+- `play_media`, `seek`, `clear_queue` still wait for responses. They
+  carry meaningful errors (auth required, queue not found) and the
+  cast-start flow needs to know whether to fall back to HA REST.
+  The cost is one round-trip per cast — not per press.
+- HA REST fallback path is unchanged — still synchronous.
+
 ## Version 0.2.5 (2026-05-11)
 
 ### Suppress HA-WS state when MA-WS has spoken — fixes the paused → idle → reset-to-0 flip
