@@ -88,13 +88,20 @@ type adapter struct {
 	// so we never insert a stale +1 into the freshly-rebuilt queue.
 	preloadGen uint64
 
-	// lastVolumeSentAt is when we last forwarded a DoSetVolume to MA.
-	// updateCachedState uses this to suppress MA's own volume echoes
-	// during an active user-input window: while the user is rapidly
-	// pressing volume buttons, MA's state events lag the phone's
-	// next press and snap the slider back into a previous bucket
-	// (the "press up up up only one increment registers" complaint).
+	// lastVolumeSentAt + lastUserVolume track the user's most recent
+	// volume command. While we're inside volumeInputWindow,
+	// DoGetVolume returns lastUserVolume instead of cachedState.Volume
+	// so the engine's *own* periodic state pushes (which fire on
+	// status transitions and queue events independent of our
+	// onStateChange callback) don't report MA's lagging echo back
+	// to the phone and snap the slider mid-input. After the window
+	// expires, DoGetVolume reverts to cachedState.Volume so MA's
+	// authoritative value (including UI-side changes in MA, or
+	// physical button presses on the speaker) flows to the phone
+	// normally.
 	lastVolumeSentAt time.Time
+	lastUserVolume   pkgplayer.Volume
+	hasUserVolume    bool
 
 	// Local position tracking. HA's state_changed events for the MA
 	// player carry an accurate media_position, but they only fire after
@@ -849,17 +856,18 @@ func (a *adapter) DoSeek(_ context.Context, position float64) error {
 // it to feel natural" reported on v0.1.17.
 func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error {
 	// Speaker is the source of truth — we forward the user's press
-	// to MA and nothing more (no cache write, no optimistic echo).
-	// We mark lastVolumeSentAt so updateCachedState knows to
-	// suppress MA's lagging volume echo from reaching the phone
-	// during the active-input window. Once the window expires (or
-	// the user changes volume in MA's UI directly), MA's authoritative
-	// value flows back to the phone normally.
+	// to MA. We also remember the user's intent in lastUserVolume so
+	// DoGetVolume can return it during the active-input window;
+	// otherwise the engine's own periodic state pushes would call
+	// DoGetVolume → return MA's stale echo → snap the phone slider
+	// back mid-input.
 	level := float64(volume.Level) / 100.0
 	muted := volume.Muted
 	a.mu.Lock()
 	log := a.log
 	a.lastVolumeSentAt = time.Now()
+	a.lastUserVolume = volume
+	a.hasUserVolume = true
 	a.mu.Unlock()
 	if log == nil {
 		log = slog.Default()
@@ -873,10 +881,27 @@ func (a *adapter) DoSetVolume(_ context.Context, volume pkgplayer.Volume) error 
 	})
 }
 
-// DoGetVolume returns the cached volume + muted state, rescaled from
-// the dispatcher's 0.0-1.0 wire range back to the receiver's 0-100.
+// DoGetVolume returns the volume the engine should report to the
+// connected sender.
+//
+//  1. While we're inside the active-input window (DoSetVolume in the
+//     last volumeInputWindow), return the user's last requested value
+//     verbatim. MA's lagging echo and the engine's periodic state
+//     pushes would otherwise snap the phone's slider back mid-input.
+//  2. Otherwise return the cached MA-reported volume so changes made
+//     in MA's UI (or via physical speaker buttons) flow back to the
+//     phone on the next state push.
 func (a *adapter) DoGetVolume(_ context.Context) (pkgplayer.Volume, error) {
-	st := a.snapshotState()
+	a.mu.Lock()
+	inWindow := !a.lastVolumeSentAt.IsZero() &&
+		time.Since(a.lastVolumeSentAt) < volumeInputWindow
+	userVol := a.lastUserVolume
+	hasUser := a.hasUserVolume
+	st := a.cachedState
+	a.mu.Unlock()
+	if inWindow && hasUser {
+		return userVol, nil
+	}
 	out := pkgplayer.Volume{}
 	if st.Volume != nil {
 		out.Level = int(*st.Volume * 100)

@@ -301,17 +301,25 @@ func (w *Watcher) handleFrame(raw []byte) {
 }
 
 // PlayerStateFromPlayerEvent decodes the `data` field of an MA
-// `player_updated` (or `player_added`) event. The Player object's
-// `state` is the speaker-on/off state; the player-level title/artist
-// info is best-effort here because MA often emits player_updated
-// events that omit current_item entirely. Callers should merge,
-// not replace, when applying this to cached state.
+// `player_updated` (or `player_added`) event.
+//
+// CRITICAL: this DOES NOT set `state` on the returned PlayerState.
+// The MA Player object's `state` reflects speaker-on/off (e.g. "idle"
+// when the player goes silent, regardless of whether the queue is
+// paused or stopped). Treating that as the receiver's status would
+// flip the engine to PlayerStatusIdle on every pause — the cast app
+// then thinks the cast ended and the next resume becomes a brand-new
+// play_now from position 0.
+//
+// State / pause / playing transitions come from queue_updated only;
+// player_updated is the source for volume / muted (and best-effort
+// metadata when no queue event is available yet).
 func PlayerStateFromPlayerEvent(raw json.RawMessage) *events.PlayerState {
 	var p playerUpdate
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil
 	}
-	ps := &events.PlayerState{State: p.State}
+	ps := &events.PlayerState{} // intentionally no State
 	if p.Volume > 0 {
 		v := p.Volume
 		ps.Volume = &v

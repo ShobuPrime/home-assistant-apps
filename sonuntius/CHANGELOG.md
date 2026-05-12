@@ -1,5 +1,56 @@
 # Changelog
 
+## Version 0.2.4 (2026-05-11)
+
+### Volume — DoGetVolume returns user intent during input window; player_updated stops driving state
+
+Two cause-and-effect bugs from the v0.2.3 live log.
+
+**1. Phone volume slider stuck.** v0.2.3 stopped firing
+`onStateChange` for volume-only updates, but the engine has its own
+periodic state push triggers (status transitions, queue ticks)
+that ignore that gate. On every such push it calls our
+`DoGetVolume`, which returned cachedState.Volume — overwritten by
+MA's lagging echo. Phone slider kept snapping back to MA's stale
+value.
+
+`cmd/yt-cast/player.go::DoGetVolume`: while in the active-input
+window (DoSetVolume in the last 2 s) return `lastUserVolume` — the
+value the user just requested. After the window expires, return
+cachedState.Volume so MA-side changes (UI in MA, physical buttons)
+flow back to the phone normally.
+
+`DoSetVolume` records the user's intent in
+`lastUserVolume` + `hasUserVolume`. Engine-driven state pushes
+now report the user's slider position during input, MA's value
+afterwards.
+
+**2. Pause → cast ended → resume restarts at 0.** Log:
+
+    22:57:35.336  Player.pause()                      ← user pressed pause
+    22:57:35.337  Pushing status=2 (paused)           ✓
+    22:57:35.596  player_updated state=idle           ← MA's Player goes idle on pause
+    22:57:35.601  Pushing status=-1 (idle)            ← phone now thinks cast ended
+    22:57:36.095  queue_updated state=paused          ← correct, but too late
+    22:57:41.115  Player.play() @ 0s                  ← next resume = new cast from 0
+
+MA's `Player.state` reflects speaker-on/off, not queue
+pause/play. When the queue is paused, the Player goes "idle" (no
+audio flowing). v0.2.3 was treating that as PlayerStatusIdle and
+pushing status=-1 to the phone — at which point the YouTube cast
+app treats the next resume as a fresh play_now from position 0,
+losing the scrubbed position.
+
+`internal/ma/client.go::PlayerStateFromPlayerEvent`: now leaves
+`State` empty entirely. Pause / playing / buffering transitions
+come from `queue_updated` only (which correctly reports
+`state=paused`). The merge logic in `updateCachedState` preserves
+the previous state when player_updated brings only volume / muted
+info. The status=-1 spurious push is gone.
+
+This also fixes the user's separate "scrub in MA, pause+play from
+phone, restarts at 0" report — same root cause.
+
 ## Version 0.2.3 (2026-05-11)
 
 ### Pause via NotifyExternalStatus + idle/active → paused mapping + volume race fix
