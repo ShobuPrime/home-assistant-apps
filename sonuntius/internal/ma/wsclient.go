@@ -388,6 +388,43 @@ func (c *WSClient) Send(ctx context.Context, command string, args map[string]any
 	}
 }
 
+// SendFireAndForget writes a command to the WS without registering a
+// response slot. The frame goes out as a single Write() — no
+// per-message goroutine, no pending-map entry, no wait for MA's ACK.
+// Use this for idempotent commands where the caller doesn't need to
+// branch on success/failure: volume_set, volume_mute, players/cmd/
+// pause|play|stop|next|previous. Two rapid volume presses can each
+// dispatch in <1 ms instead of being serialised behind a 20-50 ms
+// response wait.
+//
+// Returns an error only when the WS is not currently connected or
+// when the Write itself fails. The caller logs and moves on.
+func (c *WSClient) SendFireAndForget(_ context.Context, command string, args map[string]any) error {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return ErrNotStarted
+	}
+	conn := c.conn
+	c.mu.Unlock()
+	if conn == nil || !c.connected.Load() {
+		return ErrDisconnected
+	}
+	msgID, err := randHex(16)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{
+		"message_id": msgID,
+		"command":    command,
+		"args":       args,
+	}
+	if err := websocket.JSON.Send(conn, body); err != nil {
+		return fmt.Errorf("ma ws: send %s: %w", command, err)
+	}
+	return nil
+}
+
 // PlayQueueMedia issues `player_queues/play_media`. Returns the
 // command result map (caller can ignore for fire-and-forget).
 //
@@ -425,28 +462,28 @@ func (c *WSClient) Seek(ctx context.Context, queueID string, position float64) e
 // PlayerPause / PlayerPlay / PlayerStop / PlayerNext / PlayerPrevious
 // call MA's per-player transport commands. playerID is the MA internal
 // player_id (same value as queueID for single-player queues).
+//
+// Sent fire-and-forget — these are idempotent and "latest wins" from
+// MA's perspective, so we don't pay the WS round-trip response wait.
 func (c *WSClient) PlayerPause(ctx context.Context, playerID string) error {
-	_, err := c.Send(ctx, "players/cmd/pause", map[string]any{"player_id": playerID})
-	return err
+	return c.SendFireAndForget(ctx, "players/cmd/pause", map[string]any{"player_id": playerID})
 }
 func (c *WSClient) PlayerPlay(ctx context.Context, playerID string) error {
-	_, err := c.Send(ctx, "players/cmd/play", map[string]any{"player_id": playerID})
-	return err
+	return c.SendFireAndForget(ctx, "players/cmd/play", map[string]any{"player_id": playerID})
 }
 func (c *WSClient) PlayerStop(ctx context.Context, playerID string) error {
-	_, err := c.Send(ctx, "players/cmd/stop", map[string]any{"player_id": playerID})
-	return err
+	return c.SendFireAndForget(ctx, "players/cmd/stop", map[string]any{"player_id": playerID})
 }
 func (c *WSClient) PlayerNext(ctx context.Context, playerID string) error {
-	_, err := c.Send(ctx, "players/cmd/next", map[string]any{"player_id": playerID})
-	return err
+	return c.SendFireAndForget(ctx, "players/cmd/next", map[string]any{"player_id": playerID})
 }
 func (c *WSClient) PlayerPrevious(ctx context.Context, playerID string) error {
-	_, err := c.Send(ctx, "players/cmd/previous", map[string]any{"player_id": playerID})
-	return err
+	return c.SendFireAndForget(ctx, "players/cmd/previous", map[string]any{"player_id": playerID})
 }
 
 // SetVolume sets the per-player volume in the 0-100 wire range.
+// Fire-and-forget: rapid presses can each dispatch in <1 ms instead
+// of being serialised behind a 20-50 ms response wait.
 func (c *WSClient) SetVolume(ctx context.Context, playerID string, level int) error {
 	if level < 0 {
 		level = 0
@@ -454,18 +491,16 @@ func (c *WSClient) SetVolume(ctx context.Context, playerID string, level int) er
 	if level > 100 {
 		level = 100
 	}
-	_, err := c.Send(ctx, "players/cmd/volume_set", map[string]any{
+	return c.SendFireAndForget(ctx, "players/cmd/volume_set", map[string]any{
 		"player_id":    playerID,
 		"volume_level": level,
 	})
-	return err
 }
 
-// SetMute sets the per-player mute state.
+// SetMute sets the per-player mute state. Fire-and-forget.
 func (c *WSClient) SetMute(ctx context.Context, playerID string, muted bool) error {
-	_, err := c.Send(ctx, "players/cmd/volume_mute", map[string]any{
+	return c.SendFireAndForget(ctx, "players/cmd/volume_mute", map[string]any{
 		"player_id": playerID,
 		"muted":     muted,
 	})
-	return err
 }

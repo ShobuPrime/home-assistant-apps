@@ -68,9 +68,15 @@ type VolumeCommand struct {
 func (VolumeCommand) EventType() string { return "VolumeCommand" }
 
 // PlayerState is broadcast from ma-bridge back to receivers so they can
-// keep the phone UI in sync.
+// keep the phone UI in sync. Source identifies the broadcast origin so
+// the adapter can prefer authoritative feeds — MA WS events carry
+// genuine queue state (paused vs idle), while HA core WS mirrors a
+// simplified view (HA's MA integration reports `state=idle` for
+// paused playbacks, which would otherwise overwrite a correctly-set
+// "paused" cached state).
 type PlayerState struct {
 	State    string   `json:"state"`
+	Source   string   `json:"source,omitempty"` // "ma-ws" or "ha-ws"; empty = legacy
 	Provider string   `json:"provider,omitempty"`
 	TrackID  string   `json:"track_id,omitempty"`
 	Position *float64 `json:"position,omitempty"`

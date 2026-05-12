@@ -103,6 +103,17 @@ type adapter struct {
 	lastUserVolume   pkgplayer.Volume
 	hasUserVolume    bool
 
+	// lastMAStateAt is the wall-clock time we last received a state
+	// from the MA WS feed (Source == "ma-ws"). Within the
+	// haStateSuppressionWindow afterwards we ignore the State field
+	// from HA-core-WS broadcasts — HA's MA integration mirrors a
+	// simplified view of MA's state, and crucially reports
+	// `state=idle` for a paused queue, which would otherwise flip
+	// the engine back from paused → idle. The phone then thinks the
+	// cast ended and the next resume is a fresh play_now from
+	// position 0.
+	lastMAStateAt time.Time
+
 	// Local position tracking. HA's state_changed events for the MA
 	// player carry an accurate media_position, but they only fire after
 	// MA actually starts streaming (typically 2–10 s after our
@@ -221,6 +232,19 @@ func (a *adapter) resetSession() {
 func (a *adapter) updateCachedState(ps events.PlayerState) {
 	a.mu.Lock()
 	prev := a.cachedState
+	// Drop the State field from HA-core-WS broadcasts when we've
+	// recently received state from the more accurate MA WS feed.
+	// HA reports `state=idle` for a paused MA queue, which would
+	// otherwise flip the engine from paused → idle and the phone
+	// would think the cast ended.
+	if ps.Source == "ha-ws" && ps.State != "" &&
+		!a.lastMAStateAt.IsZero() &&
+		time.Since(a.lastMAStateAt) < haStateSuppressionWindow {
+		ps.State = ""
+	}
+	if ps.Source == "ma-ws" && ps.State != "" {
+		a.lastMAStateAt = time.Now()
+	}
 	// Merge ps into prev: only overwrite a field when the incoming
 	// event actually carries a value. MA emits different event
 	// families with different field-presence patterns — e.g.
@@ -366,6 +390,12 @@ func boolPtrEqual(a, b *bool) bool {
 	}
 	return *a == *b
 }
+
+// haStateSuppressionWindow is how long after an MA WS state event we
+// ignore the State field from HA-core-WS broadcasts. MA's events are
+// the authoritative source (queue_updated reports paused correctly);
+// HA-WS state is fallback for when MA WS is unavailable.
+const haStateSuppressionWindow = 15 * time.Second
 
 // volumeInputWindow is how long after a user-initiated volume change
 // we suppress MA's lagging volume echoes from pushing back to the

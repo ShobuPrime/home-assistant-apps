@@ -97,6 +97,7 @@ func main() {
 	}
 
 	disp := dispatcher.New(haCli, opts.MAPlayerID, logger.With("component", "dispatcher"))
+	disp.Start(ctx)
 
 	// Construct the IPC server up-front so the MA WS event handler
 	// (declared below) can reference it. Start() is deferred until
@@ -165,6 +166,7 @@ func main() {
 					if ps == nil {
 						return
 					}
+					ps.Source = "ma-ws"
 					logCtx.Debug("ma ws event: broadcasting PlayerState",
 						"event", eventName,
 						"state", ps.State,

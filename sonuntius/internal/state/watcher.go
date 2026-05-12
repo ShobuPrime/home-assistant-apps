@@ -278,7 +278,7 @@ func playerStateFrom(s *haEntityState) *events.PlayerState {
 	if s == nil || s.State == "" {
 		return nil
 	}
-	ps := &events.PlayerState{State: s.State}
+	ps := &events.PlayerState{State: s.State, Source: "ha-ws"}
 	if v, ok := s.Attributes["media_title"].(string); ok {
 		ps.Title = v
 	}

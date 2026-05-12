@@ -1,5 +1,154 @@
 # Changelog
 
+## Version 0.2.7 (2026-05-11)
+
+### Async per-type dispatch + volume coalescing — every press lands, bursts deduped
+
+Two follow-on optimizations the user asked for after v0.2.6 (FAF):
+
+**1. Per-type worker goroutines in the dispatcher.** Until v0.2.7 the
+IPC reader called `Dispatcher.Dispatch` synchronously. With FAF each
+volume/transport call returned in <1 ms, but `play_media` /
+`seek` / `clear_queue` (which keep waiting for MA's response) could
+still hold the reader for a few hundred ms — during which time
+volume presses sat in the IPC kernel buffer.
+
+`internal/dispatcher/dispatcher.go`:
+- Four per-type channels (play=16, queue-add=16, transport=64, volume=256).
+- `Start(ctx)` launches one worker goroutine per channel.
+- `Dispatch` becomes non-blocking: deposits the event on the right
+  channel and returns immediately.
+- A slow `play_media` round-trip no longer blocks volume / transport
+  presses — they run in parallel from their own workers.
+
+If `Start` is never called (tests, one-shot callers), `Dispatch`
+falls back to the pre-v0.2.7 synchronous path.
+
+**2. Volume-burst coalescing.** The volume worker does a
+non-blocking drain of any additional volume events that are already
+queued before sending — keeping only the latest. Slider drag
+bursts (the YouTube cast app emits a tick per drag frame, faster
+than the speaker can audibly distinguish) collapse to a single
+final value; discrete button presses (>5 ms apart) all go through
+unchanged.
+
+Why volume only: transport / play / queue-add each carry distinct
+intent and must each be delivered. Volume is "latest wins" — the
+speaker can't audibly resolve a 50-ms ramp through 5 intermediate
+values, only the final position matters.
+
+### Bi-directional sync still intact
+
+FAF and async dispatch only change the **outbound** command path
+(us → MA). The **inbound** event path (MA → us → phone) is
+unchanged: WSClient's `OnEvent` still fires for
+`player_updated` / `queue_updated` / `queue_time_updated`, the
+adapter still receives state updates, the engine still pushes to
+the connected sender. Changes you make in MA's UI (pause, scrub,
+volume) continue to reach the phone in real time.
+
+### Stdlib-only optimizations considered but not shipped
+
+- **Faster JSON marshalling** (`easyjson` / `sonic`): excluded per
+  repo policy (stdlib-only). Microsecond-scale anyway.
+- **sync.Pool for IPC scanner buffers**: microsecond scale. Maybe
+  worth a follow-up if profiling ever shows allocation pressure.
+- **Pre-encoded WS frame templates** (volume_set takes one int —
+  could pre-marshal everything else): also microsecond-scale.
+
+## Version 0.2.6 (2026-05-11)
+
+### Fire-and-forget for idempotent MA commands — every rapid press registers
+
+Real engineering bottleneck the user flagged:
+
+> "I would press the button twice really quickly and I have to wonder
+> if our existing integration just physically can't handle that speed
+> due to the number of hops we have to make."
+
+Yes — there was a real bottleneck. Each volume/transport command was
+going through `WSClient.Send`, which:
+
+1. Generates a message_id
+2. Registers a response channel in the pending map
+3. Sends the WS frame
+4. **Waits up to 15 s for MA's matching response** before returning
+
+Meanwhile, the IPC reader in ma-bridge processes events *serially*.
+A volume press from yt-cast lands in IPC, the reader pulls it,
+calls the dispatcher, the dispatcher calls `WSClient.Send` — which
+**blocks for the 20-50 ms WS round-trip**. The next volume press
+sits in the IPC buffer until the first one finishes. Two rapid
+presses meant ~100 ms before the second even reached MA. Three or
+four rapid presses meant some got coalesced or dropped by MA when
+they finally arrived as a burst.
+
+**Fix:** new `WSClient.SendFireAndForget(ctx, command, args)` —
+writes the WS frame and returns immediately, no pending-map entry,
+no response wait. Commands that don't need a response use it:
+
+- `players/cmd/volume_set`
+- `players/cmd/volume_mute`
+- `players/cmd/play` / `pause` / `stop` / `next` / `previous`
+
+Per-press latency drops from ~25 ms (round-trip) to <1 ms (write).
+Two rapid presses each fire-and-forget independently — no
+serialisation, no queueing, no coalescing.
+
+`internal/ma/wsclient.go`: new SendFireAndForget plus a refactor
+of all idempotent transport / volume / mute methods to use it.
+`PlayQueueMedia`, `ClearQueue`, `Seek`, `AddToQueueMedia` keep
+using `Send` (we use their responses for error handling).
+
+### What this doesn't change
+
+- `play_media`, `seek`, `clear_queue` still wait for responses. They
+  carry meaningful errors (auth required, queue not found) and the
+  cast-start flow needs to know whether to fall back to HA REST.
+  The cost is one round-trip per cast — not per press.
+- HA REST fallback path is unchanged — still synchronous.
+
+## Version 0.2.5 (2026-05-11)
+
+### Suppress HA-WS state when MA-WS has spoken — fixes the paused → idle → reset-to-0 flip
+
+v0.2.4 fixed `player_updated` from MA but left the **HA core WS state
+watcher** still broadcasting state with HA's view — which mirrors
+MA's `Player.state` (the speaker-on/off flag), reporting `idle` for
+a paused queue.
+
+Log timing made it obvious:
+
+    23:15:54.439  queue_updated state=paused        ← MA WS, correct
+    23:15:54.440  Pushing status=2 (paused)         ✓
+    23:15:54.457  Pushing status=-1 (idle)          ← HA-WS pushed idle 17 ms later
+    23:15:54.560  queue_updated state=paused        ← MA reasserts
+    23:15:54.560  Pushing status=2                  ✓ again
+    23:15:54.580  Pushing status=-1                 ← HA flips it back
+
+The engine flickered between paused and idle every queue tick.
+Whichever value the phone latched onto last (often `idle`) decided
+whether the next resume preserved position or kicked off a fresh
+play_now from 0.
+
+`internal/events/events.go`: new `PlayerState.Source` field
+(`"ma-ws"` / `"ha-ws"`) so receivers can prefer the more
+authoritative feed.
+
+`cmd/ma-bridge/main.go`: tags MA-WS broadcasts with `Source=ma-ws`.
+
+`internal/state/watcher.go`: tags HA-core-WS broadcasts with
+`Source=ha-ws`.
+
+`cmd/yt-cast/player.go::updateCachedState`: when an MA-WS state
+event has arrived in the last 15 s, drop the `State` field from
+incoming HA-WS events. Everything else (position, title, duration,
+volume) is still merged in — HA-WS remains useful for those, and
+becomes the full fallback again when MA-WS is silent for >15 s.
+
+Volume responsiveness from v0.2.4 is unchanged and continues to
+work correctly (the live log confirmed it).
+
 ## Version 0.2.4 (2026-05-11)
 
 ### Volume — DoGetVolume returns user intent during input window; player_updated stops driving state
