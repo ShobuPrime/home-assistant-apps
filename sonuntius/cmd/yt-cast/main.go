@@ -111,8 +111,22 @@ func main() {
 	// phone only sees state updates on engine-side transitions
 	// (play / pause / stop) and external changes are invisible.
 	adapt.setOnStateChange(func(ctx context.Context) {
-		if err := receiver.EmitPlayerState(ctx); err != nil {
-			log.Debug("yt-cast: EmitPlayerState failed (likely no active sender)", "err", err)
+		ps := adapt.snapshotState()
+		// Map MA's state string to the engine's PlayerStatus and
+		// route through NotifyExternalStatus so the engine's own
+		// status tracking updates. Without this the engine keeps
+		// its last status (typically PLAYING from DoPlay) and the
+		// phone never sees a pause/idle from MA's side.
+		status, ok := mapMAStateToPlayerStatus(ps.State)
+		if !ok {
+			if err := receiver.EmitPlayerState(ctx); err != nil {
+				log.Debug("yt-cast: EmitPlayerState failed (likely no active sender)", "err", err)
+			}
+			return
+		}
+		if err := receiver.NotifyExternalStatus(ctx, status); err != nil {
+			log.Debug("yt-cast: NotifyExternalStatus failed (likely no active sender)",
+				"err", err, "status", status)
 		}
 	})
 	// Hand the adapter a way to peek the engine's upcoming video so
@@ -142,6 +156,26 @@ func main() {
 	}
 	conn.close()
 	log.Info("yt-cast: stopped")
+}
+
+// mapMAStateToPlayerStatus translates the MA state strings into the
+// engine's PlayerStatus integers. Returns ok=false for empty / unknown
+// strings so the caller falls back to EmitPlayerState (which preserves
+// the engine's current status).
+func mapMAStateToPlayerStatus(state string) (constants.PlayerStatus, bool) {
+	switch state {
+	case "playing":
+		return constants.PlayerStatusPlaying, true
+	case "paused":
+		return constants.PlayerStatusPaused, true
+	case "loading", "buffering":
+		return constants.PlayerStatusLoading, true
+	case "idle":
+		return constants.PlayerStatusIdle, true
+	case "stopped", "off", "unavailable":
+		return constants.PlayerStatusStopped, true
+	}
+	return 0, false
 }
 
 // watchSenderLifecycle subscribes to the receiver's app-event bus and

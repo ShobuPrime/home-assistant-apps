@@ -382,7 +382,17 @@ func PlayerStateFromQueueEvent(raw json.RawMessage) *events.PlayerState {
 	if err := json.Unmarshal(raw, &q); err != nil {
 		return nil
 	}
-	ps := &events.PlayerState{State: q.State}
+	state := q.State
+	// MA's Universal Player + Sendspin path reports "idle" both for
+	// "user paused" and "no longer playing anything". Disambiguate
+	// here: if the queue still considers itself active and has a
+	// current item, treat idle as paused — semantically that's what
+	// the cast sender should display. A truly stopped queue clears
+	// active or current_item.
+	if state == "idle" && q.Active && q.CurrentItem != nil {
+		state = "paused"
+	}
+	ps := &events.PlayerState{State: state}
 	if q.ElapsedTime > 0 {
 		pos := q.ElapsedTime
 		ps.Position = &pos
