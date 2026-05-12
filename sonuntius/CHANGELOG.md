@@ -1,5 +1,34 @@
 # Changelog
 
+## Version 0.3.1 (2026-05-12)
+
+### Startup configuration banner — always print the MA player list
+
+User feedback: MA's internal `player_id` (used as `ma_queue_id`) is
+the single hardest field to fill in on first configuration because it
+isn't the same as HA's `entity_id` and isn't visible anywhere in the
+HA UI. Before this change the addon only printed the player list on
+boots where auto-discovery actually ran (i.e. `ma_queue_id` unset).
+A user who had already configured the field once never saw the list
+again on later boots.
+
+`cmd/ma-bridge/main.go`:
+
+- `resolveMAQueueID` now always queries `players/all` and prints the
+  full list on every boot, regardless of whether `ma_queue_id` is set.
+- New `logConfigurationBanner` block fenced by `============` lines.
+  Includes:
+  - Configured `ma_player_id` (or a placeholder when unset).
+  - Configured `ma_token` status (set/unset, without leaking value).
+  - Configured `ma_queue_id` override state.
+  - Every visible MA player with its `player_id`, `display_name`,
+    `provider`, `available`, `type`.
+  - Inline tips on which value goes in which addon-option field.
+
+All log lines are at INFO so they're visible without enabling debug.
+On first boot the user has every piece of info they need in one
+contiguous block of the addon log.
+
 ## Version 0.3.0 (2026-05-12)
 
 ### Rebase on v0.2.7 + yt-dlp cache + sender-preserves-state (nothing else)

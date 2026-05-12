@@ -215,38 +215,47 @@ func main() {
 }
 
 // resolveMAQueueID determines the MA-side queue_id (internal player_id)
-// to use for player_queues/play_media. Precedence:
+// to use for player_queues/play_media.
 //
-//  1. Explicit `ma_queue_id` from config — trust the user; do not probe.
-//  2. Auto-discover via `players/all` and MatchPlayer on the configured
-//     HA entity_id. Logs every visible player at info so the user can
-//     copy the correct one into `ma_queue_id` if matching fails.
-//  3. Conservative fallback to ma.DerivePlayerID(entity_id) — preserves
-//     v0.1.10 behaviour if MA is unreachable for discovery. Returns ""
-//     when discovery yields nothing and we don't want to send doomed
-//     play_media commands to a non-existent queue.
+// We ALWAYS query `players/all` and print the full visible-player list
+// at startup, regardless of whether `ma_queue_id` is already set. The
+// list is the single biggest unknown when configuring this addon for
+// the first time (MA's internal player_id ≠ HA's entity_id), so making
+// it visible every boot saves the user from having to find a log line
+// from a specific previous boot.
+//
+// Precedence for which value is returned:
+//
+//  1. Explicit `ma_queue_id` from config — trust the user; log it as
+//     the active override and print the verification snippet so they
+//     can confirm against the player list.
+//  2. Auto-discover via MatchPlayer on the configured HA entity_id.
+//  3. Conservative fallback to ma.DerivePlayerID(entity_id) when MA is
+//     unreachable. Returns "" only when MA is reachable, has players,
+//     and we cannot match the configured entity — at which point the
+//     user has the list of valid IDs in their log.
 func resolveMAQueueID(ctx context.Context, maURL string, opts config.Options, log *slog.Logger) string {
-	if opts.MAQueueID != "" {
-		log.Info("ma: queue_id from config override", "queue_id", opts.MAQueueID)
-		return opts.MAQueueID
-	}
 	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	players, err := ma.ListPlayers(probeCtx, maURL, opts.MAToken, log)
-	if err != nil {
+	players, listErr := ma.ListPlayers(probeCtx, maURL, opts.MAToken, log)
+
+	// Always print the configuration banner so the user can see the
+	// full picture on every boot — no scrolling back through old
+	// container logs.
+	logConfigurationBanner(log, opts, players, listErr)
+
+	// 1. Explicit override.
+	if opts.MAQueueID != "" {
+		return opts.MAQueueID
+	}
+	// 2. Discovery failed entirely.
+	if listErr != nil {
+		fallback := ma.DerivePlayerID(opts.MAPlayerID)
 		log.Warn("ma: players/all failed — falling back to derived queue_id",
-			"err", err, "fallback", ma.DerivePlayerID(opts.MAPlayerID))
-		return ma.DerivePlayerID(opts.MAPlayerID)
+			"err", listErr, "fallback", fallback)
+		return fallback
 	}
-	for _, p := range players {
-		log.Info("ma: known player",
-			"player_id", p.PlayerID,
-			"display_name", p.DisplayName,
-			"name", p.Name,
-			"provider", p.Provider,
-			"available", p.Available,
-			"type", p.Type)
-	}
+	// 3. Match against the configured entity_id.
 	match, rule := ma.MatchPlayer(players, opts.MAPlayerID)
 	if rule != "" {
 		log.Info("ma: queue_id resolved via discovery",
@@ -260,6 +269,66 @@ func resolveMAQueueID(ctx context.Context, maURL string, opts config.Options, lo
 		"entity_id", opts.MAPlayerID,
 		"count", len(players))
 	return ""
+}
+
+// logConfigurationBanner emits a multi-line block summarising what
+// the addon sees and how the user can configure it. Printed every boot
+// at INFO so it's visible without enabling debug logs.
+func logConfigurationBanner(log *slog.Logger, opts config.Options, players []ma.PlayerInfo, listErr error) {
+	log.Info("============================================================")
+	log.Info("== sonuntius MA configuration ==")
+	log.Info("============================================================")
+	log.Info("config: HA entity to drive",
+		"ma_player_id", orPlaceholder(opts.MAPlayerID, "(unset — addon will idle until configured)"))
+	tokenStatus := "(unset — addon will operate without auth; metadata writes via MA WS path may fail)"
+	if opts.MAToken != "" {
+		tokenStatus = "(set — long-lived API token from MA Settings → Security → API Tokens)"
+	}
+	log.Info("config: MA auth", "ma_token", tokenStatus)
+	if opts.MAQueueID != "" {
+		log.Info("config: MA queue override ACTIVE",
+			"ma_queue_id", opts.MAQueueID,
+			"note", "skipping auto-discovery; verify this matches one of the player_id rows below")
+	} else {
+		log.Info("config: ma_queue_id is unset — discovery will pick from the players below")
+	}
+	log.Info("------------------------------------------------------------")
+	if listErr != nil {
+		log.Warn("ma: could not list players from MA WS — discovery unavailable until next reconnect",
+			"err", listErr)
+		log.Info("============================================================")
+		return
+	}
+	if len(players) == 0 {
+		log.Warn("ma: MA returned an empty player list — nothing to cast to")
+		log.Info("============================================================")
+		return
+	}
+	log.Info("ma: visible players from MA's players/all (use a player_id as ma_queue_id):")
+	for _, p := range players {
+		log.Info("  player",
+			"player_id", p.PlayerID,
+			"display_name", p.DisplayName,
+			"name", p.Name,
+			"provider", p.Provider,
+			"available", p.Available,
+			"type", p.Type)
+	}
+	log.Info("------------------------------------------------------------")
+	log.Info("config tips:")
+	log.Info("  - ma_player_id  = HA entity_id of the speaker, e.g. media_player.3rspk_a8e29151e187_2")
+	log.Info("  - ma_queue_id   = MA internal player_id from the list above; set this if auto-discovery picks the wrong one")
+	log.Info("  - ma_token      = long-lived API token from MA Settings → Security → API Tokens (required for rich metadata)")
+	log.Info("============================================================")
+}
+
+// orPlaceholder returns s when non-empty, fallback otherwise. Used by
+// the configuration banner to make missing settings obvious.
+func orPlaceholder(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
 }
 
 // summarizeConfig returns a concise one-line summary of the loaded
