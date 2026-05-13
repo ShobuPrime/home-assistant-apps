@@ -1,5 +1,25 @@
 # Changelog
 
+## Version 1.19.0 (2026-05-13)
+
+
+### New features
+
+* show pull usage and limits (if applicable) ([#2458](https://github.com/getarcaneapp/arcane/pull/2458) by `kmendell`)
+* automated docker api re-negotiation ([#2471](https://github.com/getarcaneapp/arcane/pull/2471) by `kmendell`)
+* implement node label management with system and user label separation ([#2479](https://github.com/getarcaneapp/arcane/pull/2479) by `SplinterHead`)
+* allow mTLS auth for edge agents ([#2116](https://github.com/getarcaneapp/arcane/pull/2116) by `kmendell`)
+* implement multi-file swarm git sync and host path mapping ([#2457](https://github.com/getarcaneapp/arcane/pull/2457) by `SplinterHead`)
+* ability to archive projects ([#2519](https://github.com/getarcaneapp/arcane/pull/2519) by `kmendell`)
+* redesigned updater center for arcane self updates ([#2558](https://github.com/getarcaneapp/arcane/pull/2558) by `kmendell`)
+
+### CLI - New features
+
+* arcane-cli update channels and self-update ([#2517](https://github.com/getarcaneapp/arcane/pull/2517) by
+
+---
+
+
 ## Version 1.16.4 (2026-03-24)
 
 ### Bug fixes
