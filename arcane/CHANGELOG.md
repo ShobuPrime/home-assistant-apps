@@ -1,5 +1,25 @@
 # Changelog
 
+## Version 1.19.1 (2026-05-17)
+
+
+### Bug fixes
+
+* show archived switch overlapping projects search bar([d02a05c](https://github.com/getarcaneapp/arcane/commit/d02a05c6314d634302d4453c0378335d1599e578) by `kmendell`)
+* show correct environments types in filter ([#2578](https://github.com/getarcaneapp/arcane/pull/2578) by `kmendell`)
+* build history not being updated after builds are completed ([#2586](https://github.com/getarcaneapp/arcane/pull/2586) by `kmendell`)
+* incorrect backend arg used for trivy on 32bit hosts ([#2587](https://github.com/getarcaneapp/arcane/pull/2587) by `kmendell`)
+* updater api authorization checks ([#2588](https://github.com/getarcaneapp/arcane/pull/2588) by `kmendell`)
+* deny non hmac jwt requests([d568d03](https://github.com/getarcaneapp/arcane/commit/d568d03bd5683ba838a55d3b34f9d65564788609) by `kmendell`)
+* add rate limiting to webhooks and auth endpoints, and add caching to user session ([#2591](https://github.com/getarcaneapp/arcane/pull/2591) by `kmendell`)
+
+### Other
+
+* add mobile device c
+
+---
+
+
 ## Version 1.16.4 (2026-03-24)
 
 ### Bug fixes
