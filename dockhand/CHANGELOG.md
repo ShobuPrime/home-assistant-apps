@@ -1,5 +1,46 @@
 # Changelog
 
+## Version 1.0.28 (2026-05-17)
+
+### Changed
+- Updated Dockhand to version 1.0.28
+
+Released: 2026-05-09
+
+## What's new in v1.0.28
+
+- ✨ context directory for git stacks — reference files from anywhere in the repo (#864)
+- ✨ no-cache build option for git stacks (#880)
+- 🐛 env vars lost when switching between raw/form view (#964)
+- 🐛 compose name property not respected during stack scan (#922)
+- ✨ editable schedule for scanner cache cleanup (#979)
+- 🐛 container labels cannot be deleted (#984)
+- 🐛 env var values leaked in deploy logs — now all values are redacted (#985)
+- 🐛 volume export keeps helper container alive, preventing volume prune/deletion (#983)
+- 🐛 ntfy self-hosted notifications fail when using ?auth= query parameter (#840)
+- 🐛 scrollbar appears in dashboard tiles when content overflows (#969)
+- 🐛 case-sensitive environment sort order — lowercase names sorted after uppercase (#975)
+- 🐛 inaccurate dashboard CPU gauge caused by one-shot stats flag (#932)
+- ✨ ntfy notifications support ?tags=, ?title=, and ?priority= URL query parameters (#689)
+- 🐛 stack .env file wiped when saving from graph view (#988)
+- ✨ dismiss update available indicators without updating (#853)
+- ✨ public IP setting available for hawser-edge environments — enables clickable port links (#350)
+- 🐛 git stack creation silently destroys existing stacks with the same name (#1001)
+- ✨ static IP/MAC address configuration for containers (#297)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.28
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## Version 1.0.24 (2026-04-04)
 
 ### Changed
