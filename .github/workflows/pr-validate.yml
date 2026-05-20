@@ -20,6 +20,7 @@ jobs:
       pr_number: ${{ steps.context.outputs.pr_number }}
       head_sha: ${{ steps.context.outputs.head_sha }}
       base_ref: ${{ steps.context.outputs.base_ref }}
+      addon: ${{ steps.context.outputs.addon }}
     steps:
       - name: Resolve context from event
         id: context
@@ -28,10 +29,12 @@ jobs:
             echo "pr_number=${{ github.event.client_payload.pull_request_number }}" >> $GITHUB_OUTPUT
             echo "head_sha=${{ github.event.client_payload.head_sha }}" >> $GITHUB_OUTPUT
             echo "base_ref=master" >> $GITHUB_OUTPUT
+            echo "addon=${{ github.event.client_payload.addon }}" >> $GITHUB_OUTPUT
           else
             echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
             echo "head_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
             echo "base_ref=${{ github.base_ref }}" >> $GITHUB_OUTPUT
+            echo "addon=" >> $GITHUB_OUTPUT
           fi
 
   validate-structure:
@@ -430,6 +433,22 @@ jobs:
             console.log('Checking Builder workflow status...');
             const maxAttempts = 60;
             const pollInterval = 30000; // 30 seconds (60 * 30s = 30 min total)
+            const targetAddon = '${{ needs.resolve-context.outputs.addon }}';
+            if (targetAddon) {
+              console.log(`Scoping Builder lookup to addon: ${targetAddon}`);
+            }
+
+            // For dispatch events the Builder runs for *every* dispatched
+            // addon land on master within the same time window, so we have
+            // to disambiguate by inspecting each candidate run's jobs and
+            // matching against the addon name we were dispatched for.
+            // Without this, a failing Arcane Builder run would block the
+            // Dockhand PR's auto-merge (and vice versa).
+            const matchesAddon = (jobs, addon) => {
+              if (!addon) return true;
+              const expected = [`Build ${addon} app`, `Smoke test ${addon}`];
+              return jobs.some(j => expected.includes(j.name));
+            };
 
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
               let builderFound = false;
@@ -451,19 +470,31 @@ jobs:
                     repo: context.repo.repo,
                     workflow_id: builderWorkflow.id,
                     event: 'repository_dispatch',
-                    per_page: 5,
+                    per_page: 20,
                   });
-                  // Find a run that started within 2 minutes of this workflow
-                  const recentRun = runs.workflow_runs.find(r => {
+                  // Look across recent dispatch runs and pick the one whose
+                  // jobs actually belong to *our* addon.
+                  const recentRuns = runs.workflow_runs.filter(r => {
                     const runTime = new Date(r.created_at).getTime();
-                    const now = Date.now();
-                    return (now - runTime) < 20 * 60 * 1000; // within 20 min
+                    return (Date.now() - runTime) < 20 * 60 * 1000;
                   });
-                  if (recentRun) {
+                  let matchingRun = null;
+                  for (const run of recentRuns) {
+                    const { data: jobsResp } = await github.rest.actions.listJobsForWorkflowRun({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      run_id: run.id,
+                    });
+                    if (matchesAddon(jobsResp.jobs, targetAddon)) {
+                      matchingRun = run;
+                      break;
+                    }
+                  }
+                  if (matchingRun) {
                     builderFound = true;
-                    builderComplete = recentRun.status === 'completed';
-                    builderSuccess = recentRun.conclusion === 'success';
-                    builderDetails = [{name: `Builder run #${recentRun.run_number}`, conclusion: recentRun.conclusion, url: recentRun.html_url}];
+                    builderComplete = matchingRun.status === 'completed';
+                    builderSuccess = matchingRun.conclusion === 'success';
+                    builderDetails = [{name: `Builder run #${matchingRun.run_number}`, conclusion: matchingRun.conclusion, url: matchingRun.html_url}];
                   }
                 }
               } else {
