@@ -1,5 +1,45 @@
 # Changelog
 
+## Version 1.0.29 (2026-05-19)
+
+### Changed
+- Updated Dockhand to version 1.0.29
+
+Released: 2026-05-17
+
+## What's new in v1.0.29
+
+- ✨ optionally display internal (exposed) container ports alongside published ports (#193)
+- ✨ show app version in sidebar with build info tooltip (#209)
+- ✨ central label management — rename or delete labels across all environments (#661)
+- ✨ find next available host port when creating or editing containers (#116)
+- ✨ theme-aware scrollbar styling — scrollbars adapt to dark/light mode and color palettes (#462)
+- 🐛 update buttons (single, selected, and all) now respect the "confirm dangerous actions" setting (#638, #751)
+- ✨ custom URL labels - dockhand.url or dockhand.port.{port}.url to add links alongside container ports (#266)
+- ✨ generate and copy token for Hawser Standard mode with run command hint (#337)
+- 🐛 environment stack directory not cleaned up when environment is deleted (#1023)
+- ✨ toggle to hide timestamps and container name prefix in log viewer (#124)
+- 🐛 Podman containers health status not showing (#737)
+- 🐛 containers with exit code 0 (init/migration) no longer cause stack "partial" status (#1026)
+- 🐛 stats stream 400 on reconnect by skipping overlapping fetches (#1044)
+- 🐛 env var validation false positive for values containing $ followed by text (#1048)
+- 🐛 git-repos directory not cleaned up when environment is deleted (#1049)
+- 🐛 webhook secret auto-generated when left empty despite hint saying otherwise (#1050)
+- ✨ scan reports — combined or individual Grype/Trivy (#1056)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.29
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## Version 1.0.24 (2026-04-04)
 
 ### Changed
