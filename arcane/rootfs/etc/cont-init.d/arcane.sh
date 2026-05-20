@@ -5,14 +5,28 @@
 # ==============================================================================
 bashio::require.unprotected
 
+# Resolve PUID/PGID (Arcane >=1.19 drops privileges before opening
+# its sqlite DB, so the data dir must be writable by that user).
+if bashio::config.has_value 'puid'; then
+    PUID=$(bashio::config 'puid')
+else
+    PUID=1000
+fi
+if bashio::config.has_value 'pgid'; then
+    PGID=$(bashio::config 'pgid')
+else
+    PGID=1000
+fi
+
 # Create data directory structure
-bashio::log.info "Creating data directories..."
+bashio::log.info "Creating data directories (owner ${PUID}:${PGID})..."
 mkdir -p /data/arcane
 mkdir -p /data/projects
 
-# Ensure proper permissions
-chmod 755 /data/arcane
-chmod 755 /data/projects
+# Hand the data dirs to the runtime user; Arcane v1.19+ otherwise
+# fails with "create sqlite file /data/arcane/arcane.db: permission denied".
+chown -R "${PUID}:${PGID}" /data/arcane /data/projects
+chmod 755 /data/arcane /data/projects
 
 # Check if Arcane binary exists and is executable
 if [[ ! -f /opt/arcane/arcane ]]; then

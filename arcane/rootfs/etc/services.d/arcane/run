@@ -68,8 +68,12 @@ bashio::log.info "  PUID: ${PUID}"
 bashio::log.info "  PGID: ${PGID}"
 bashio::log.info "  DOCKER_HOST: ${DOCKER_HOST}"
 
-# Change to the arcane directory
-cd /opt/arcane
+# Arcane >=1.19 drops privileges to PUID:PGID and then creates a
+# `data/` subdirectory relative to CWD (alongside the sqlite DB).
+# /opt/arcane is root-owned so we must cd into the writable data
+# volume before exec — otherwise startup fails with
+# "failed to prepare SQLite directory: mkdir data: permission denied".
+cd /data/arcane
 
 # Run Arcane
 exec /opt/arcane/arcane
