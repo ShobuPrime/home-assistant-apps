@@ -1,5 +1,26 @@
 # Changelog
 
+## Version 0.6.0 (2026-05-21)
+
+## New Features
+
+- **Audit logging** — structured audit trail with file, stdout, syslog, and webhook sinks; CLI `audit tail/export/stats` commands (#418)
+- **Retrieval annotations** — staleness, conflict, and trust metadata on recall responses (#388)
+- **Per-engram trust/taint labels** (#387)
+- **Cursor-based pagination** for enrichment candidates
+- **MCP initialize instructions** response
+
+## Bug Fixes
+
+- `fix(fts)` — auto-restart worker goroutines after panic; field byte in posting key prevents multi-field overwrite; IDF cache scoped per vault (#430)
+- `fix(storage)` — clear last-access (0x22), archived associations (0x25), and dream state (0x27) prefixes on vault delete (#438)
+- `fix(storage)` — vault deletion now removes all entity graph data (0x20–0x24, 0x26) and prunes orphaned global entity records (#436, #435)
+- `fix(cli)` — `muninn status` and `muninn start` health probes now honour `MUNINNDB_{ADMIN,MCP,UI}_URL` for TLS deployments (#440, #439)
+- `fix(engine)` �
+
+---
+
+
 ## Version 0.5.1 (2026-05-07)
 
 ## Bug Fixes
