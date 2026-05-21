@@ -1,6 +1,6 @@
 # Global ARGs must be declared before the first FROM
 ARG BUILD_FROM
-ARG MUNINNDB_VERSION=0.5.1
+ARG MUNINNDB_VERSION=0.6.0
 
 # ---------------------------------------------------------------------------
 # Stage 1: Extract glibc runtime libraries
