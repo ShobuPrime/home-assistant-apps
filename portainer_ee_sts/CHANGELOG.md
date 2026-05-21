@@ -1,5 +1,32 @@
 # Changelog
 
+## Version 2.42.0 (2026-05-21)
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot.
+
+### Known issues with Podman support
+
+- Support for only CentOS 9, Podman 5 rootful.
+
+## Changes
+
+### Breaking changes
+
+Changes to the CSRF protection implementation may cause failures when upgrading:
+
+- Removal of legacy CSRF fallback (scheduled). The legacy-csrf feature flag, introduced in 2.41 as a temporary migration aid, has been removed as scheduled. Users still relying on this flag must resolve any CSRF configuration issues before upgrading (see the 2.41 breaking changes for details). This change also resolves CVE-2025-47909.
+
+### New and improved features
+
+- Added theme selector to the user menu, allowing switching between light, dark, and high-contrast themes without navigating to settings.
+- Added GitOps sources list view and source detail view for managing Git sources used in deployments.
+- Added a connectivity test before adding edge
+
+---
+
+
 ## Version 2.41.1 (2026-05-12)
 
 ## Known issues
