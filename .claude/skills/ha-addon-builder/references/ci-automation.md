@@ -131,8 +131,13 @@ log "Updated README.md"
 # Use conservative regex - only update specific version patterns, never section headers
 
 # Update CHANGELOG.md - prepend new entry
+# Format: bare "## X.Y.Z" header (no "Version " prefix, no trailing date)
+# so Core's release-notes regex ^#* {version}\n matches and only the
+# new-version delta is shown in the HA UI.
 DATE=$(date +%Y-%m-%d)
-CHANGELOG_ENTRY="## Version ${LATEST_VERSION} (${DATE})
+CHANGELOG_ENTRY="## ${LATEST_VERSION}
+
+_${DATE}_
 
 ${CHANGELOG}
 

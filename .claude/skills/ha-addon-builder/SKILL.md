@@ -131,6 +131,8 @@ These patterns exist because they solve real problems encountered in this repo:
 - **`#!/usr/bin/with-contenv bashio`** shebang for all S6 scripts
 - **`chmod a+x`** on all scripts in the Dockerfile
 - **Version must appear in three places**: `config.yaml` version field, `build.yaml` args, and `Dockerfile` `ARG <ADDON>_VERSION=` default — all must match. The update scripts maintain all three automatically.
+- **`CHANGELOG.md` version header must be bare `## X.Y.Z`** (no `Version ` prefix, no trailing date in parens, no `[brackets]`). Put the date on its own line below as `_YYYY-MM-DD_`. Core's update entity uses the regex `^#* {version}\n` to extract release notes — any other format makes the HA UI dump the entire changelog every release. See `references/templates.md`.
+- **Dockerfile `HEALTHCHECK`** — define one whenever the addon exposes a TCP/HTTP endpoint. Supervisor reads it and gates the `STARTUP → STARTED` state transition (yellow → green dot in the HA UI) on the healthcheck going healthy; without it, the dot turns green the moment the container is running, even if the app inside isn't responsive yet. Reuse the same endpoint that `watchdog:` points to.
 - **Signed commits** - never add Claude Code attribution lines
 
 ### config.yaml Conventions
@@ -224,6 +226,12 @@ COPY rootfs /
 RUN chmod a+x /etc/cont-init.d/*.sh \
     && chmod a+x /etc/services.d/*/run \
     && chmod a+x /etc/services.d/*/finish
+
+# Healthcheck — Supervisor reads this and uses it to gate the
+# STARTUP → STARTED state transition (yellow → green dot in HA UI).
+# Reuse the same endpoint as `watchdog:` in config.yaml.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fs http://127.0.0.1:<main-port>/<health-path> || exit 1
 
 # Build arguments
 ARG BUILD_ARCH
@@ -431,7 +439,8 @@ Before considering the addon complete, verify:
 - [ ] Update workflow has a unique cron schedule (don't overlap with existing ones)
 - [ ] Base image update script includes the new addon
 - [ ] `icon.png` exists (PNG, minimum 256x256, sourced from upstream project branding)
-- [ ] CHANGELOG.md has an initial entry
+- [ ] CHANGELOG.md has an initial entry in the regex-compatible format (`## X.Y.Z` on its own line, date on the line below as `_YYYY-MM-DD_`)
+- [ ] Dockerfile defines a `HEALTHCHECK` matching the `watchdog:` endpoint (skip only for headless/hardware addons with no probe target)
 - [ ] README.md has correct architecture shields (only aarch64 and amd64)
 - [ ] CLAUDE.md accurately describes the addon's architecture and critical details
 - [ ] Local build succeeds: `cd <addon> && ./build.sh`

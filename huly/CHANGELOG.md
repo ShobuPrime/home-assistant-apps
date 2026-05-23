@@ -1,7 +1,8 @@
 # Changelog
 
-## Version 0.7.423 (2026-05-10)
+## 0.7.423
 
+_2026-05-10_
 Update to v0.7.423 (#299)
 
 Signed-off-by: Artem Savchenko <armisav@gmail.com>
@@ -26,8 +27,9 @@ Describe how to skip workspace initial content (#288)
 ---
 
 
-## Version 0.7.382 (2026-03-07)
+## 0.7.382
 
+_2026-03-07_
 refactor: simplify - docker compose autogenerates container names (#275)
 
 also, this makes it easier to identify which stack a container belongs to in docker ps -a when you run multiple docker compose stacks on the same host
@@ -50,8 +52,9 @@ Update to version 382 (#276)
 
 ---
 
-## Version 0.7.375 (2026-03-01)
+## 0.7.375
 
+_2026-03-01_
 ### Initial Release
 - Initial Home Assistant addon for Huly self-hosted
 - Full Huly platform stack with all 14 services

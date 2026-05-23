@@ -1,7 +1,8 @@
 # Changelog
 
-## Version 0.6.0 (2026-05-21)
+## 0.6.0
 
+_2026-05-21_
 ## New Features
 
 - **Audit logging** — structured audit trail with file, stdout, syslog, and webhook sinks; CLI `audit tail/export/stats` commands (#418)
@@ -21,8 +22,9 @@
 ---
 
 
-## Version 0.5.1 (2026-05-07)
+## 0.5.1
 
+_2026-05-07_
 ## Bug Fixes
 
 - **fix(fts):** Auto-restart FTS worker goroutines after panic — worker goroutines that panicked were never replaced, eventually making all new writes unsearchable until server restart (#430)
@@ -32,8 +34,9 @@
 ---
 
 
-## Version 0.5.0 (2026-04-28)
+## 0.5.0
 
+_2026-04-28_
 ## What's New
 
 ### feat: per-engram trust/taint labels (#387)
@@ -54,8 +57,9 @@
 ---
 
 
-## Version 0.4.10 (2026-04-03)
+## 0.4.10
 
+_2026-04-03_
 ## What's new
 
 ### Added
@@ -73,8 +77,9 @@
 ---
 
 
-## Version 0.4.9-alpha (2026-03-31)
+## 0.4.9-alpha
 
+_2026-03-31_
 ## What's Changed
 - **fix(mcp):** order JSON Schema properties required-first in `tools/list` (#310)
   - Fixes Python MCP SDK clients crashing with `TypeError: non-default argument follows default argument`
@@ -83,8 +88,9 @@
 ---
 
 
-## Version 0.4.8-alpha (2026-03-30)
+## 0.4.8-alpha
 
+_2026-03-30_
 ## What's Changed
 * feat(dream): memories accumulate but never consolidate -- add dream engine foundation by `5queezer` in https://github.com/scrypster/muninndb/pull/306
 * feat(dream): dream engine foundation by `scrypster` in https://github.com/scrypster/muninndb/pull/307
@@ -97,8 +103,9 @@
 ---
 
 
-## Version 0.4.7-alpha (2026-03-28)
+## 0.4.7-alpha
 
+_2026-03-28_
 ## What's Changed
 * fix(build): add -tags localassets and fix Docker publish trigger by `scrypster` in https://github.com/scrypster/muninndb/pull/292
 * docs: proactive agent prompting guide (credit cmdillon, #293) by `scrypster` in https://github.com/scrypster/muninndb/pull/295
@@ -112,8 +119,9 @@
 ---
 
 
-## Version 0.4.6-alpha (2026-03-22)
+## 0.4.6-alpha
 
+_2026-03-22_
 ## What's Changed
 * fix(plugin): apply MUNINN_OPENAI_URL to openai:// enrichment provider by `scrypster` in https://github.com/scrypster/muninndb/pull/278
 * docs(plugins): clarify MUNINN_ENRICH_API_KEY vs MUNINN_OPENAI_KEY separation by `scrypster` in https://github.com/scrypster/muninndb/pull/280
@@ -129,8 +137,9 @@
 ---
 
 
-## Version 0.4.4-alpha (2026-03-17)
+## 0.4.4-alpha
 
+_2026-03-17_
 ## What's Changed
 * release: merge develop into main for v0.4.4-alpha by `scrypster` in https://github.com/scrypster/muninndb/pull/272
 
@@ -140,8 +149,9 @@
 ---
 
 
-## Version 0.4.3-alpha (2026-03-16)
+## 0.4.3-alpha
 
+_2026-03-16_
 ## What's Changed
 * refactor(engine): harden API surface for Stage 2 embedding roadmap by `scrypster` in https://github.com/scrypster/muninndb/pull/240
 * engine: seal Store() leaks and fix Filter.Value type mismatches by `scrypster` in https://github.com/scrypster/muninndb/pull/242
@@ -155,8 +165,9 @@
 ---
 
 
-## Version 0.4.2-alpha (2026-03-15)
+## 0.4.2-alpha
 
+_2026-03-15_
 ## What's Changed
 * Release: develop → main by @scrypster in https://github.com/scrypster/muninndb/pull/252
 
@@ -166,8 +177,9 @@
 ---
 
 
-## Version 0.4.1-alpha (2026-03-14)
+## 0.4.1-alpha
 
+_2026-03-14_
 ### Initial release
 
 - Initial Home Assistant add-on for MuninnDB

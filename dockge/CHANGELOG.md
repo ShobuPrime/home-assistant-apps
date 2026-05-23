@@ -1,7 +1,6 @@
 # Changelog
 
-## Version 1.5.0
-
+## 1.5.0
 ### 🆕 New Features
 - Docker client updated to 28.0.4
 - Docker Compose updated to 2.34.0

@@ -1,8 +1,8 @@
 # Changelog
 
-## Version 1.19.4 (2026-05-19)
+## 1.19.4
 
-
+_2026-05-19_
 ### Bug fixes
 
 * block unsafe compose include file reads ([#2630](https://github.com/getarcaneapp/arcane/pull/2630) by `kmendell`)
@@ -24,8 +24,9 @@
 ---
 
 
-## Version 1.16.4 (2026-03-24)
+## 1.16.4
 
+_2026-03-24_
 ### Bug fixes
 
 * pin and enforce trivy scanner digest([7975270](https://github.com/getarcaneapp/arcane/commit/7975270059a36e40eb6a2a7fc1d7203f90198bf4) by `kmendell` )
@@ -37,9 +38,9 @@
 ---
 
 
-## Version 1.16.3 (2026-03-16)
+## 1.16.3
 
-
+_2026-03-16_
 ### Bug fixes
 
 * docker container creation on api 1.44 attach primary network then remaining networks ([#2053](https://github.com/getarcaneapp/arcane/pull/2053) by `kmendell`)
@@ -57,9 +58,9 @@
 ---
 
 
-## Version 1.16.2 (2026-03-14)
+## 1.16.2
 
-
+_2026-03-14_
 ### Bug fixes
 
 * forward and validate origin header in websocket tunnel ([#2003](https://github.com/getarcaneapp/arcane/pull/2003) by @kmendell)
@@ -74,9 +75,9 @@
 ---
 
 
-## Version 1.16.1 (2026-03-12)
+## 1.16.1
 
-
+_2026-03-12_
 ### Bug fixes
 
 * explicitly set docker api version based on daemon api version ([#1964](https://github.com/getarcaneapp/arcane/pull/1964) by @kmendell)
@@ -94,9 +95,9 @@
 ---
 
 
-## Version 1.16.0 (2026-03-07)
+## 1.16.0
 
-
+_2026-03-07_
 ### New features
 
 * add grpc support to edge agent tunnel ([#1730](https://github.com/getarcaneapp/arcane/pull/1730) by @kmendell)
@@ -112,9 +113,9 @@
 ---
 
 
-## Version 1.15.3 (2026-02-24)
+## 1.15.3
 
-
+_2026-02-24_
 ### Bug fixes
 
 * use cpuset instead of cpusnano on synology devices ([#1782](https://github.com/getarcaneapp/arcane/pull/1782) by @kmendell)
@@ -128,9 +129,9 @@
 ---
 
 
-## Version 1.15.2 (2026-02-19)
+## 1.15.2
 
-
+_2026-02-19_
 ### Bug fixes
 
 * git test connection not using default branch ([#1766](https://github.com/getarcaneapp/arcane/pull/1766) by @kmendell)
@@ -145,8 +146,9 @@
 ---
 
 
-## Version 1.15.0 (2026-02-14)
+## 1.15.0
 
+_2026-02-14_
 ### New features
 
 * sync .env files from git repositories ([#1632](https://github.com/getarcaneapp/arcane/pull/1632) by @Icehunter)
@@ -180,9 +182,9 @@
 
 ---
 
-## Version 1.14.1 (2026-02-11)
+## 1.14.1
 
-
+_2026-02-11_
 ### Bug fixes
 
 * incorrect backgrounds on lightmode ui elements([635e5d0](https://github.com/getarcaneapp/arcane/commit/635e5d0e5f98b0b7001ee2bac51dac155ac3a9dd) by @kmendell)
@@ -198,8 +200,9 @@
 ---
 
 
-## Version 1.13.2 (2026-01-20)
+## 1.13.2
 
+_2026-01-20_
 > [!IMPORTANT]
 > Huge shoutout to @PvtSec for reporting GHSA-2jv8-39rp-cqqr, We recomend upgrading arcane to this version ASAP to fix that issue. 
 
@@ -218,9 +221,9 @@
 ---
 
 
-## Version 1.13.1 (2026-01-19)
+## 1.13.1
 
-
+_2026-01-19_
 ### Backend - Bug fixes
 
 * ability to resize editor panels horizontally ([#1500](https://github.com/getarcaneapp/arcane/pull/1500) by @kmendell)
@@ -237,8 +240,9 @@
 ---
 
 
-## Version 1.12.2 (2026-01-14)
+## 1.12.2
 
+_2026-01-14_
 > [!IMPORTANT]
 > Sorry for the double release, this release however should fix the path issues by making all projects directories absolute paths instead of relative paths.
 
@@ -256,8 +260,9 @@
 ---
 
 
-## Version 1.11.3 (2026-01-04)
+## 1.11.3
 
+_2026-01-04_
 ### Initial Release
 
 - Initial Home Assistant addon release
