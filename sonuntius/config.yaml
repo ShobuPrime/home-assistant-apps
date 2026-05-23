@@ -9,7 +9,10 @@ arch:
   - amd64
 startup: services
 boot: auto
-watchdog: http://127.0.0.1:8099/health
+# No watchdog: ma-bridge's health endpoint binds to 127.0.0.1:8099
+# specifically and is unreachable from the Supervisor probe. The
+# Dockerfile HEALTHCHECK runs inside the container and gates the
+# STARTUP -> STARTED state transition, which is what we actually want.
 host_network: true
 host_dbus: false
 hassio_api: true
