@@ -1,7 +1,8 @@
 # Changelog
 
-## Version 2.42.0 (2026-05-21)
+## 2.42.0
 
+_2026-05-21_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot.
@@ -27,8 +28,9 @@ Changes to the CSRF protection implementation may cause failures when upgrading:
 ---
 
 
-## Version 2.41.1 (2026-05-12)
+## 2.41.1
 
+_2026-05-12_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -57,8 +59,9 @@ None
 ---
 
 
-## Version 2.41.0 (2026-04-30)
+## 2.41.0
 
+_2026-04-30_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -81,8 +84,9 @@ The previous CSRF implementation can be re-enabled by starting Portainer with th
 ---
 
 
-## Version 2.40.0 (2026-03-26)
+## 2.40.0
 
+_2026-03-26_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -107,8 +111,9 @@ The previous CSRF implementation can be re-enabled by starting Portainer with th
 ---
 
 
-## Version 2.38.1 (2026-02-14)
+## 2.38.1
 
+_2026-02-14_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -131,8 +136,9 @@ The previous CSRF implementation can be re-enabled by starting Portainer with th
 
 ---
 
-## Version 2.38.0 (2026-02-11)
+## 2.38.0
 
+_2026-02-11_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -159,8 +165,9 @@ The previous CSRF implementation can be re-enabled by starting Portainer with th
 ---
 
 
-## Version 2.37.0 (2025-12-12)
+## 2.37.0
 
+_2025-12-12_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -184,8 +191,9 @@ The previous CSRF implementation can be re-enabled by starting Portainer with th
 ---
 
 
-## Version 2.36.0 (2025-11-28)
+## 2.36.0
 
+_2025-11-28_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -213,8 +221,9 @@ The previous CSRF implementation can be re-enabled by starting Portainer with th
 ---
 
 
-## Version 2.35.0 (2025-10-27)
+## 2.35.0
 
+_2025-10-27_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -238,8 +247,7 @@ The previous CSRF implementation can be re-enabled by starting Portainer with th
 ---
 
 
-## Version 2.34.0
-
+## 2.34.0
 ### Add-on Changes
 
 **IMPORTANT FIX:** Added `CSP=false` environment variable to fix Home Assistant ingress/iframe compatibility. Portainer 2.33.0+ introduced Content-Security-Policy headers that block iframe embedding, preventing access through Home Assistant's ingress. This fix disables those restrictive headers to restore functionality.

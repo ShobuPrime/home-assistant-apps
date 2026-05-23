@@ -140,6 +140,12 @@ ARG BUILD_VERSION
 ARG MUNINNDB_VERSION
 
 # Labels
+# Healthcheck — Supervisor reads this to gate the STARTUP -> STARTED state
+# transition (yellow -> green dot in the HA UI) on the app actually being
+# reachable, instead of just on the container being up.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fs http://127.0.0.1:8475/ || exit 1
+
 LABEL \
     io.hass.name="${BUILD_NAME}" \
     io.hass.description="${BUILD_DESCRIPTION}" \

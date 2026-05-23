@@ -1,7 +1,8 @@
 # Changelog
 
-## Version 1.0.29 (2026-05-19)
+## 1.0.29
 
+_2026-05-19_
 ### Changed
 - Updated Dockhand to version 1.0.29
 
@@ -40,8 +41,9 @@ Also available as `fnsys/dockhand:latest`
 ---
 
 
-## Version 1.0.24 (2026-04-04)
+## 1.0.24
 
+_2026-04-04_
 ### Changed
 - Updated Dockhand to version 1.0.24
 
@@ -65,8 +67,9 @@ Also available as `fnsys/dockhand:latest`
 ---
 
 
-## [1.0.21] - 2026-03-14
+## 1.0.21
 
+_2026-03-14_
 ### Changed
 - Updated Dockhand to version 1.0.21
 
@@ -87,8 +90,9 @@ Changes:
 ---
 
 
-## [1.0.20] - 2026-03-07
+## 1.0.20
 
+_2026-03-07_
 ### Changed
 - Updated Dockhand to version 1.0.20
 
@@ -109,8 +113,9 @@ Changes:
 ---
 
 
-## [1.0.18] - 2026-02-19
+## 1.0.18
 
+_2026-02-19_
 ### Changed
 - Updated Dockhand to version 1.0.18
 
@@ -133,8 +138,9 @@ Changes:
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.17] - 2026-02-14
+## 1.0.17
 
+_2026-02-14_
 ### Changed
 - Updated Dockhand to version 1.0.17
 
@@ -182,8 +188,9 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [1.0.10] - 2026-01-20
+## 1.0.10
 
+_2026-01-20_
 ### Added
 - Initial release of Dockhand Home Assistant Add-on
 - Docker container management (start, stop, restart, remove)

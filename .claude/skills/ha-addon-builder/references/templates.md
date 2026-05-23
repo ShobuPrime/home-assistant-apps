@@ -362,10 +362,18 @@ The addon automatically tracks releases. Updates appear in the Home Assistant UI
 
 ## CHANGELOG.md
 
+> **Format note:** Home Assistant Core's `update.<addon>` entity extracts
+> release notes with the regex `^#* {version}\n` — meaning the version
+> header must be the entire line content. Using `## Version X.Y.Z (date)`
+> or `## [X.Y.Z]` will break extraction and the UI will dump the entire
+> changelog every time. Put the date on a separate line below.
+
 ```markdown
 # Changelog
 
-## Version X.Y.Z (YYYY-MM-DD)
+## X.Y.Z
+
+_YYYY-MM-DD_
 
 ### Initial release
 

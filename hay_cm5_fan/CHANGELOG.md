@@ -1,7 +1,8 @@
 # Changelog
 
-## Version 1.0.0 (2026-03-21)
+## 1.0.0
 
+_2026-03-21_
 ### Initial release
 
 - GPIO-based fan control via sysfs for Home Assistant Yellow with CM5

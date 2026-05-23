@@ -152,7 +152,9 @@ update_changelog() {
         cat > "$temp_file" << EOF
 # Changelog
 
-## Version $new_version ($(date +%Y-%m-%d))
+## $new_version
+
+_$(date +%Y-%m-%d)_
 
 $changelog_content
 
@@ -166,7 +168,9 @@ EOF
         cat > "$addon_path/CHANGELOG.md" << EOF
 # Changelog
 
-## Version $new_version ($(date +%Y-%m-%d))
+## $new_version
+
+_$(date +%Y-%m-%d)_
 
 $changelog_content
 

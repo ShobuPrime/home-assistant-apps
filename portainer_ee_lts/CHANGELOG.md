@@ -1,7 +1,8 @@
 # Changelog
 
-## Version 2.39.2 (2026-05-09)
+## 2.39.2
 
+_2026-05-09_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -26,8 +27,9 @@
 ---
 
 
-## Version 2.33.8 (2026-05-07)
+## 2.33.8
 
+_2026-05-07_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -52,8 +54,9 @@
 ---
 
 
-## Version 2.39.1 (2026-03-20)
+## 2.39.1
 
+_2026-03-20_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -77,8 +80,9 @@
 ---
 
 
-## Version 2.39.0 (2026-02-26)
+## 2.39.0
 
+_2026-02-26_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -103,8 +107,9 @@
 ---
 
 
-## Version 2.33.7 (2026-02-11)
+## 2.33.7
 
+_2026-02-11_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -134,8 +139,9 @@
 ---
 
 
-## Version 2.33.6 (2025-12-18)
+## 2.33.6
 
+_2025-12-18_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -157,8 +163,9 @@
 ---
 
 
-## Version 2.33.5 (2025-11-28)
+## 2.33.5
 
+_2025-11-28_
 ## Known issues
 
 - On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
@@ -186,8 +193,9 @@
 ---
 
 
-## Version 2.33.3 (2025-11-01)
+## 2.33.3
 
+_2025-11-01_
 # Release 2.33.3 LTS
 
 ## Known issues
@@ -223,8 +231,7 @@
 ---
 
 
-## Version 2.34.0
-
+## 2.34.0
 ### Add-on Changes
 
 **IMPORTANT FIX:** Added `CSP=false` environment variable to fix Home Assistant ingress/iframe compatibility. Portainer 2.33.0+ introduced Content-Security-Policy headers that block iframe embedding, preventing access through Home Assistant's ingress. This fix disables those restrictive headers to restore functionality.

@@ -1,7 +1,8 @@
 # Changelog
 
-## Version 0.3.2 (2026-05-12)
+## 0.3.2
 
+_2026-05-12_
 ### Pure v0.2.7 UX, only yt-dlp cache added
 
 User report after testing v0.3.0 (v0.2.7 + yt-dlp cache + sender-
@@ -62,8 +63,9 @@ v0.3.1 commits from history entirely.
   The cachedState clear and `idle → paused` promotion are both
   gone.
 
-## Version 0.2.7 (2026-05-11)
+## 0.2.7
 
+_2026-05-11_
 ### Async per-type dispatch + volume coalescing — every press lands, bursts deduped
 
 Two follow-on optimizations the user asked for after v0.2.6 (FAF):
@@ -118,8 +120,9 @@ volume) continue to reach the phone in real time.
 - **Pre-encoded WS frame templates** (volume_set takes one int —
   could pre-marshal everything else): also microsecond-scale.
 
-## Version 0.2.6 (2026-05-11)
+## 0.2.6
 
+_2026-05-11_
 ### Fire-and-forget for idempotent MA commands — every rapid press registers
 
 Real engineering bottleneck the user flagged:
@@ -170,8 +173,9 @@ using `Send` (we use their responses for error handling).
   The cost is one round-trip per cast — not per press.
 - HA REST fallback path is unchanged — still synchronous.
 
-## Version 0.2.5 (2026-05-11)
+## 0.2.5
 
+_2026-05-11_
 ### Suppress HA-WS state when MA-WS has spoken — fixes the paused → idle → reset-to-0 flip
 
 v0.2.4 fixed `player_updated` from MA but left the **HA core WS state
@@ -211,8 +215,9 @@ becomes the full fallback again when MA-WS is silent for >15 s.
 Volume responsiveness from v0.2.4 is unchanged and continues to
 work correctly (the live log confirmed it).
 
-## Version 0.2.4 (2026-05-11)
+## 0.2.4
 
+_2026-05-11_
 ### Volume — DoGetVolume returns user intent during input window; player_updated stops driving state
 
 Two cause-and-effect bugs from the v0.2.3 live log.
@@ -262,8 +267,9 @@ info. The status=-1 spurious push is gone.
 This also fixes the user's separate "scrub in MA, pause+play from
 phone, restarts at 0" report — same root cause.
 
-## Version 0.2.3 (2026-05-11)
+## 0.2.3
 
+_2026-05-11_
 ### Pause via NotifyExternalStatus + idle/active → paused mapping + volume race fix
 
 Three concrete fixes for the v0.2.2 live log.
@@ -332,8 +338,9 @@ follows (after ~2 s of input quiet).
   even from a YouTube playlist. The engine port's playlist
   tracking likely needs deeper work — separate effort.
 
-## Version 0.2.2 (2026-05-11)
+## 0.2.2
 
+_2026-05-11_
 ### Real bidirectional sync — handle MA's queue events; merge state updates; optimistic volume echo
 
 Three concrete bugs caught in the v0.2.1 live log.
@@ -395,8 +402,9 @@ back inside that bucket). With raw values, echoing what the user
 sent doesn't create a feedback loop — the phone's next computation
 is `current + step`, not `bucket + offset`.
 
-## Version 0.2.1 (2026-05-11)
+## 0.2.1
 
+_2026-05-11_
 ### Close the bi-directional sync loop + suppress volume-echo races
 
 Three issues from the v0.2.0 live test.
@@ -446,8 +454,9 @@ A deeper fix (synthesise a candidate via YouTube's "related videos"
 when the cast app doesn't supply one) needs engine-port investigation
 and is deferred.
 
-## Version 0.2.0 (2026-05-11)
+## 0.2.0
 
+_2026-05-11_
 ### Direct MA WebSocket — bypass HA REST for all MA-bound traffic
 
 Major refactor of the command path. ma-bridge now opens a single
@@ -554,8 +563,9 @@ method on the App and Receiver.
   `ma.ClearQueue`, and `ma.Watcher` types now superseded by
   `WSClient`. Mechanical follow-up.
 
-## Version 0.1.18 (2026-05-11)
+## 0.1.18
 
+_2026-05-11_
 ### Volume passthrough + revert play_media option to "play" (with explicit queue clear)
 
 **1. Strip volume calculations — pass raw value straight to MA.** Per
@@ -602,8 +612,9 @@ skipped (HA's `media_player.play_media` doesn't have an equivalent).
   per upcoming video, and reverse "remove from queue"
   translation.
 
-## Version 0.1.17 (2026-05-11)
+## 0.1.17
 
+_2026-05-11_
 ### Session reset on sender disconnect
 
 When every sender (Cast app on phone) has disconnected, the adapter
@@ -644,8 +655,9 @@ The user raised goroutines + mutexes for ordering. Re-evaluated:
 - `sync.Pool` for IPC scanner buffers is a microsecond-scale win;
   also tracked for follow-up.
 
-## Version 0.1.16 (2026-05-11)
+## 0.1.16
 
+_2026-05-11_
 ### Volume delta routing + honour sender start position
 
 **1. Volume feedback loop fixed.** With `volume_step = 10`, the
@@ -712,8 +724,9 @@ video, clearing MA's queue on sender disconnect, and translating
 YouTube "remove from queue" back to MA. Each one is small but
 the lifecycle handling is delicate enough to warrant its own PR.
 
-## Version 0.1.15 (2026-05-11)
+## 0.1.15
 
+_2026-05-11_
 ### Position bounds + cast-start state seeding
 
 Two issues from the v0.1.14 live test.
@@ -755,8 +768,9 @@ local estimator, and fires `onStateChange` so the engine pushes
 the new info to the phone right away. Speaker-scoped fields
 (volume, muted) are preserved across casts.
 
-## Version 0.1.14 (2026-05-11)
+## 0.1.14
 
+_2026-05-11_
 ### Volume bidirectional sync + queue replace
 
 Two refinements suggested by the user after v0.1.13 worked end-to-end.
@@ -797,8 +811,9 @@ hooking the engine's queue-modified events and sending follow-up
 separate effort because it needs careful sender-disconnect
 lifecycle handling to avoid orphaned MA queue items.
 
-## Version 0.1.13 (2026-05-11)
+## 0.1.13
 
+_2026-05-11_
 ### MA queue skip fix — revert item_id to the URL
 
 v0.1.12's MediaItem reached MA correctly: the queue title was
@@ -829,8 +844,9 @@ ffmpeg metadata only supplements the audio-format streamdetails.
 `internal/dispatcher/dispatcher.go::playViaMAWS`: `itemID := uri`,
 removed the unused `shortHash` helper.
 
-## Version 0.1.12 (2026-05-11)
+## 0.1.12
 
+_2026-05-11_
 ### Real metadata fix, fully responsive volume, position-drift guard
 
 Three issues from the v0.1.11 live test.
@@ -897,8 +913,9 @@ estimator.
 `internal/state/watcher.go::playerStateFrom`: only set
 `ps.Position` when the value is > 0 or the state is not `playing`.
 
-## Version 0.1.11 (2026-05-11)
+## 0.1.11
 
+_2026-05-11_
 ### MA queue_id auto-discovery, `volume_step` default → 10
 
 Follow-up from the v0.1.10 live test. v0.1.10 fixed the auth path
@@ -955,8 +972,9 @@ default constant flipped to 10.
 `internal/ma/match_player_test.go` (new): covers each MatchPlayer
 rule plus slugify edge cases.
 
-## Version 0.1.10 (2026-05-11)
+## 0.1.10
 
+_2026-05-11_
 ### Volume quantisation, actionable MA-auth guidance, debug telemetry
 
 Three follow-ups from the v0.1.9 live test, all narrow and additive:
@@ -1011,8 +1029,9 @@ estimator value is reusable, added drift logging in
 - `internal/config/config.go`: new `VolumeStep` field with
   `EffectiveVolumeStep()` accessor (default 5, clamped to ≤50).
 
-## Version 0.1.9 (2026-05-11)
+## 0.1.9
 
+_2026-05-11_
 ### Local position estimation + seek/volume visibility
 
 Two issues from the v0.1.8 live test:
@@ -1079,8 +1098,9 @@ configured. A new log line on startup —
 `dispatcher: MA WS play_media path enabled` — confirms the bypass
 is active.
 
-## Version 0.1.8 (2026-05-11)
+## 0.1.8
 
+_2026-05-11_
 ### subscribe_events instead of subscribe_trigger; flat-and-nested play_media metadata
 
 First-light testing of v0.1.7 surfaced two bugs that the new logging
@@ -1120,8 +1140,9 @@ and use MA's native WS `player_queues/play_media` command with a
 full MediaItem object — that bypass guarantees richer metadata
 handling, at the cost of a deeper change to the dispatcher.
 
-## Version 0.1.7 (2026-05-11)
+## 0.1.7
 
+_2026-05-11_
 ### Bidirectional player-state sync + rich MA metadata
 
 A first end-to-end success of v0.1.6 (audio actually playing on a real
@@ -1201,8 +1222,9 @@ the video. The player adapter prefers that over the hard-coded
 dispatcher forwards it as both `extra.metadata.image` and
 `extra.metadata.thumb` so MA's UI can render proper cover art.
 
-## Version 0.1.6 (2026-05-11)
+## 0.1.6
 
+_2026-05-11_
 ### Pre-resolve YouTube watch URLs to direct stream URLs via yt-dlp
 
 A first live v0.1.5 test with `ma_player_id` correctly set surfaced
@@ -1242,8 +1264,9 @@ Existing tests:
 
 Image size impact: ~5 MB for `yt-dlp` + its Python deps via apk.
 
-## Version 0.1.5 (2026-05-11)
+## 0.1.5
 
+_2026-05-11_
 ### Trim whitespace from every string option
 
 A first live test of v0.1.4 with `ma_player_id` set caught an
@@ -1262,8 +1285,9 @@ HA/MA URL+token overrides, and every `tidal_fallback.*` string. New
 This complements the `cmd/cast-receiver/options.go` cert-path trim that
 already existed and centralises the defensive behaviour in the loader.
 
-## Version 0.1.4 (2026-05-11)
+## 0.1.4
 
+_2026-05-11_
 ### MA addon hostname derivation
 
 A first live v0.1.3 cast revealed that the Supervisor `/addons` bulk
@@ -1284,8 +1308,9 @@ The Phase 6a direct-MA-WS path now engages automatically on installs
 that have Music Assistant alongside Sonuntius, without the user
 needing to set `ma_ws_url` manually.
 
-## Version 0.1.3 (2026-05-11)
+## 0.1.3
 
+_2026-05-11_
 ### YouTube-classic playback path + auto-discovery observability
 
 - `cmd/yt-cast/player.go`: when a Cast sender is the regular YouTube
@@ -1325,8 +1350,9 @@ needing to set `ma_ws_url` manually.
   `Pushing player-state update to sender: names=[onStateChange nowPlaying onHasPreviousNextChanged] status=1`
   now appear after every state transition.
 
-## Version 0.1.2 (2026-05-11)
+## 0.1.2
 
+_2026-05-11_
 ### MA addon auto-discovery + /share/sonuntius bootstrap
 
 - `config.yaml`: add `hassio_role: manager`. Without this, the addon's
@@ -1343,8 +1369,9 @@ needing to set `ma_ws_url` manually.
   so future permission issues surface in the addon log instead of
   being swallowed at the default log level.
 
-## Version 0.1.1 (2026-05-11)
+## 0.1.1
 
+_2026-05-11_
 ### Configurable listen ports — Music Assistant port-3000 conflict fix
 
 - New options `yt_cast_dial_port` (default `8008`) and
@@ -1361,8 +1388,9 @@ needing to set `ma_ws_url` manually.
 - 4 new unit tests in `internal/config/config_test.go` covering the
   effective-port helpers (default, user override, partial override).
 
-## Version 0.1.0 (2026-05-11)
+## 0.1.0
 
+_2026-05-11_
 ### Phase 6 — Polish (health endpoint + persistent state + direct MA WS)
 
 - Plan §10 Path B implemented: a new `internal/ma/` package opens the

@@ -9,6 +9,7 @@ arch:
   - amd64
 startup: services
 boot: auto
+watchdog: http://127.0.0.1:8099/health
 host_network: true
 host_dbus: false
 hassio_api: true
