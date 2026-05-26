@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.19.5
+
+_2026-05-26_
+
+
+### Bug fixes
+
+* improve environment proxy error handling ([#2649](https://github.com/getarcaneapp/arcane/pull/2649) by `kmendell`)
+* align local BuildKit load/push exporter ([#2650](https://github.com/getarcaneapp/arcane/pull/2650) by `kmendell`)
+* PUID and PGID being set on project subfolder on every startup ([#2656](https://github.com/getarcaneapp/arcane/pull/2656) by `kmendell`)
+* system upgrade doesnt support non unix socket docker hosts ([#2651](https://github.com/getarcaneapp/arcane/pull/2651) by `kmendell`)
+* resizing window discards edits in compose editors ([#2719](https://github.com/getarcaneapp/arcane/pull/2719) by `kmendell`)
+* only validate project name if it has changed ([#2720](https://github.com/getarcaneapp/arcane/pull/2720) by `kmendell`)
+* make Arcane reverse-proxy aware to resolve connection issues ([#2717](https://github.com/getarcaneapp/arcane/pull/2717) by `kmendell`)
+* tolerate undefined typed env vars in GitOps sync ([#2721](https://github.com/getarcaneapp/arcane/pu
+
+---
+
+
 ## 1.19.4
 
 _2026-05-19_
