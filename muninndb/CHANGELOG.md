@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.1
+
+_2026-05-27_
+
+## Bug Fixes
+
+- **fix(cluster)** — defer \`OnLobeJoined\` callback until \`JoinResponse\` + snapshot are fully on the wire; prevents \`NetworkStreamer\` from racing the handshake and corrupting the lobe-side parser (#449, #448 Bug 1)
+- **fix(cli)** — auto-detect TLS in \`muninn status\` / \`muninn start\` health probes (#444)
+
+## Improvements
+
+- **feat(consolidation)** — representative node absorbs \`AccessCount\` of merged duplicates during dedup (#447)
+- **feat(enrichment)** — Gemini 2.5 Flash added as a Google enrichment option; promoted to default Google model (#450, #452)
+- **chore(consolidation)** — dedup metadata-update errors now surfaced in consolidation report (#451)
+- **chore** — polish \`isLoopbackURL\` and \`isTLSCertError\` helpers (#446)
+- **style** — gofmt-align literals in \`repl_client_test.go\` (#445)
+
+---
+
+
 ## 0.6.0
 
 _2026-05-21_
