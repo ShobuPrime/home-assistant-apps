@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.31
+
+_2026-05-31_
+
+### Changed
+- Updated Dockhand to version 1.0.31
+
+Released: 2026-05-30
+
+## What's new in v1.0.31
+
+- 🐛 502 Bad Gateway behind nginx-based reverse proxies — SvelteKit 2.51+ bloated the Link response header, pinned to 2.50.0 (#1114)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.31
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.29
 
 _2026-05-19_
