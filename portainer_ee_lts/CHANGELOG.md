@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.39.3
+
+_2026-06-04_
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Support for only CentOS 9, Podman 5 rootful
+- Auto onboarding a Podman environment defaults to "Standard" and not "Podman"
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+
+## Changes
+
+- Fixed a panic in Chisel
+- Bumped in-toto-golang to 0.11.0 to address GHSA-pmwq-pjrm-6p5r
+- Fixed a team access escalation via AuthorizedResourceControlUpdate logic flaw
+- Fixed a full-read server-side request forgery (SSRF) vulnerability in the GitLab Registry Proxy endpoint that could be exploited via the X-Gitlab-Domain header
+- Bumped github.com/go-git/go-git/v5 to 5.18.0 to address the following CVEs:
+  - CVE-2026-34165
+  - GHSA-3xc5-wrhm-f963
+  - CVE-2026-33762
+- Bumped golang.org/x/net to >= 0.53.0 to address the following CVEs:
+  - CVE-2026-27141
+
+---
+
+
 ## 2.39.2
 
 _2026-05-09_
