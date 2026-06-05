@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.20.0
+
+_2026-06-05_
+
+
+### New features
+
+* add removeOrphans option to project deploy/redeploy ([#2785](https://github.com/getarcaneapp/arcane/pull/2785) by `khanhx`)
+* prune idle volume browser helper containers ([#2767](https://github.com/getarcaneapp/arcane/pull/2767) by `Zgrill2`)
+
+### Bug fixes
+
+* slog-go nil pointer dereference ([#2781](https://github.com/getarcaneapp/arcane/pull/2781) by `lohrbini`)
+* dashboard card buttons paddings overlaps([c1a0bda](https://github.com/getarcaneapp/arcane/commit/c1a0bda6735a6c50ae989f7e4643ffb09b2edb75) by `kmendell`)
+* disable schema display on text selection([058f062](https://github.com/getarcaneapp/arcane/commit/058f062c17329eb43f1968717eff73e715459b79) by `kmendell`)
+* clear / check for default jwt secret([ae914bd](https://github.com/getarcaneapp/arcane/commit/ae914bdced852b4c5446a15c1dfbcbd5d6dd50e8) by `kmendell`)
+
+### Dependencies
+
+* bump date-fns from 4.2.1 to 4.3.0 ([#2745](https://github.com/getarcaneapp/arcane/pull/2745) by `dependabot`[bot])
+* bump `sveltejs`/ki
+
+---
+
+
 ## 1.19.5
 
 _2026-05-26_
