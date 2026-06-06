@@ -15,6 +15,7 @@ type mock struct {
 	armProfilesGlobal bool // GET /v1/arm-profiles returns 400 'global' (Global mode)
 	enableGlobal      bool // POST /v1/arm-profiles/enable returns 400 'global'
 	lastAPIKey        string
+	lastWebhook       string
 }
 
 func newMock(t *testing.T, m *mock) *Client {
@@ -59,6 +60,16 @@ func newMock(t *testing.T, m *mock) *Client {
 	})
 	mux.HandleFunc(p+"/sensors", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode([]Sensor{{ID: "s1", Name: "Front Door", MountType: "door", IsOpen: true}})
+	})
+	mux.HandleFunc(p+"/alarm-manager/webhook/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if id != "good-webhook" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":"Invalid webhook ID"}`)
+			return
+		}
+		m.lastWebhook = id
+		w.WriteHeader(http.StatusOK)
 	})
 
 	srv := httptest.NewTLSServer(mux)
@@ -124,5 +135,19 @@ func TestGetSensors(t *testing.T) {
 	}
 	if len(sensors) != 1 || !sensors[0].IsOpen || sensors[0].Name != "Front Door" {
 		t.Fatalf("unexpected sensors: %+v", sensors)
+	}
+}
+
+func TestFireWebhook(t *testing.T) {
+	m := &mock{}
+	c := newMock(t, m)
+	if err := c.FireWebhook(t.Context(), "good-webhook"); err != nil {
+		t.Fatalf("valid webhook should succeed: %v", err)
+	}
+	if m.lastWebhook != "good-webhook" {
+		t.Fatalf("webhook not received, got %q", m.lastWebhook)
+	}
+	if err := c.FireWebhook(t.Context(), "bogus"); err == nil {
+		t.Fatal("invalid webhook id should error")
 	}
 }

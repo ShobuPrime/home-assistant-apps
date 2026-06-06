@@ -161,6 +161,15 @@ type Options struct {
 	UniFiSite      string `json:"unifi_site"`
 	ProtectMode    string `json:"protect_mode"` // auto | local | app-managed
 
+	// Protect Alarm Manager webhook trigger IDs (Global-mode actuation):
+	// AegisHA POSTs /v1/alarm-manager/webhook/<id> to fire the bound Protect
+	// alarm's actions when it arms / disarms / triggers. Works in Global mode
+	// (unlike arm profiles). Create the alarms + webhook triggers in the
+	// Protect UI and paste the IDs here.
+	UniFiWebhookArm     string `json:"unifi_webhook_arm"`
+	UniFiWebhookDisarm  string `json:"unifi_webhook_disarm"`
+	UniFiWebhookTrigger string `json:"unifi_webhook_trigger"`
+
 	// Alarm behavior
 	ArmModes                   StringList `json:"arm_modes"`
 	ExitDelay                  int      `json:"exit_delay"`

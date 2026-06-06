@@ -42,6 +42,13 @@ type Config struct {
 	// official UniFi Protect integration's sensors; the engine still uses
 	// the sensor states internally for readiness + breach regardless.
 	ExposeZones bool
+
+	// Protect Alarm Manager webhook trigger IDs, fired on the corresponding
+	// AegisHA transition. These work in Global mode (where arm profiles are
+	// blocked), letting Protect react — e.g. sound a siren on a breach.
+	WebhookArm     string
+	WebhookDisarm  string
+	WebhookTrigger string
 }
 
 // Manager reconciles the alarm engine with a UniFi Protect gateway: it
@@ -246,13 +253,22 @@ func (m *Manager) poll(ctx context.Context) {
 }
 
 func (m *Manager) onSnapshot(ctx context.Context, snap alarm.Snapshot) {
-	// Siren actuation on a fresh trigger (both modes).
-	if snap.State == alarm.StateTriggered && m.lastState != alarm.StateTriggered {
+	// Protect Alarm Manager webhook actuation on AegisHA transitions. These
+	// fire regardless of Global/Local mode (the webhook endpoint is not
+	// blocked in Global), so they're the way to drive Protect's native alarm
+	// (siren/lights/notifications) from AegisHA while staying in Global.
+	switch {
+	case snap.State == alarm.StateTriggered && m.lastState != alarm.StateTriggered:
+		m.fireWebhook(ctx, m.cfg.WebhookTrigger)
 		for _, id := range m.cfg.SirenIDs {
 			if err := m.client.TriggerSiren(ctx, id, m.cfg.SirenMillis); err != nil {
 				m.log.Warn("unifi: siren trigger failed", "siren", id, "err", err)
 			}
 		}
+	case isArmed(snap.State) && !isArmed(m.lastState) && m.lastState != "":
+		m.fireWebhook(ctx, m.cfg.WebhookArm)
+	case snap.State == alarm.StateDisarmed && m.lastState != alarm.StateDisarmed && m.lastState != "":
+		m.fireWebhook(ctx, m.cfg.WebhookDisarm)
 	}
 
 	// Local-mirror arm/disarm.
@@ -282,4 +298,20 @@ func (m *Manager) onSnapshot(ctx context.Context, snap alarm.Snapshot) {
 
 func isArmed(s alarm.State) bool {
 	return strings.HasPrefix(string(s), "armed_")
+}
+
+// fireWebhook POSTs a Protect Alarm Manager webhook trigger (async, so it
+// never blocks snapshot handling). A no-op when id is empty.
+func (m *Manager) fireWebhook(ctx context.Context, id string) {
+	if id == "" {
+		return
+	}
+	go func() {
+		if err := m.client.FireWebhook(ctx, id); err != nil {
+			m.log.Warn("unifi: webhook fire failed (is this trigger ID configured in the Protect Alarm Manager?)",
+				"id", id, "err", err)
+			return
+		}
+		m.log.Info("unifi: fired Protect Alarm Manager webhook", "id", id)
+	}()
 }

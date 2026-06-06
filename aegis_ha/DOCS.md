@@ -63,6 +63,26 @@ UniFi site id. Default `default`.
 `sensor.aegis_ha_protect_link_mode` always reports the detected capability
 (`local` / `global` / `app-managed` / `unavailable`).
 
+#### Driving the Protect alarm in Global mode (webhooks)
+
+When the Alarm Manager is in **Global** mode, the Protect Integration API blocks
+all arm-profile operations (`GET /v1/arm-profiles` → `400 "not available when
+global alarm manager is enabled"`), so AegisHA cannot read or write a native arm
+profile. To still drive Protect's native alarm hardware (siren/lights/
+notifications) without leaving Global mode, use the **Alarm Manager webhook**
+path — which the API permits in any mode:
+
+1. In the Protect UI, create an Alarm with a **webhook** trigger and your chosen
+   action (e.g. siren). Note the webhook's trigger ID.
+2. Put that ID in the matching option — AegisHA POSTs
+   `/v1/alarm-manager/webhook/<id>` to fire that alarm when it transitions:
+   - `unifi_webhook_trigger`: fired when AegisHA enters **triggered** (breach) —
+     the main one, e.g. to sound the siren
+   - `unifi_webhook_arm` / `unifi_webhook_disarm`: fired on arm / disarm (e.g. a
+     confirmation chirp or notification)
+
+These are optional and independent of `protect_mode`.
+
 ### Alarm behavior
 
 - `arm_modes`: which modes the panel exposes — any of `away`, `home`, `night`,

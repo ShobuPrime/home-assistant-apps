@@ -31,6 +31,9 @@ options:
   unifi_verify_ssl: false
   unifi_site: "default"
   protect_mode: auto
+  unifi_webhook_arm: ""
+  unifi_webhook_disarm: ""
+  unifi_webhook_trigger: ""
   arm_modes:
     - away
     - home
@@ -64,6 +67,9 @@ schema:
   unifi_verify_ssl: bool
   unifi_site: str
   protect_mode: list(auto|local|app-managed)
+  unifi_webhook_arm: str?
+  unifi_webhook_disarm: str?
+  unifi_webhook_trigger: str?
   arm_modes:
     - list(away|home|night|vacation|custom)
   exit_delay: int(0,600)
