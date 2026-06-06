@@ -29,6 +29,13 @@ type Config struct {
 	Profiles     map[string]string // arm mode -> UniFi armProfileId (local mirror)
 	SirenIDs     []string
 	SirenMillis  int
+
+	// SensorOverrides maps a lowercased sensor name to its Alarmo-style
+	// per-sensor configuration (modes, always_on, immediate, group, …);
+	// Groups defines the sensor-group debounce rules. Sensors without an
+	// override use permissive defaults.
+	SensorOverrides map[string]alarm.SensorConfig
+	Groups          []alarm.SensorGroup
 }
 
 // Manager reconciles the alarm engine with a UniFi Protect gateway: it
@@ -42,13 +49,13 @@ type Manager struct {
 	cfg    Config
 	log    *slog.Logger
 
-	mode        Mode
-	connected   bool
-	prevOpen    map[string]bool // sensor id -> open, last poll
-	prevOpenSet string
-	lastState   alarm.State
-	lastMirror  alarm.State
-	wake        chan struct{}
+	mode          Mode
+	connected     bool
+	prevState     map[string]alarm.SensorEventKind // last event sent per sensor id
+	lastSensorSet string                           // detects when the sensor set/config changes
+	lastState     alarm.State
+	lastMirror    alarm.State
+	wake          chan struct{}
 }
 
 // NewManager builds a Manager.
@@ -66,10 +73,10 @@ func NewManager(client *Client, engine *alarm.Engine, pub Publisher, cfg Config,
 		client:   client,
 		engine:   engine,
 		pub:      pub,
-		cfg:      cfg,
-		log:      log,
-		prevOpen: map[string]bool{},
-		wake:     make(chan struct{}, 1),
+		cfg:       cfg,
+		log:       log,
+		prevState: map[string]alarm.SensorEventKind{},
+		wake:      make(chan struct{}, 1),
 	}
 }
 
@@ -182,35 +189,49 @@ func (m *Manager) poll(ctx context.Context) {
 		return
 	}
 
-	var openNames []string
-	newlyOpen := false
-	cur := map[string]bool{}
+	// Build the engine sensor configuration (UniFi identity + any per-sensor
+	// override) and re-publish each zone entity.
+	cfgs := make([]alarm.SensorConfig, 0, len(sensors))
+	var setKey strings.Builder
 	for _, s := range sensors {
 		m.pub.AnnounceZone(s.ID, s.Name)
-		m.pub.PublishZone(s.ID, s.IsOpen)
-		cur[s.ID] = s.IsOpen
-		if s.IsOpen {
-			openNames = append(openNames, s.Name)
-			if !m.prevOpen[s.ID] {
-				newlyOpen = true
-			}
+		m.pub.PublishZone(s.ID, s.Tripped())
+		sc := alarm.SensorConfig{ID: s.ID, Name: s.Name, Type: s.MountType}
+		if ov, ok := m.cfg.SensorOverrides[strings.ToLower(s.Name)]; ok {
+			sc.Modes = ov.Modes
+			sc.AlwaysOn = ov.AlwaysOn
+			sc.Immediate = ov.Immediate
+			sc.UseExitDelay = ov.UseExitDelay
+			sc.AutoBypass = ov.AutoBypass
+			sc.AllowOpen = ov.AllowOpen
+			sc.TriggerUnavailable = ov.TriggerUnavailable
+			sc.Group = ov.Group
+		}
+		cfgs = append(cfgs, sc)
+		setKey.WriteString(s.ID)
+		setKey.WriteByte('|')
+		setKey.WriteString(s.Name)
+		setKey.WriteByte(';')
+	}
+
+	// Re-configure the engine only when the sensor set/config changes.
+	if k := setKey.String(); k != m.lastSensorSet {
+		m.engine.ConfigureSensors(cfgs, m.cfg.Groups)
+		m.lastSensorSet = k
+	}
+
+	// Feed transitions. The engine owns the breach decision (entry delay,
+	// immediate, always-on, groups, bypass) — the manager just reports state.
+	for _, s := range sensors {
+		kind := alarm.SensorClosed
+		if s.Tripped() {
+			kind = alarm.SensorOpen
+		}
+		if m.prevState[s.ID] != kind {
+			m.engine.SensorEvent(s.ID, kind)
+			m.prevState[s.ID] = kind
 		}
 	}
-
-	// Only push to the engine when the open set actually changed, to avoid
-	// republishing the panel state every poll.
-	if key := strings.Join(openNames, "|"); key != m.prevOpenSet {
-		m.engine.SetOpenSensors(openNames)
-		m.prevOpenSet = key
-	}
-
-	// App-managed breach: a sensor opening while the system is armed starts
-	// the entry-delay countdown (or triggers immediately if entry delay 0).
-	if newlyOpen && isArmed(m.lastState) {
-		m.log.Info("unifi: breach while armed — triggering entry sequence")
-		m.engine.Trigger(false, alarm.Actor{Name: "unifi", Role: "system"})
-	}
-	m.prevOpen = cur
 }
 
 func (m *Manager) onSnapshot(ctx context.Context, snap alarm.Snapshot) {

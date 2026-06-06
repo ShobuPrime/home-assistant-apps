@@ -91,6 +91,64 @@ type User struct {
 	AllowedArmModes StringList `json:"allowed_arm_modes,omitempty"`
 }
 
+// SensorOverride is an Alarmo-style per-sensor configuration, matched to a
+// discovered UniFi Protect sensor by name (case-insensitive).
+type SensorOverride struct {
+	Name               string     `json:"name"`
+	Modes              StringList `json:"modes,omitempty"`
+	AlwaysOn           bool       `json:"always_on,omitempty"`
+	Immediate          bool       `json:"immediate,omitempty"`
+	UseExitDelay       bool       `json:"use_exit_delay,omitempty"`
+	AutoBypass         bool       `json:"auto_bypass,omitempty"`
+	AllowOpen          bool       `json:"allow_open,omitempty"`
+	TriggerUnavailable bool       `json:"trigger_unavailable,omitempty"`
+	Group              string     `json:"group,omitempty"`
+}
+
+// SensorGroupCfg defines a sensor-group debounce rule.
+type SensorGroupCfg struct {
+	Name       string `json:"name"`
+	EventCount int    `json:"event_count"`
+	Timeout    int    `json:"timeout"` // seconds
+}
+
+// SensorOverrideList tolerates the mock Supervisor serializing an empty
+// list option as a bare string (see StringList/UserList).
+type SensorOverrideList []SensorOverride
+
+// UnmarshalJSON implements lenient decoding for SensorOverrideList.
+func (l *SensorOverrideList) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || string(b) == "null" || (len(b) > 0 && b[0] == '"') {
+		*l = nil
+		return nil
+	}
+	var arr []SensorOverride
+	if err := json.Unmarshal(b, &arr); err != nil {
+		return err
+	}
+	*l = arr
+	return nil
+}
+
+// SensorGroupList tolerates the mock Supervisor's bare-string empty list.
+type SensorGroupList []SensorGroupCfg
+
+// UnmarshalJSON implements lenient decoding for SensorGroupList.
+func (l *SensorGroupList) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || string(b) == "null" || (len(b) > 0 && b[0] == '"') {
+		*l = nil
+		return nil
+	}
+	var arr []SensorGroupCfg
+	if err := json.Unmarshal(b, &arr); err != nil {
+		return err
+	}
+	*l = arr
+	return nil
+}
+
 // Options is the full AegisHA configuration surface. JSON tags match the
 // keys in config.yaml's options/schema blocks exactly.
 type Options struct {
@@ -130,6 +188,10 @@ type Options struct {
 	EnableCompanionCard bool       `json:"enable_companion_card"`
 	AdminUsernames      StringList `json:"admin_usernames"`
 	Users               UserList   `json:"users"`
+
+	// Sensor model (Alarmo-style per-sensor overrides + group debounce)
+	Sensors      SensorOverrideList `json:"sensors"`
+	SensorGroups SensorGroupList    `json:"sensor_groups"`
 }
 
 const (

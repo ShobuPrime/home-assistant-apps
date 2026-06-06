@@ -54,6 +54,8 @@ options:
   enable_companion_card: false
   admin_usernames: []
   users: []
+  sensors: []
+  sensor_groups: []
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)?
   unifi_host: str?
@@ -89,3 +91,18 @@ schema:
       role: list(admin|user|guest)?
       allowed_arm_modes:
         - list(away|home|night|vacation|custom)?
+  sensors:
+    - name: str
+      modes:
+        - list(away|home|night|vacation|custom)?
+      always_on: bool?
+      immediate: bool?
+      use_exit_delay: bool?
+      auto_bypass: bool?
+      allow_open: bool?
+      trigger_unavailable: bool?
+      group: str?
+  sensor_groups:
+    - name: str
+      event_count: int(1,20)
+      timeout: int(1,600)

@@ -82,9 +82,16 @@ func main() {
 		logger.Warn("store: imported bootstrap users — now clear the plaintext PINs from the add-on options", "count", n)
 	}
 
-	// Optional companion Lovelace card delivery.
+	// Optional companion Lovelace card: write it to /config/www and
+	// auto-register it as a Lovelace resource over the Supervisor Core-WS
+	// (storage mode); on YAML-mode dashboards, log the manual snippet.
 	if opts.EnableCompanionCard {
-		card.Deploy(version, logger)
+		if url := card.Deploy(version, logger); url != "" && token != "" {
+			if err := ha.RegisterLovelaceResource(token, url, logger); err != nil {
+				logger.Warn("card: auto-registration failed — add it manually as a JavaScript Module resource (storage-mode Lovelace auto-registers)",
+					"url", url, "err", err)
+			}
+		}
 	}
 
 	// Alarm state machine.
@@ -127,8 +134,10 @@ func main() {
 			pub = bridge
 		}
 		mgr := unifi.NewManager(uclient, engine, pub, unifi.Config{
-			PreferMode:   opts.ProtectMode,
-			PollInterval: 10 * time.Second,
+			PreferMode:      opts.ProtectMode,
+			PollInterval:    10 * time.Second,
+			SensorOverrides: sensorOverrides(opts.Sensors),
+			Groups:          sensorGroups(opts.SensorGroups),
 		}, logger)
 		go mgr.Run(ctx)
 		logger.Info("unifi: protect manager started", "host", opts.UniFiHost, "mode_pref", opts.ProtectMode)
@@ -227,6 +236,47 @@ func toBootstrap(users []config.User) []store.Bootstrap {
 }
 
 func seconds(n int) time.Duration { return time.Duration(n) * time.Second }
+
+// sensorOverrides converts the options sensor list into the alarm engine's
+// per-sensor config, keyed by lowercased name for matching UniFi sensors.
+func sensorOverrides(list []config.SensorOverride) map[string]alarm.SensorConfig {
+	if len(list) == 0 {
+		return nil
+	}
+	out := make(map[string]alarm.SensorConfig, len(list))
+	for _, o := range list {
+		if o.Name == "" {
+			continue
+		}
+		out[strings.ToLower(o.Name)] = alarm.SensorConfig{
+			Name:               o.Name,
+			Modes:              o.Modes,
+			AlwaysOn:           o.AlwaysOn,
+			Immediate:          o.Immediate,
+			UseExitDelay:       o.UseExitDelay,
+			AutoBypass:         o.AutoBypass,
+			AllowOpen:          o.AllowOpen,
+			TriggerUnavailable: o.TriggerUnavailable,
+			Group:              o.Group,
+		}
+	}
+	return out
+}
+
+func sensorGroups(list []config.SensorGroupCfg) []alarm.SensorGroup {
+	out := make([]alarm.SensorGroup, 0, len(list))
+	for _, g := range list {
+		if g.Name == "" {
+			continue
+		}
+		out = append(out, alarm.SensorGroup{
+			Name:       g.Name,
+			EventCount: g.EventCount,
+			Timeout:    time.Duration(g.Timeout) * time.Second,
+		})
+	}
+	return out
+}
 
 type alarmStateFile struct {
 	ArmMode string `json:"arm_mode"`

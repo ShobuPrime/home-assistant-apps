@@ -108,6 +108,32 @@ UniFi site id. Default `default`.
   - `role` (`admin` / `user` / `guest`)
   - `allowed_arm_modes` (subset of `arm_modes`)
 
+### Sensor model (`sensors` / `sensor_groups`)
+
+UniFi Protect sensors are auto-discovered with permissive defaults (active in
+every arm mode, entry+exit delays apply, blocks arming while open). Use the
+`sensors` option to override behavior per sensor, matched by **name** (case-
+insensitive):
+
+- `name` (required, the Protect sensor name)
+- `modes`: arm modes the sensor is active in (default: all)
+- `always_on`: triggers even while disarmed and skips the entry delay (smoke /
+  tamper / water)
+- `immediate`: trips skip the entry delay when armed (instant)
+- `use_exit_delay`: exempt from triggering during the exit/arming countdown
+- `auto_bypass`: if open at arm time, silently bypass it for that session
+- `allow_open`: arm-on-close — may arm while open; not live until it next closes
+- `trigger_unavailable`: treat an unavailable sensor as a trip while armed
+- `group`: name of a `sensor_groups` entry for debouncing
+
+`sensor_groups` defines false-positive debounce rules — a grouped sensor only
+triggers once `event_count` sensors in the group trip within `timeout` seconds:
+
+- `name`, `event_count` (1–20), `timeout` (1–600 s)
+
+Each sensor also gets a `switch.aegis_ha_bypass_<zone>` entity for manual
+bypass, and the panel's `bypassed_sensors` attribute lists what's bypassed.
+
 ## Per-user PINs
 
 AegisHA validates every PIN itself; PINs are hashed at rest (PBKDF2-SHA256 with a

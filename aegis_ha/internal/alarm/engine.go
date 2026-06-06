@@ -78,6 +78,7 @@ type Snapshot struct {
 	ChangedBy       string   `json:"changed_by,omitempty"`
 	ChangedByUserID string   `json:"changed_by_user_id,omitempty"`
 	OpenSensors     []string `json:"open_sensors"`
+	BypassedSensors []string `json:"bypassed_sensors"`
 	DelayTotal      int      `json:"delay_total"`        // seconds, 0 if no countdown
 	DelayEndsUnix   int64    `json:"delay_ends,omitempty"` // unix seconds the countdown ends
 	ReadyToArm      bool     `json:"ready_to_arm"`
@@ -93,19 +94,25 @@ const (
 	cmdSkipDelay
 	cmdTimerFired
 	cmdSetConfig
-	cmdSetOpenSensors
+	cmdConfigureSensors
+	cmdSensorEvent
+	cmdSetBypass
 )
 
 type command struct {
-	typ     cmdType
-	mode    string
+	typ       cmdType
+	mode      string
 	immediate bool
-	force   bool
-	actor   Actor
-	cfg     *Config
-	sensors []string
-	gen     uint64
-	reply   chan Result
+	force     bool
+	actor     Actor
+	cfg       *Config
+	sensorCfg []SensorConfig
+	groups    []SensorGroup
+	sensorID  string
+	sensorEvt SensorEventKind
+	bypass    bool
+	gen       uint64
+	reply     chan Result
 }
 
 // Result is the outcome of a submitted command.
@@ -127,7 +134,10 @@ type Engine struct {
 	priorArmMode    string
 	changedBy       string
 	changedByUserID string
-	openSensors     []string
+
+	sensors   map[string]*sensorRuntime
+	groups    []SensorGroup
+	groupHits map[string][]time.Time
 
 	timer      *time.Timer
 	gen        uint64
@@ -148,10 +158,12 @@ func New(cfg Config, log *slog.Logger) *Engine {
 		log = slog.Default()
 	}
 	e := &Engine{
-		log:   log,
-		cmds:  make(chan command, 32),
-		cfg:   cfg,
-		state: StateDisarmed,
+		log:       log,
+		cmds:      make(chan command, 32),
+		cfg:       cfg,
+		state:     StateDisarmed,
+		sensors:   map[string]*sensorRuntime{},
+		groupHits: map[string][]time.Time{},
 	}
 	if st, ok := armedStateForMode(cfg.RestoreArmMode); ok {
 		e.state = st
@@ -204,12 +216,6 @@ func (e *Engine) SetConfig(cfg Config) {
 	e.submit(command{typ: cmdSetConfig, cfg: &cfg})
 }
 
-// SetOpenSensors replaces the set of currently open/faulted sensors that
-// gate readiness-to-arm (populated by the UniFi layer in later phases).
-func (e *Engine) SetOpenSensors(s []string) {
-	e.submit(command{typ: cmdSetOpenSensors, sensors: s})
-}
-
 // Subscribe returns a channel that receives a Snapshot on every change,
 // primed immediately with the current snapshot.
 func (e *Engine) Subscribe() <-chan Snapshot {
@@ -254,10 +260,12 @@ func (e *Engine) handle(c command) {
 	case cmdSetConfig:
 		e.cfg = *c.cfg
 		e.reply(c, Result{Accepted: true, Snapshot: e.snapshot()})
-	case cmdSetOpenSensors:
-		e.openSensors = append([]string(nil), c.sensors...)
-		e.publish()
-		e.reply(c, Result{Accepted: true, Snapshot: e.snapshot()})
+	case cmdConfigureSensors:
+		e.handleConfigureSensors(c)
+	case cmdSensorEvent:
+		e.handleSensorEvent(c)
+	case cmdSetBypass:
+		e.handleSetBypass(c)
 	}
 }
 
@@ -270,13 +278,18 @@ func (e *Engine) handleArm(c command) {
 		e.reply(c, Result{Reason: "not_disarmed", Snapshot: e.snapshot()})
 		return
 	}
-	if len(e.openSensors) > 0 && !c.force {
-		e.reply(c, Result{Reason: "open_sensors", Snapshot: e.snapshot()})
-		return
+	if !c.force {
+		for _, s := range e.sensors {
+			if e.sensorBlocksArming(s, c.mode) {
+				e.reply(c, Result{Reason: "open_sensors", Snapshot: e.snapshot()})
+				return
+			}
+		}
 	}
 	e.armMode = c.mode
 	e.changedBy = c.actor.Name
 	e.changedByUserID = c.actor.UserID
+	e.prepareArmSession(c.mode)
 	if e.cfg.ExitDelay <= 0 {
 		st, _ := armedStateForMode(c.mode)
 		e.clearTimer()
@@ -298,6 +311,7 @@ func (e *Engine) handleDisarm(c command) {
 	e.armMode = ""
 	e.priorArmMode = ""
 	e.clearTimer()
+	e.clearArmSession()
 	e.changedBy = c.actor.Name
 	e.changedByUserID = c.actor.UserID
 	e.setState(StateDisarmed)
@@ -461,10 +475,11 @@ func (e *Engine) snapshot() Snapshot {
 		PriorArmMode:    e.priorArmMode,
 		ChangedBy:       e.changedBy,
 		ChangedByUserID: e.changedByUserID,
-		OpenSensors:     append([]string{}, e.openSensors...),
+		OpenSensors:     e.openSensorNames(),
+		BypassedSensors: e.bypassedSensorNames(),
 		DelayTotal:      e.delayTotal,
 		DelayEndsUnix:   ends,
-		ReadyToArm:      len(e.openSensors) == 0,
+		ReadyToArm:      e.readyToArm(),
 		Sequence:        e.seq,
 	}
 }

@@ -40,6 +40,7 @@ type Bridge struct {
 	protectMu      sync.Mutex
 	protectEnabled bool
 	zones          []zoneInfo
+	bypassByObj    map[string]string // bypass switch object_id -> sensor id
 
 	eventSink func(eventType string, data map[string]any)
 	lastPub   alarm.State
@@ -71,7 +72,7 @@ func NewBridge(client *Client, engine *alarm.Engine, st *store.Store, cfg Config
 	if cfg.Prefix == "" {
 		cfg.Prefix = "aegis_ha"
 	}
-	b := &Bridge{client: client, engine: engine, store: st, cfg: cfg, log: log, alarmCfg: alarmCfg}
+	b := &Bridge{client: client, engine: engine, store: st, cfg: cfg, log: log, alarmCfg: alarmCfg, bypassByObj: map[string]string{}}
 	client.opts.OnConnect = b.announce
 	if client.opts.Will == nil {
 		client.opts.Will = &Message{Topic: b.statusTopic(), Payload: []byte("offline"), Retain: true}
@@ -138,6 +139,7 @@ func (b *Bridge) publishState(snap alarm.Snapshot) {
 		"prior_arm_mode":    snap.PriorArmMode,
 		"open_sensors":      snap.OpenSensors,
 		"open_sensor_count": len(snap.OpenSensors),
+		"bypassed_sensors":  snap.BypassedSensors,
 		"ready_to_arm":      snap.ReadyToArm,
 		"delay_total":       snap.DelayTotal,
 		"armed_by":          snap.ChangedBy,
@@ -243,6 +245,19 @@ func (b *Bridge) handleSet(m Message) {
 	val := strings.TrimSpace(string(m.Payload))
 	sys := alarm.Actor{Name: "automation", Role: "system"}
 
+	// Per-zone bypass switches: obj == "bypass_zone_<sanitized id>".
+	if strings.HasPrefix(obj, "bypass_") {
+		b.protectMu.Lock()
+		id := b.bypassByObj[obj]
+		b.protectMu.Unlock()
+		if id != "" {
+			on := strings.EqualFold(val, "ON")
+			b.engine.SetBypass(id, on)
+			_ = b.client.Publish(b.topic(obj, "state"), []byte(boolOnOff(on)), true)
+		}
+		return
+	}
+
 	switch obj {
 	case "panic":
 		b.engine.Trigger(true, sys)
@@ -320,4 +335,11 @@ func (b *Bridge) topic(obj, suffix string) string {
 
 func (b *Bridge) statusTopic() string {
 	return b.cfg.Prefix + "/status"
+}
+
+func boolOnOff(b bool) string {
+	if b {
+		return "ON"
+	}
+	return "OFF"
 }

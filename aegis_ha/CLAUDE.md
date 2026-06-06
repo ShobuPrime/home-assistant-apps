@@ -34,12 +34,15 @@ mode — AegisHA detects this and runs app-managed).
   → engine open-sensor feed + breach-triggers-while-armed, siren
   actuation, and `protect_link_mode`/`protect_connected`/per-zone entities.
   httptest-mock tested (incl. the Global-mode 400).
-- **Phase 3** — Alarmo-fidelity + HA bus events. **Done (core).** HA bus
-  events (`aegis_ha_command_success`/`_failed_to_arm`/`_triggered`/`_duress`/
-  `_command_not_allowed`) via the Core REST proxy, and restart-safe
-  persistence (committed armed mode survives a restart; transient
-  countdowns fail safe to disarmed). Full Alarmo sensor-group/per-sensor-
-  override model is a future refinement.
+- **Phase 3** — Alarmo-fidelity + HA bus events. **Done.** HA bus events
+  (`aegis_ha_command_success`/`_failed_to_arm`/`_triggered`/`_duress`/
+  `_command_not_allowed`) via the Core REST proxy; restart-safe persistence
+  (committed armed mode survives a restart; transient countdowns fail safe
+  to disarmed); and the **full sensor model** (`internal/alarm/sensors.go`):
+  per-sensor `modes`/`always_on`/`immediate`/`use_exit_delay`/`auto_bypass`/
+  `allow_open`(arm-on-close)/`trigger_unavailable`, manual bypass, and
+  sensor-group event-count-within-timeout debounce — configurable via the
+  `sensors`/`sensor_groups` add-on options and per-zone bypass switches.
 - **Phase 4** — Ingress web UI (HTMX + WebSocket) with per-HA-user PINs.
   **Done.** `internal/web` serves a keypad (live state pushed over a
   `golang.org/x/net/websocket` socket via the htmx ws extension) + admin
@@ -49,16 +52,22 @@ mode — AegisHA detects this and runs app-managed).
   tested (identity gating, arm-via-keypad, admin gating).
 - **Phase 5** — Companion Lovelace card + delivery. **Done.** `internal/card`
   embeds a vanilla `aegis_ha-card` custom element (generic
-  alarm_control_panel card — keypad + arm buttons from supported_features,
-  calls stock alarm services) and, when `enable_companion_card` is set,
-  writes it to `/config/www/aegis_ha` (served at `/local/...`) and logs the
-  exact Lovelace resource line to add.
+  alarm_control_panel card) and, when `enable_companion_card` is set,
+  writes it to `/config/www/aegis_ha` (served at `/local/...`) AND
+  auto-registers it as a Lovelace resource over the Supervisor Core-WS
+  (`ha.RegisterLovelaceResource`, storage mode) — logging a manual snippet
+  on YAML-mode dashboards.
 - **Phase 6** — Hardening + docs. **Done.** One native-Go dependency
   (`golang.org/x/net/websocket`, see below); `InsecureSkipVerify` isolated
-  to the UniFi client; secrets
-  masked/never logged; full README/DOCS/CLAUDE/UPDATE_GUIDE. Optional
-  native `aegis_ha.*` HA services are intentionally deferred — the
-  bidirectional MQTT entities + bus events already cover automations.
+  to the UniFi client; secrets masked/never logged; full docs. The UniFi
+  client is verified against a real UCG Fiber (Global mode correctly
+  detected via the non-destructive `GET /v1/arm-profiles` 400-'global'
+  signal; `/v1/nvrs` is a single object with an `armMode` object; sensors
+  use `mountType`/`isOpened`). Intentionally NOT done: native `aegis_ha.*`
+  HA services (would require a Python companion integration that can't be
+  zero-install; the bidirectional MQTT entities + bus events cover
+  automations) and UniFi cert-pinning (the gateway is local/trusted/IP, so
+  `InsecureSkipVerify` is acceptable).
 
 ## Essential Commands
 

@@ -87,11 +87,20 @@ func (c *Client) DialEvents() (*websocket.Conn, error) {
 	return websocket.DialConfig(cfg)
 }
 
-// NVR is the subset of an NVR record we need.
+// NVR is the subset of an NVR record we need. The Protect Integration API
+// returns the NVR as a single JSON object whose armMode is itself an
+// object (verified against UCG Fiber firmware).
 type NVR struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	ArmMode *string `json:"armMode"`
+	ID       string      `json:"id"`
+	Name     string      `json:"name"`
+	ModelKey string      `json:"modelKey"`
+	ArmMode  *NVRArmMode `json:"armMode"`
+}
+
+// NVRArmMode is the gateway's current alarm-manager arm state.
+type NVRArmMode struct {
+	Status       string `json:"status"` // disabled | arming | armed | breach | ...
+	ArmProfileID string `json:"armProfileId"`
 }
 
 // ArmProfile is a Protect arm profile.
@@ -101,12 +110,23 @@ type ArmProfile struct {
 }
 
 // Sensor is the subset of a Protect sensor we need for breach detection.
+// Field names verified against the live Integration API: mountType (not
+// type), isOpened (contact), isMotionDetected (motion).
 type Sensor struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	IsOpen  bool   `json:"isOpened"`
-	Mounted bool   `json:"isMounted"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	MountType string `json:"mountType"` // door | window | leak | garage | ...
+	IsOpen    bool   `json:"isOpened"`
+	Motion    bool   `json:"isMotionDetected"`
+}
+
+// Tripped reports whether the sensor is in its "active" state for its
+// mount type (motion detected for motion mounts, otherwise contact-open).
+func (s Sensor) Tripped() bool {
+	if s.MountType == "motion" {
+		return s.Motion
+	}
+	return s.IsOpen
 }
 
 // GetNVRs returns the gateway's NVR records.
@@ -144,24 +164,29 @@ func (c *Client) GetSensors(ctx context.Context) ([]Sensor, error) {
 }
 
 // DetectMode determines the Alarm Manager capability without mutating
-// state (it never calls enable/disable).
+// state (it never calls enable/disable). GET /v1/nvrs confirms
+// connectivity; GET /v1/arm-profiles is the non-destructive discriminator
+// — a 400 'global alarm manager' means Global mode (local control
+// blocked), success means Local mode (profiles usable), and 404 means the
+// firmware predates arm profiles (app-managed). This was verified live: a
+// UCG Fiber in Global mode reports an armMode object on /v1/nvrs yet still
+// rejects /v1/arm-profiles with the global error, so arm-profiles — not
+// armMode presence — is the reliable signal.
 func (c *Client) DetectMode(ctx context.Context) (Mode, error) {
-	nvrs, err := c.GetNVRs(ctx)
-	if err != nil {
+	if _, err := c.GetNVRs(ctx); err != nil {
 		return ModeUnavailable, err
 	}
-	if len(nvrs) == 0 {
-		return ModeUnavailable, nil
-	}
-	if m := nvrs[0].ArmMode; m != nil && *m != "" {
+	_, err := c.GetArmProfiles(ctx)
+	switch {
+	case err == nil:
 		return ModeLocal, nil
-	}
-	// armMode is null: arm-profiles present => Alarm Manager is Global;
-	// absent/unsupported => firmware too old, AegisHA runs app-managed.
-	if _, err := c.GetArmProfiles(ctx); err != nil {
+	case errors.Is(err, ErrGlobalMode):
+		return ModeGlobal, nil
+	case errors.Is(err, ErrNotFound):
+		return ModeAppManaged, nil
+	default:
 		return ModeAppManaged, nil
 	}
-	return ModeGlobal, nil
 }
 
 // Arm mirrors an armed state to the NVR (local mode only). If profileID

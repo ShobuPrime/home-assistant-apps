@@ -46,7 +46,7 @@ func runEngine(t *testing.T, cfg alarm.Config) *alarm.Engine {
 }
 
 func TestManagerDetectsGlobalMode(t *testing.T) {
-	c := newMock(t, &mock{armMode: nil, armProfilesOK: true})
+	c := newMock(t, &mock{armProfilesGlobal: true})
 	pub := newFakePub()
 	m := NewManager(c, runEngine(t, alarm.Config{ArmModes: []string{"away"}}), pub, Config{PreferMode: "auto", PollInterval: time.Hour}, nil)
 
@@ -59,7 +59,7 @@ func TestManagerDetectsGlobalMode(t *testing.T) {
 }
 
 func TestManagerPollFeedsOpenSensors(t *testing.T) {
-	c := newMock(t, &mock{armMode: new("disabled"), armProfilesOK: true})
+	c := newMock(t, &mock{armProfilesOK: true})
 	pub := newFakePub()
 	eng := runEngine(t, alarm.Config{ArmModes: []string{"away"}})
 	m := NewManager(c, eng, pub, Config{PreferMode: "auto", PollInterval: time.Hour}, nil)
@@ -80,7 +80,7 @@ func TestManagerPollFeedsOpenSensors(t *testing.T) {
 }
 
 func TestManagerBreachTriggersWhenArmed(t *testing.T) {
-	c := newMock(t, &mock{armMode: new("disabled"), armProfilesOK: true})
+	c := newMock(t, &mock{armProfilesOK: true})
 	pub := newFakePub()
 	// Entry delay 0 so a breach goes straight to triggered.
 	eng := runEngine(t, alarm.Config{ArmModes: []string{"away"}, ExitDelay: 0, EntryDelay: 0})

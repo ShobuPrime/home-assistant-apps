@@ -148,7 +148,8 @@ func TestOpenSensorsGateArming(t *testing.T) {
 		e, stop := run(Config{ExitDelay: 0, ArmModes: []string{"away"}})
 		defer stop()
 
-		e.SetOpenSensors([]string{"front_door"})
+		e.ConfigureSensors([]SensorConfig{{ID: "fd", Name: "front_door"}}, nil)
+		e.SensorEvent("fd", SensorOpen)
 		if e.Current().ReadyToArm {
 			t.Fatal("ready_to_arm should be false with an open sensor")
 		}

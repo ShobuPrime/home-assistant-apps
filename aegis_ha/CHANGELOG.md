@@ -10,8 +10,10 @@ _2026-06-06_
 - Native alarm entity via MQTT discovery: a real `alarm_control_panel.aegis_ha` with a keypad on any dashboard, using the `REMOTE_CODE` sentinel so the entered PIN is forwarded to AegisHA for per-user validation
 - Alarmo-inspired alarm state machine: `disarmed`, `arming` (exit delay), `pending` (entry delay), `armed_*`, `triggered`, `disarming`
 - Per-user PIN store with PBKDF2-hashed PINs (stdlib `crypto/pbkdf2`), a pepper-HMAC index for O(1) lookup, roles/profiles, duress and one-time codes, and brute-force lockout
-- Bidirectional automation-native entities (MQTT discovery): numbers (delays), select (arm profile), switches (bypass/siren/chime), buttons (panic/skip-delay/clear-lockout), text (code entry), plus read-only sensors and binary_sensors
-- UniFi Protect integration with honest UCG Fiber "Global mode" handling: non-destructive capability detection, app-managed alarm (Protect supplies sensors + sirens/triggers/cameras) with optional local-mirror arm/disarm when Protect is in Local mode
-- Optional ingress web UI (HTMX + SSE) with per-Home-Assistant-user PINs via the trusted `X-Remote-User-Id` ingress header, plus an admin user-management console
-- Optional companion Lovelace card served from the add-on with best-effort auto-registration
-- stdlib-first implementation: single sanctioned dependency budget, no MQTT/crypto third-party libraries
+- Full Alarmo-style sensor model: per-sensor `modes`, `always_on`, `immediate`, `use_exit_delay`, `auto_bypass`, `allow_open` (arm-on-close), `trigger_unavailable`, manual bypass (per-zone switch entities), and sensor groups (event-count-within-timeout debounce) — configurable via the `sensors` / `sensor_groups` add-on options
+- Bidirectional automation-native entities (MQTT discovery): numbers (delays), switches (per-zone bypass), buttons (panic/skip-delay/clear-lockout), plus sensors and binary_sensors (open/bypassed, link mode, per-zone)
+- UniFi Protect integration with honest UCG Fiber "Global mode" handling, verified against real hardware: non-destructive capability detection via `GET /v1/arm-profiles`, app-managed alarm (Protect supplies sensors + sirens/triggers) with optional local-mirror arm/disarm when Protect is in Local mode, and a device-event WebSocket for low-latency breach detection
+- Optional ingress web UI (HTMX + WebSocket) with per-Home-Assistant-user PINs via the trusted `X-Remote-User-Id` ingress header, plus an admin user-management console
+- Optional companion Lovelace card, auto-registered as a Lovelace resource over the Supervisor Core-WebSocket (storage mode; manual snippet logged for YAML mode)
+- HA bus events (`aegis_ha_command_success`/`_failed_to_arm`/`_triggered`/`_duress`) for automations
+- stdlib-first implementation: one native-Go dependency (`golang.org/x/net/websocket`); hand-rolled MQTT 3.1.1 client and stdlib `crypto/pbkdf2` otherwise

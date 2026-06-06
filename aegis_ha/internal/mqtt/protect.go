@@ -29,10 +29,14 @@ func (b *Bridge) AnnounceZone(id, name string) {
 		}
 	}
 	b.zones = append(b.zones, zoneInfo{id: id, name: name})
+	b.bypassByObj["bypass_"+zoneObj(id)] = id
 	b.protectMu.Unlock()
 
-	m := b.zoneDiscovery(id, name)
-	_ = b.client.Publish(m.topic, m.payload, true)
+	zm := b.zoneDiscovery(id, name)
+	_ = b.client.Publish(zm.topic, zm.payload, true)
+	bm := b.bypassDiscovery(id, name)
+	_ = b.client.Publish(bm.topic, bm.payload, true)
+	_ = b.client.Publish(b.topic("bypass_"+zoneObj(id), "state"), []byte("OFF"), true)
 }
 
 // PublishProtectStatus publishes the detected link mode and connectivity.
@@ -70,9 +74,25 @@ func (b *Bridge) protectDiscovery() []discoveryMsg {
 		b.binarySensorDiscovery("protect_connected", "AegisHA Protect Connected", "mdi:lan-connect", "connectivity"),
 	}
 	for _, z := range zones {
-		msgs = append(msgs, b.zoneDiscovery(z.id, z.name))
+		msgs = append(msgs, b.zoneDiscovery(z.id, z.name), b.bypassDiscovery(z.id, z.name))
 	}
 	return msgs
+}
+
+// bypassDiscovery is the per-zone manual-bypass switch (a bidirectional
+// entity: HA toggles it, the engine excludes the sensor from triggering).
+func (b *Bridge) bypassDiscovery(id, name string) discoveryMsg {
+	obj := "bypass_" + zoneObj(id)
+	return b.disco("switch", obj, map[string]any{
+		"name":          name + " Bypass",
+		"unique_id":     b.cfg.Prefix + "_" + obj,
+		"object_id":     b.cfg.Prefix + "_" + obj,
+		"command_topic": b.topic(obj, "set"),
+		"state_topic":   b.topic(obj, "state"),
+		"payload_on":    "ON",
+		"payload_off":   "OFF",
+		"icon":          "mdi:shield-off-outline",
+	})
 }
 
 func (b *Bridge) zoneDiscovery(id, name string) discoveryMsg {
