@@ -62,7 +62,7 @@ func TestManagerPollFeedsOpenSensors(t *testing.T) {
 	c := newMock(t, &mock{armProfilesOK: true})
 	pub := newFakePub()
 	eng := runEngine(t, alarm.Config{ArmModes: []string{"away"}})
-	m := NewManager(c, eng, pub, Config{PreferMode: "auto", PollInterval: time.Hour}, nil)
+	m := NewManager(c, eng, pub, Config{PreferMode: "auto", PollInterval: time.Hour, ExposeZones: true}, nil)
 
 	m.poll(t.Context())
 
@@ -76,6 +76,28 @@ func TestManagerPollFeedsOpenSensors(t *testing.T) {
 	defer pub.mu.Unlock()
 	if pub.zones["s1"] != "Front Door" || !pub.zoneState["s1"] {
 		t.Fatalf("zone not announced/published: zones=%v state=%v", pub.zones, pub.zoneState)
+	}
+}
+
+func TestManagerSkipsZoneEntitiesWhenNotExposed(t *testing.T) {
+	c := newMock(t, &mock{armProfilesOK: true})
+	pub := newFakePub()
+	eng := runEngine(t, alarm.Config{ArmModes: []string{"away"}})
+	// ExposeZones defaults to false.
+	m := NewManager(c, eng, pub, Config{PreferMode: "auto", PollInterval: time.Hour}, nil)
+
+	m.poll(t.Context())
+
+	// The engine still sees the sensor (for readiness/breach)...
+	if got := eng.Current().OpenSensors; len(got) != 1 || got[0] != "Front Door" {
+		t.Fatalf("engine should still get the sensor: %v", got)
+	}
+	// ...but no per-zone entity is published to HA (no duplicate of the
+	// official UniFi Protect integration).
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	if len(pub.zones) != 0 {
+		t.Fatalf("no zone entities should be published when ExposeZones is false, got %v", pub.zones)
 	}
 }
 

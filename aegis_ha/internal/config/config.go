@@ -186,6 +186,7 @@ type Options struct {
 	// Web UI / card / admin
 	EnableWebUI         bool       `json:"enable_web_ui"`
 	EnableCompanionCard bool       `json:"enable_companion_card"`
+	ExposeZoneEntities  bool       `json:"expose_zone_entities"`
 	AdminUsernames      StringList `json:"admin_usernames"`
 	Users               UserList   `json:"users"`
 

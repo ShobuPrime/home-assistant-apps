@@ -51,7 +51,8 @@ options:
   pin_max_length: 8
   default_role: user
   enable_web_ui: true
-  enable_companion_card: false
+  enable_companion_card: true
+  expose_zone_entities: false
   admin_usernames: []
   users: []
   sensors: []
@@ -82,6 +83,7 @@ schema:
   default_role: list(admin|user|guest)
   enable_web_ui: bool
   enable_companion_card: bool
+  expose_zone_entities: bool
   admin_usernames:
     - str
   users:

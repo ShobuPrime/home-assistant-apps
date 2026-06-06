@@ -96,7 +96,13 @@ UniFi site id. Default `default`.
 
 - `enable_web_ui`: serve the ingress keypad/admin UI (default `true`)
 - `enable_companion_card`: write and auto-register the AegisHA Lovelace card
-  (default `false`)
+  (default `true`)
+- `expose_zone_entities`: publish a `binary_sensor` + bypass `switch` per
+  Protect sensor (default `false`). Leave this **off** if you already run the
+  official UniFi Protect integration — AegisHA still uses the sensor states
+  internally for readiness + breach detection; only the `alarm_control_panel`
+  arm/disarm entity and its `open_sensors`/`bypassed_sensors` attributes are
+  exposed, avoiding duplicate door/window entities.
 - `admin_usernames`: Home Assistant usernames treated as AegisHA admins (least-
   privilege alternative to elevating the add-on's Supervisor role)
 - `users`: bootstrap keypad users — imported **once** into the hashed store on

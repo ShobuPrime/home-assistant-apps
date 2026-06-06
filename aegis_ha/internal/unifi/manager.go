@@ -36,6 +36,12 @@ type Config struct {
 	// override use permissive defaults.
 	SensorOverrides map[string]alarm.SensorConfig
 	Groups          []alarm.SensorGroup
+
+	// ExposeZones controls whether per-sensor binary_sensor + bypass switch
+	// entities are published to HA. Off by default to avoid duplicating the
+	// official UniFi Protect integration's sensors; the engine still uses
+	// the sensor states internally for readiness + breach regardless.
+	ExposeZones bool
 }
 
 // Manager reconciles the alarm engine with a UniFi Protect gateway: it
@@ -194,8 +200,13 @@ func (m *Manager) poll(ctx context.Context) {
 	cfgs := make([]alarm.SensorConfig, 0, len(sensors))
 	var setKey strings.Builder
 	for _, s := range sensors {
-		m.pub.AnnounceZone(s.ID, s.Name)
-		m.pub.PublishZone(s.ID, s.Tripped())
+		// Only mirror per-zone entities into HA when explicitly enabled —
+		// otherwise rely on the official UniFi Protect integration and avoid
+		// duplicate sensor entities. The engine still gets the config+events.
+		if m.cfg.ExposeZones {
+			m.pub.AnnounceZone(s.ID, s.Name)
+			m.pub.PublishZone(s.ID, s.Tripped())
+		}
 		sc := alarm.SensorConfig{ID: s.ID, Name: s.Name, Type: s.MountType}
 		if ov, ok := m.cfg.SensorOverrides[strings.ToLower(s.Name)]; ok {
 			sc.Modes = ov.Modes

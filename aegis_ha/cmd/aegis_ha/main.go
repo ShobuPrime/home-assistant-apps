@@ -138,6 +138,7 @@ func main() {
 			PollInterval:    10 * time.Second,
 			SensorOverrides: sensorOverrides(opts.Sensors),
 			Groups:          sensorGroups(opts.SensorGroups),
+			ExposeZones:     opts.ExposeZoneEntities,
 		}, logger)
 		go mgr.Run(ctx)
 		logger.Info("unifi: protect manager started", "host", opts.UniFiHost, "mode_pref", opts.ProtectMode)
