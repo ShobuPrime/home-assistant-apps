@@ -1,0 +1,91 @@
+name: "AegisHA"
+description: "Dynamic alarm system with UniFi Protect, per-user PIN keypad, and native MQTT entities"
+version: "0.1.0"
+slug: "aegis_ha"
+url: "https://github.com/ShobuPrime/home-assistant-apps/tree/master/aegis_ha"
+init: false
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+ingress: true
+ingress_port: 8099
+ingress_stream: true
+panel_icon: mdi:shield-home
+panel_title: AegisHA
+panel_admin: false
+hassio_api: true
+hassio_role: manager
+homeassistant_api: true
+apparmor: true
+services:
+  - mqtt:want
+map:
+  - data:rw
+  - homeassistant_config:rw
+options:
+  log_level: info
+  unifi_host: ""
+  unifi_api_key: ""
+  unifi_verify_ssl: false
+  unifi_site: "default"
+  protect_mode: auto
+  arm_modes:
+    - away
+    - home
+    - night
+  exit_delay: 60
+  entry_delay: 30
+  trigger_time: 1800
+  arming_requires_code: false
+  disarm_requires_code: true
+  trigger_requires_code: false
+  disarm_after_trigger: false
+  ignore_blocking_sensors_after_trigger: false
+  mqtt_topic_prefix: "aegis_ha"
+  mqtt_code_format: number
+  lockout_threshold: 5
+  lockout_duration: 300
+  pin_min_length: 4
+  pin_max_length: 8
+  default_role: user
+  enable_web_ui: true
+  enable_companion_card: false
+  admin_usernames: []
+  users: []
+schema:
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?
+  unifi_host: str?
+  unifi_api_key: password?
+  unifi_verify_ssl: bool
+  unifi_site: str
+  protect_mode: list(auto|local|app-managed)
+  arm_modes:
+    - list(away|home|night|vacation|custom)
+  exit_delay: int(0,600)
+  entry_delay: int(0,600)
+  trigger_time: int(0,3600)
+  arming_requires_code: bool
+  disarm_requires_code: bool
+  trigger_requires_code: bool
+  disarm_after_trigger: bool
+  ignore_blocking_sensors_after_trigger: bool
+  mqtt_topic_prefix: str
+  mqtt_code_format: list(number|text)
+  lockout_threshold: int(1,20)
+  lockout_duration: int(0,3600)
+  pin_min_length: int(4,12)
+  pin_max_length: int(4,32)
+  default_role: list(admin|user|guest)
+  enable_web_ui: bool
+  enable_companion_card: bool
+  admin_usernames:
+    - str
+  users:
+    - name: str
+      ha_user_id: str?
+      pin: password
+      role: list(admin|user|guest)?
+      allowed_arm_modes:
+        - list(away|home|night|vacation|custom)?

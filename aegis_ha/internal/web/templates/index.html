@@ -1,0 +1,75 @@
+{{define "state"}}<div id="aegis_ha-state" hx-swap-oob="true" class="state state-{{.State}}">
+  <div class="state-name">{{.State}}</div>
+  {{if .ArmMode}}<div class="state-mode">mode: {{.ArmMode}}</div>{{end}}
+  {{if gt .DelayTotal 0}}<div class="state-delay" data-ends="{{.DelayEndsUnix}}">countdown: {{.DelayTotal}}s</div>{{end}}
+  {{if not .ReadyToArm}}<div class="state-warn">Not ready &mdash; open: {{range .OpenSensors}}{{.}} {{end}}</div>{{end}}
+</div>{{end}}
+
+{{define "index"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AegisHA</title>
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script src="https://unpkg.com/htmx-ext-ws@2.0.3"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; background:#0c1330; color:#e6e9f5; margin:0; padding:1.2rem; }
+  .wrap { max-width:420px; margin:0 auto; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; }
+  header h1 { font-size:1.3rem; margin:0; color:#93c5fd; }
+  header a { color:#93c5fd; font-size:.85rem; }
+  .state { border-radius:14px; padding:1rem; text-align:center; margin-bottom:1rem; background:#1f2a52; }
+  .state-name { font-size:1.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+  .state-mode, .state-delay { font-size:.9rem; opacity:.85; margin-top:.25rem; }
+  .state-warn { color:#fca5a5; font-size:.85rem; margin-top:.4rem; }
+  .state-armed_away,.state-armed_home,.state-armed_night,.state-armed_vacation,.state-armed_custom_bypass { background:#7f1d1d; }
+  .state-arming,.state-pending { background:#92400e; }
+  .state-triggered { background:#b91c1c; animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.6; } }
+  input[type=password] { width:100%; box-sizing:border-box; font-size:1.6rem; text-align:center; letter-spacing:.4em;
+    padding:.6rem; border-radius:10px; border:1px solid #334; background:#0f1838; color:#e6e9f5; margin-bottom:.6rem; }
+  .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:.5rem; margin-bottom:.8rem; }
+  .pad button { font-size:1.4rem; padding:.7rem; border-radius:10px; border:1px solid #334; background:#1b2547; color:#e6e9f5; }
+  .modes { display:grid; grid-template-columns:repeat(2,1fr); gap:.5rem; }
+  .modes button { font-size:1rem; padding:.8rem; border-radius:10px; border:none; background:#1d4ed8; color:#fff; font-weight:600; }
+  .modes button.disarm { background:#374151; grid-column:1 / -1; }
+  #msg { min-height:1.4rem; text-align:center; margin-top:.7rem; font-size:.95rem; color:#fcd34d; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AegisHA</h1>
+    <span>{{.User.Display}}{{if .IsAdmin}} &middot; <a href="{{.Base}}/admin">admin</a>{{end}}</span>
+  </header>
+
+  <div hx-ext="ws" ws-connect="{{.Base}}/ws">
+    {{template "state" .Snapshot}}
+  </div>
+
+  <input type="password" name="code" id="code" inputmode="numeric" placeholder="PIN" autocomplete="off">
+  <div class="pad">
+    {{range $d := .Digits}}<button type="button" onclick="vk('{{$d}}')">{{$d}}</button>{{end}}
+    <button type="button" onclick="vc()">clr</button>
+    <button type="button" onclick="vk('0')">0</button>
+    <button type="button" onclick="vb()">&larr;</button>
+  </div>
+  <div class="modes">
+    {{range .ArmModes}}
+    <button hx-post="{{$.Base}}/arm" name="mode" value="{{.}}" hx-include="#code" hx-target="#msg" hx-swap="innerHTML">arm {{.}}</button>
+    {{end}}
+    <button class="disarm" hx-post="{{$.Base}}/disarm" hx-include="#code" hx-target="#msg" hx-swap="innerHTML">disarm</button>
+  </div>
+  <div id="msg"></div>
+</div>
+<script>
+  const c = document.getElementById('code');
+  function vk(d){ c.value += d; }
+  function vb(){ c.value = c.value.slice(0,-1); }
+  function vc(){ c.value = ''; }
+  document.body.addEventListener('htmx:afterRequest', e => { if (e.detail.elt.closest('.modes')) c.value=''; });
+</script>
+</body>
+</html>{{end}}
