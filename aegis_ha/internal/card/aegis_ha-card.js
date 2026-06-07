@@ -108,6 +108,7 @@ class AegisHACard extends HTMLElement {
         <div class="hdr">
           <div class="s">${state.replace("armed_", "")}</div>
           ${st.attributes.armed_by ? `<div class="m">by ${st.attributes.armed_by}</div>` : ""}
+          ${state === "arming" || state === "pending" ? `<div class="m cd" id="cd"></div>` : ""}
           ${st.attributes.open_sensor_count ? `<div class="m">${st.attributes.open_sensor_count} open sensor(s)</div>` : ""}
         </div>
         <div class="body">
@@ -138,6 +139,40 @@ class AegisHACard extends HTMLElement {
     this._root.querySelectorAll(".modes button").forEach((b) => {
       b.onclick = () => this._call(b.getAttribute("data-svc"));
     });
+
+    // Live countdown for the exit (arming) / entry (pending) delay, driven
+    // by the panel's delay_ends attribute (absolute unix end-time) so it
+    // ticks client-side without per-second MQTT updates.
+    this._clearTimer();
+    if ((state === "arming" || state === "pending") && st.attributes.delay_ends) {
+      this._startCountdown(Number(st.attributes.delay_ends));
+    }
+  }
+
+  _startCountdown(endsUnix) {
+    const tick = () => {
+      const el = this._root.getElementById("cd");
+      if (!el) {
+        this._clearTimer();
+        return;
+      }
+      const remaining = Math.max(0, Math.round(endsUnix - Date.now() / 1000));
+      el.textContent = remaining + "s remaining";
+      if (remaining <= 0) this._clearTimer();
+    };
+    tick();
+    this._timer = setInterval(tick, 1000);
+  }
+
+  _clearTimer() {
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
+  }
+
+  disconnectedCallback() {
+    this._clearTimer();
   }
 }
 
