@@ -169,6 +169,10 @@ type Options struct {
 	UniFiWebhookArm     string `json:"unifi_webhook_arm"`
 	UniFiWebhookDisarm  string `json:"unifi_webhook_disarm"`
 	UniFiWebhookTrigger string `json:"unifi_webhook_trigger"`
+	// ExitDelaySource: "app" (AegisHA owns the exit-delay countdown and fires
+	// the ARM webhook when fully armed) or "unifi" (fire the ARM webhook when
+	// arming begins, so the Protect alarm's own activation delay governs).
+	ExitDelaySource string `json:"exit_delay_source"`
 
 	// Alarm behavior
 	ArmModes                   StringList `json:"arm_modes"`
@@ -279,6 +283,9 @@ func (o *Options) applyDefaults() {
 	}
 	if o.ProtectMode == "" {
 		o.ProtectMode = "auto"
+	}
+	if o.ExitDelaySource == "" {
+		o.ExitDelaySource = "app"
 	}
 	if len(o.ArmModes) == 0 {
 		o.ArmModes = []string{"away", "home", "night"}

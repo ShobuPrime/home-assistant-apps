@@ -79,6 +79,34 @@ func TestManagerPollFeedsOpenSensors(t *testing.T) {
 	}
 }
 
+func TestArmWebhookFires(t *testing.T) {
+	const (
+		dis  = alarm.StateDisarmed
+		arm  = alarm.StateArming
+		away = alarm.StateArmedAway
+		trg  = alarm.StateTriggered
+	)
+	cases := []struct {
+		name          string
+		prev, cur     alarm.State
+		atStart, want bool
+	}{
+		{"app: commit after exit delay", arm, away, false, true},
+		{"app: instant arm (exit 0)", dis, away, false, true},
+		{"app: not at arming start", dis, arm, false, false},
+		{"app: no re-fire on trigger restore", trg, away, false, false},
+		{"unifi: fire at arming start", dis, arm, true, true},
+		{"unifi: instant arm fires", dis, away, true, true},
+		{"unifi: no re-fire on commit", arm, away, true, false},
+		{"unifi: no re-fire on trigger restore", trg, away, true, false},
+	}
+	for _, c := range cases {
+		if got := armWebhookFires(c.prev, c.cur, c.atStart); got != c.want {
+			t.Errorf("%s: armWebhookFires(%s,%s,%v)=%v want %v", c.name, c.prev, c.cur, c.atStart, got, c.want)
+		}
+	}
+}
+
 func TestManagerSkipsZoneEntitiesWhenNotExposed(t *testing.T) {
 	c := newMock(t, &mock{armProfilesOK: true})
 	pub := newFakePub()

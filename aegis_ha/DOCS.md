@@ -83,6 +83,18 @@ path — which the API permits in any mode:
 
 These are optional and independent of `protect_mode`.
 
+#### Option: `exit_delay_source`
+
+Controls who owns the exit-delay countdown, and therefore *when* the ARM
+webhook fires:
+
+- `app` (default): AegisHA runs the exit-delay countdown (`exit_delay`, any
+  number of seconds) and fires the ARM webhook **when it finishes arming**.
+  Configure your Protect ARM alarm with no activation delay.
+- `unifi`: AegisHA fires the ARM webhook the **moment arming begins**, so your
+  Protect alarm's own activation delay (the UI's 1/5/10 min) governs. Set
+  `exit_delay` to match that profile so AegisHA's on-screen countdown lines up.
+
 ### Alarm behavior
 
 - `arm_modes`: which modes the panel exposes — any of `away`, `home`, `night`,

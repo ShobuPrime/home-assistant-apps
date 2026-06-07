@@ -49,6 +49,11 @@ type Config struct {
 	WebhookArm     string
 	WebhookDisarm  string
 	WebhookTrigger string
+
+	// WebhookArmAtStart fires the ARM webhook when arming begins (delay owned
+	// by the Protect alarm) instead of when AegisHA finishes arming (delay
+	// owned by the app). Set from the exit_delay_source option.
+	WebhookArmAtStart bool
 }
 
 // Manager reconciles the alarm engine with a UniFi Protect gateway: it
@@ -265,7 +270,7 @@ func (m *Manager) onSnapshot(ctx context.Context, snap alarm.Snapshot) {
 				m.log.Warn("unifi: siren trigger failed", "siren", id, "err", err)
 			}
 		}
-	case isArmed(snap.State) && !isArmed(m.lastState) && m.lastState != "":
+	case m.lastState != "" && armWebhookFires(m.lastState, snap.State, m.cfg.WebhookArmAtStart):
 		m.fireWebhook(ctx, m.cfg.WebhookArm)
 	case snap.State == alarm.StateDisarmed && m.lastState != alarm.StateDisarmed && m.lastState != "":
 		m.fireWebhook(ctx, m.cfg.WebhookDisarm)
@@ -298,6 +303,18 @@ func (m *Manager) onSnapshot(ctx context.Context, snap alarm.Snapshot) {
 
 func isArmed(s alarm.State) bool {
 	return strings.HasPrefix(string(s), "armed_")
+}
+
+// armWebhookFires reports whether a *fresh* arm cycle (starting from
+// disarmed) warrants firing the ARM webhook on this transition. atStart
+// fires the moment arming begins (Protect owns the delay); otherwise it
+// fires when AegisHA reaches a committed armed_* state (app owns the
+// delay). A trigger resolving back to an armed state does not re-fire.
+func armWebhookFires(prev, cur alarm.State, atStart bool) bool {
+	if atStart {
+		return prev == alarm.StateDisarmed && (cur == alarm.StateArming || isArmed(cur))
+	}
+	return isArmed(cur) && (prev == alarm.StateArming || prev == alarm.StateDisarmed)
 }
 
 // fireWebhook POSTs a Protect Alarm Manager webhook trigger (async, so it

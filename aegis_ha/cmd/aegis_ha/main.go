@@ -139,9 +139,10 @@ func main() {
 			SensorOverrides: sensorOverrides(opts.Sensors),
 			Groups:          sensorGroups(opts.SensorGroups),
 			ExposeZones:     opts.ExposeZoneEntities,
-			WebhookArm:      opts.UniFiWebhookArm,
-			WebhookDisarm:   opts.UniFiWebhookDisarm,
-			WebhookTrigger:  opts.UniFiWebhookTrigger,
+			WebhookArm:        opts.UniFiWebhookArm,
+			WebhookDisarm:     opts.UniFiWebhookDisarm,
+			WebhookTrigger:    opts.UniFiWebhookTrigger,
+			WebhookArmAtStart: opts.ExitDelaySource == "unifi",
 		}, logger)
 		go mgr.Run(ctx)
 		logger.Info("unifi: protect manager started", "host", opts.UniFiHost, "mode_pref", opts.ProtectMode)

@@ -34,6 +34,7 @@ options:
   unifi_webhook_arm: ""
   unifi_webhook_disarm: ""
   unifi_webhook_trigger: ""
+  exit_delay_source: app
   arm_modes:
     - away
     - home
@@ -70,6 +71,7 @@ schema:
   unifi_webhook_arm: str?
   unifi_webhook_disarm: str?
   unifi_webhook_trigger: str?
+  exit_delay_source: list(app|unifi)
   arm_modes:
     - list(away|home|night|vacation|custom)
   exit_delay: int(0,600)
