@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.0.32
+
+_2026-06-07_
+
+### Changed
+- Updated Dockhand to version 1.0.32
+
+Released: 2026-06-06
+
+## What's new in v1.0.32
+
+- ✨ container details tweaks: process count, label filter, copy all labels (#812)
+- ✨ log improvements (#1130)
+- 🐛 cleared Resources fields not persisted on container edit (#1119)
+- 🐛 long container names overflowed in activity event details dialog (#1129)
+- 🐛 git stack recreate and start operations ignored Dockhand-stored env vars (#1132)
+- 🐛 dashboard stopped count reset to 0 after refresh for gracefully stopped containers (#1133)
+- 🐛 auto-update preserves runtime `-e` env and `-l` label overrides (#1135)
+- 🐛 git stack volume binds resolved to wrong host path when compose was in a subdirectory (#1139)
+- 🐛 git stacks: subdir compose files now find their adjacent env files (#1136)
+- ✨ env editor doesn't flag Docker/Compose built-in variables as unused (#141)
+- ✨ container network mode: share another container's network namespace (#161)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.32
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.31
 
 _2026-05-31_
