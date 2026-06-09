@@ -1,0 +1,10 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant Add-on: AegisHA
+# Run the AegisHA alarm daemon. Exec so the Go binary becomes PID 1 in its
+# S6 service and receives SIGTERM directly for a clean shutdown.
+# ==============================================================================
+
+bashio::log.info "Starting AegisHA..."
+
+exec /usr/local/bin/aegis_ha
