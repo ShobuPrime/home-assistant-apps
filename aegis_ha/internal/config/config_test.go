@@ -56,7 +56,7 @@ func TestMockSupervisorOptionsShape(t *testing.T) {
 		t.Fatalf("decode mock options: %v", err)
 	}
 	o.applyDefaults()
-	if len(o.ArmModes) != 3 {
+	if len(o.ArmModes) != 1 || o.ArmModes[0] != "away" {
 		t.Errorf("arm_modes defaulted wrong: %v", o.ArmModes)
 	}
 	if o.MQTTTopicPrefix != "aegis_ha" || o.ProtectMode != "auto" {

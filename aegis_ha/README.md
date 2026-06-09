@@ -140,4 +140,4 @@ Questions or bugs? Open an issue on the GitHub repository.
 
 ## Version
 
-Currently running AegisHA 0.2.0
+Currently running AegisHA 0.2.1

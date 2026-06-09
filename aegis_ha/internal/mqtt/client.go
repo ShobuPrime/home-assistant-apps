@@ -32,25 +32,25 @@ type Handler func(Message)
 
 // Options configures a Client.
 type Options struct {
-	Broker     string // host:port
-	ClientID   string
-	Username   string
-	Password   string
-	KeepAlive  time.Duration
-	TLS        *tls.Config // nil => plaintext TCP
-	Will       *Message    // Last-Will-and-Testament (published by the broker on ungraceful disconnect)
-	OnConnect  func(*Client)
-	Logger     *slog.Logger
+	Broker    string // host:port
+	ClientID  string
+	Username  string
+	Password  string
+	KeepAlive time.Duration
+	TLS       *tls.Config // nil => plaintext TCP
+	Will      *Message    // Last-Will-and-Testament (published by the broker on ungraceful disconnect)
+	OnConnect func(*Client)
+	Logger    *slog.Logger
 }
 
 const (
-	pktCONNECT  = 0x10
-	pktCONNACK  = 0x20
-	pktPUBLISH  = 0x30
-	pktSUBSCRIBE = 0x80
-	pktSUBACK   = 0x90
-	pktPINGREQ  = 0xC0
-	pktPINGRESP = 0xD0
+	pktCONNECT    = 0x10
+	pktCONNACK    = 0x20
+	pktPUBLISH    = 0x30
+	pktSUBSCRIBE  = 0x80
+	pktSUBACK     = 0x90
+	pktPINGREQ    = 0xC0
+	pktPINGRESP   = 0xD0
 	pktDISCONNECT = 0xE0
 )
 

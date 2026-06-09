@@ -79,7 +79,7 @@ type Snapshot struct {
 	ChangedByUserID string   `json:"changed_by_user_id,omitempty"`
 	OpenSensors     []string `json:"open_sensors"`
 	BypassedSensors []string `json:"bypassed_sensors"`
-	DelayTotal      int      `json:"delay_total"`        // seconds, 0 if no countdown
+	DelayTotal      int      `json:"delay_total"`          // seconds, 0 if no countdown
 	DelayEndsUnix   int64    `json:"delay_ends,omitempty"` // unix seconds the countdown ends
 	ReadyToArm      bool     `json:"ready_to_arm"`
 	Sequence        uint64   `json:"sequence"`
@@ -376,6 +376,11 @@ func (e *Engine) toTriggered(actor Actor) {
 	}
 	e.changedBy = actor.Name
 	e.changedByUserID = actor.UserID
+	cause := actor.Name
+	if cause == "" {
+		cause = "unknown"
+	}
+	e.log.Warn("alarm: TRIGGERED", "cause", cause, "kind", actor.Role, "prior_mode", e.priorArmMode)
 	e.clearTimer()
 	e.setState(StateTriggered)
 	if e.cfg.TriggerTime > 0 {

@@ -129,13 +129,17 @@ func TestSharedCode(t *testing.T) {
 	s := testStore(t)
 	now := time.Now()
 
-	// No code configured: an action that needs no code is allowed for the
-	// (already-authenticated) ingress user; one that needs a code is not.
+	// No code configured: EVERY action is allowed — there is no code to verify
+	// and nothing to require, so the owner is never locked out (this is the
+	// fix for "left the code blank but can't disarm").
 	if d := s.AuthorizeUser("", Perm{Action: "arm", Mode: "away"}, now); !d.Allowed {
 		t.Fatalf("no-code arm should be allowed with no code set: %+v", d)
 	}
-	if d := s.AuthorizeUser("", disarmCode(), now); d.Allowed || d.Reason != "invalid_code" {
-		t.Fatalf("code-required disarm should fail with no code set: %+v", d)
+	if d := s.AuthorizeUser("", disarmCode(), now); !d.Allowed {
+		t.Fatalf("no-code disarm should be allowed even when 'code required' (nothing to enforce): %+v", d)
+	}
+	if d := s.AuthorizeUser("whatever", disarmCode(), now); !d.Allowed {
+		t.Fatalf("a stray typed code is ignored when none is configured: %+v", d)
 	}
 
 	// Configure a shared code.

@@ -183,9 +183,12 @@ func (c *Client) DetectMode(ctx context.Context) (Mode, error) {
 	case errors.Is(err, ErrGlobalMode):
 		return ModeGlobal, nil
 	case errors.Is(err, ErrNotFound):
-		return ModeAppManaged, nil
+		return ModeAppManaged, nil // firmware predates arm profiles
 	default:
-		return ModeAppManaged, nil
+		// An indeterminate error (e.g. HTTP 429 rate-limited or a transient
+		// network blip) is NOT evidence of app-managed firmware — surface it
+		// so the caller keeps the last known mode rather than flapping.
+		return ModeUnavailable, err
 	}
 }
 

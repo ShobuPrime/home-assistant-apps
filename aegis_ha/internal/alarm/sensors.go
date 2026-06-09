@@ -212,6 +212,7 @@ func (e *Engine) sensorTrigger(immediate bool, by string) {
 		e.priorArmMode = e.armMode
 		e.changedBy = by
 		e.changedByUserID = ""
+		e.log.Info("alarm: entry delay started", "cause", by, "seconds", int(e.cfg.EntryDelay/time.Second))
 		e.setState(StatePending)
 		e.startTimer(e.cfg.EntryDelay)
 		e.publish()

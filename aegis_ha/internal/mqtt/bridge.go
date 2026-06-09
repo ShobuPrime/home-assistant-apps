@@ -17,6 +17,7 @@ import (
 type Config struct {
 	Prefix              string
 	ArmModes            []string
+	CodeConfigured      bool // a shared code is set; only then advertise a PIN field
 	RequireCodeToArm    bool
 	RequireCodeToDisarm bool
 	Version             string

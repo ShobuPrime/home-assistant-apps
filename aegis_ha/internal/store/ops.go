@@ -38,6 +38,12 @@ func (s *Store) AuthorizeMQTT(pin string, p Perm, now time.Time) Decision {
 	if s.globalLocked(now) {
 		return Decision{Reason: "locked"}
 	}
+	// No shared code configured: the alarm is operated with no PIN, so there
+	// is nothing to verify and nothing to require — always allow, and never
+	// lock the owner out. Any PIN that may have been typed is ignored.
+	if len(s.users) == 0 {
+		return Decision{Allowed: true}
+	}
 	if pin == "" {
 		if !p.CodeRequired {
 			return Decision{Allowed: true} // anonymous, no code required

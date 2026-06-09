@@ -51,9 +51,6 @@ func (b *Bridge) allDiscovery() []discoveryMsg {
 }
 
 func (b *Bridge) panelDiscovery() discoveryMsg {
-	// REMOTE_CODE forwards the entered PIN to AegisHA (which holds the single
-	// shared code); the panel keypad is numeric.
-	const code = "REMOTE_CODE"
 	var feats []string
 	for _, m := range b.cfg.ArmModes {
 		switch m {
@@ -71,19 +68,27 @@ func (b *Bridge) panelDiscovery() discoveryMsg {
 	}
 	feats = append(feats, "trigger")
 
-	return b.disco("alarm_control_panel", "panel", map[string]any{
+	payload := map[string]any{
 		"name":                  "AegisHA",
 		"unique_id":             b.cfg.Prefix + "_panel",
 		"object_id":             b.cfg.Prefix,
 		"state_topic":           b.topic("panel", "state"),
 		"command_topic":         b.topic("panel", "cmd"),
 		"json_attributes_topic": b.topic("panel", "attrs"),
-		"code":                  code,
-		"command_template":      `{"action":"{{action}}","code":"{{code}}"}`,
-		"code_arm_required":     b.cfg.RequireCodeToArm,
-		"code_disarm_required":  b.cfg.RequireCodeToDisarm,
 		"supported_features":    feats,
-	})
+	}
+	// Only advertise a PIN field when a shared code is actually configured.
+	// REMOTE_CODE forwards the entered PIN to AegisHA (which holds the code);
+	// the keypad is numeric. With no code set, omitting `code` means Home
+	// Assistant arms/disarms with no prompt, and a bare action payload
+	// (e.g. "DISARM") is still handled by handlePanelCmd.
+	if b.cfg.CodeConfigured {
+		payload["code"] = "REMOTE_CODE"
+		payload["command_template"] = `{"action":"{{action}}","code":"{{code}}"}`
+		payload["code_arm_required"] = b.cfg.RequireCodeToArm
+		payload["code_disarm_required"] = b.cfg.RequireCodeToDisarm
+	}
+	return b.disco("alarm_control_panel", "panel", payload)
 }
 
 func (b *Bridge) sensorDiscovery(obj, name, icon, unit, deviceClass string) discoveryMsg {
