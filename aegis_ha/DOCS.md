@@ -116,20 +116,25 @@ never shared with the Supervisor, MQTT, or Home Assistant clients.
 `sensor.aegis_ha_protect_link_mode` always reports the detected capability
 (`local` / `global` / `app-managed` / `unavailable`).
 
-#### Two-way arm sync
+#### Arm sync — what works in which mode
 
-AegisHA keeps its panel in step with Protect's arm state automatically (unless
-`protect_mode` is `app-managed`):
+- **AegisHA → Protect (always):** AegisHA is the source of truth. In **Local**
+  mode it mirrors arm/disarm to the NVR directly; in **Global** mode it drives
+  Protect through Alarm Manager **webhooks** (below). Either way, arm/disarm
+  from AegisHA.
+- **Protect → AegisHA (Local mode only):** in Local mode AegisHA polls the NVR's
+  `armMode.status` and mirrors an arm/disarm done in the UniFi Protect app
+  (shown with `changed_by: UniFi Protect`). The two directions can't loop — a
+  mirror never re-fires a webhook.
 
-- **Protect → AegisHA**: AegisHA polls the NVR's `armMode.status` — which is
-  readable even in Global mode — and when you arm or disarm from the **UniFi
-  Protect app**, the AegisHA panel follows (shown with `changed_by: UniFi
-  Protect`).
-- **AegisHA → Protect**: in **Local** mode AegisHA mirrors arm/disarm to the NVR
-  directly; in **Global** mode it drives Protect through webhooks (below).
-
-The two directions cannot loop: a mirror does not re-fire a webhook back at
-Protect.
+> **Global-mode limitation (verified against UCG Fiber firmware 7.1.77):** the
+> UniFi Protect Integration API does **not** expose the global arm state for
+> reading — `GET /v1/nvrs` reports `armMode.status: "disabled"` even while the
+> system is armed in the Protect app, and there is no alarm-manager status
+> endpoint. So in Global mode AegisHA **cannot** reflect an arm done in the
+> Protect app. Arm from AegisHA (it drives Protect via the webhooks), or switch
+> the Alarm Manager to **Local** mode for true two-way sync. This is a UniFi API
+> limitation, not an AegisHA bug.
 
 #### Driving the Protect alarm with webhooks (and what the "trigger" one is for)
 
@@ -275,11 +280,16 @@ it on the keypad for whichever actions you turned on
 
 ### Arming from the UniFi Protect app doesn't show on the AegisHA panel
 
-**Cause:** `protect_mode` is `app-managed` (which deliberately ignores Protect's
-arm state), or `unifi_host`/`unifi_api_key` are not set.
+**Cause:** your Protect Alarm Manager is in **Global** mode, where the UniFi API
+does not expose the arm state for reading (see the Global-mode limitation
+above) — so AegisHA can't know you armed in the Protect app. (Also check
+`protect_mode` isn't `app-managed`, and that `unifi_host`/`unifi_api_key` are
+set.)
 
-**Solution:** Use `protect_mode: auto` and configure the UniFi host + API key.
-The panel mirrors Protect's `armMode.status` within one poll interval.
+**Solution:** Arm/disarm from **AegisHA** (it drives Protect via the webhooks),
+not from the Protect app. For true two-way sync, switch the Protect Alarm
+Manager to **Local** mode — then AegisHA mirrors Protect's `armMode.status`
+within one poll interval.
 
 ### UniFi arm/disarm from AegisHA does nothing
 

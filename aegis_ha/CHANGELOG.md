@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.2
+
+_2026-06-09_
+
+### UniFi arm-sync reality, card naming, and the card cache-buster
+
+- **Global-mode arm read-sync honestly scoped.** Verified live against UCG Fiber
+  firmware 7.1.77 that the UniFi Integration API does not expose the global arm
+  state — `GET /v1/nvrs` returns `armMode.status: "disabled"` even while armed in
+  the Protect app, and there is no alarm-manager status endpoint. AegisHA now
+  only polls the arm state in **Local** mode (where it is meaningful), logs the
+  limitation once in Global mode, and stops wasting API calls polling it in
+  Global (also easing the rate limit). In Global mode AegisHA is the source of
+  truth and drives Protect via webhooks; arm from AegisHA, not the Protect app.
+- **Fix: companion card / entity showed "AegisHA AegisHA".** Entity names are now
+  the role only ("Alarm Manager", "Last Changed By", "Panic", …) so Home
+  Assistant composes them with the device name as "AegisHA Alarm Manager", etc.
+- **Fix: card showed all arm modes (Arm Home/Away/…).** HA's MQTT alarm panel
+  always reports every arm mode in `supported_features`; the card now renders the
+  configured modes from a new `arm_modes` panel attribute instead, and labels a
+  single mode simply "Arm". The card also shows a title and the trigger cause.
+- **Fix: card updates didn't reach the browser.** The Lovelace resource
+  registration kept the original `?v=` cache-buster forever; it now updates the
+  resource URL on a version change so browsers re-fetch the new card.
+
 ## 0.2.1
 
 _2026-06-09_

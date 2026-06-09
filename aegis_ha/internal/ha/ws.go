@@ -57,10 +57,30 @@ func RegisterLovelaceResource(token, resourceURL string, log *slog.Logger) error
 	}
 	want := stripVersion(resourceURL)
 	for _, r := range list.Result {
-		if stripVersion(r.URL) == want {
+		if stripVersion(r.URL) != want {
+			continue
+		}
+		if r.URL == resourceURL {
 			log.Info("card: Lovelace resource already registered", "url", r.URL)
 			return nil
 		}
+		// Same card, stale ?v= cache-buster: update the URL so browsers
+		// re-fetch the new card instead of serving the cached old version.
+		if err := websocket.JSON.Send(conn, map[string]any{
+			"id": 3, "type": "lovelace/resources/update",
+			"resource_id": r.ID, "res_type": "module", "url": resourceURL,
+		}); err != nil {
+			return err
+		}
+		upd, err := readResult(conn, 3)
+		if err != nil {
+			return err
+		}
+		if !upd.Success {
+			return fmt.Errorf("ha: update resource: %s (%s)", upd.Error.Message, upd.Error.Code)
+		}
+		log.Info("card: Lovelace resource updated to new version", "old", r.URL, "new", resourceURL)
+		return nil
 	}
 
 	// Create the resource.
@@ -86,6 +106,7 @@ type wsFrame struct {
 }
 
 type wsResource struct {
+	ID  string `json:"id"`
 	URL string `json:"url"`
 }
 

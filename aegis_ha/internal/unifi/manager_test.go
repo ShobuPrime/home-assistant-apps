@@ -130,12 +130,14 @@ func TestManagerSkipsZoneEntitiesWhenNotExposed(t *testing.T) {
 }
 
 func TestManagerMirrorsExternalProtectArm(t *testing.T) {
-	mk := &mock{armProfilesGlobal: true, nvrArm: "disabled"}
+	// Read-sync only operates in Local mode (armMode.status is meaningful
+	// there; Global mode does not expose the arm state).
+	mk := &mock{armProfilesOK: true, nvrArm: "disabled"}
 	c := newMock(t, mk)
 	pub := newFakePub()
 	eng := runEngine(t, alarm.Config{ArmModes: []string{"away"}, ExitDelay: 0})
 	m := NewManager(c, eng, pub, Config{PreferMode: "auto", PollInterval: time.Hour, ArmModes: []string{"away"}}, nil)
-	m.detect(t.Context()) // global mode → read-sync active
+	m.detect(t.Context()) // local mode → read-sync active
 
 	// First observation establishes the baseline and must not act.
 	m.syncArmState(t.Context())
@@ -164,7 +166,7 @@ func TestManagerMirrorsExternalProtectArm(t *testing.T) {
 // TestManagerMirrorClearsTriggered confirms that disarming in the UniFi app
 // clears an active AegisHA alarm (the triggered state must mirror to disarmed).
 func TestManagerMirrorClearsTriggered(t *testing.T) {
-	mk := &mock{armProfilesGlobal: true, nvrArm: "breach"}
+	mk := &mock{armProfilesOK: true, nvrArm: "breach"}
 	c := newMock(t, mk)
 	eng := runEngine(t, alarm.Config{ArmModes: []string{"away"}, ExitDelay: 0, EntryDelay: 0, TriggerTime: 0})
 	m := NewManager(c, eng, newFakePub(), Config{PreferMode: "auto", PollInterval: time.Hour, ArmModes: []string{"away"}}, nil)
