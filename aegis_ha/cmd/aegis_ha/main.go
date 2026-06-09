@@ -1,6 +1,6 @@
-// Command aegis_ha is the AegisHA add-on daemon.
+// Command aegis_ha is the AegisHA app daemon.
 //
-// It loads add-on options, opens the hashed PIN store, runs the alarm
+// It loads app options, opens the hashed code store, runs the alarm
 // state machine, and — when a Supervisor-managed MQTT broker is available
 // — publishes a native Home Assistant alarm_control_panel entity (plus
 // companion entities) via MQTT discovery and bridges keypad commands to
@@ -59,27 +59,28 @@ func main() {
 		"entry_delay", opts.EntryDelay,
 		"trigger_time", opts.TriggerTime,
 		"web_ui", opts.EnableWebUI,
-		"bootstrap_users", len(opts.Users),
+		"code_set", opts.Code != "",
 		"unifi_configured", opts.UniFiHost != "" && opts.UniFiAPIKey != "",
 	)
 
 	token := os.Getenv("SUPERVISOR_TOKEN")
 
-	// PIN / user store.
+	// Shared-code store: the single optional alarm code, PBKDF2-hashed at rest
+	// with brute-force lockout. The code lives in options and is re-derived on
+	// every start (empty == no code; the authenticated HA user is the identity).
 	st, err := store.Open(dataDir, store.Policy{
 		LockoutThreshold: opts.LockoutThreshold,
 		LockoutDuration:  time.Duration(opts.LockoutDuration) * time.Second,
-		PINMin:           opts.PINMinLength,
-		PINMax:           opts.PINMaxLength,
+		PINMin:           4,
+		PINMax:           64,
 	})
 	if err != nil {
 		logger.Error("aegis_ha: failed to open store", "err", err)
 		os.Exit(1)
 	}
-	if n, err := st.ImportBootstrap(toBootstrap(opts.Users), opts.DefaultRole); err != nil {
-		logger.Warn("store: bootstrap import failed", "err", err)
-	} else if n > 0 {
-		logger.Warn("store: imported bootstrap users — now clear the plaintext PINs from the add-on options", "count", n)
+	if err := st.SetCode(opts.Code); err != nil {
+		logger.Warn("store: could not set the alarm code (a code must be 4–64 characters) — continuing with no code", "err", err)
+		_ = st.SetCode("")
 	}
 
 	// Optional companion Lovelace card: write it to /config/www and
@@ -134,11 +135,10 @@ func main() {
 			pub = bridge
 		}
 		mgr := unifi.NewManager(uclient, engine, pub, unifi.Config{
-			PreferMode:      opts.ProtectMode,
-			PollInterval:    10 * time.Second,
-			SensorOverrides: sensorOverrides(opts.Sensors),
-			Groups:          sensorGroups(opts.SensorGroups),
-			ExposeZones:     opts.ExposeZoneEntities,
+			PreferMode:        opts.ProtectMode,
+			PollInterval:      10 * time.Second,
+			ArmModes:          opts.ArmModes,
+			ExposeZones:       opts.ExposeZoneEntities,
 			WebhookArm:        opts.UniFiWebhookArm,
 			WebhookDisarm:     opts.UniFiWebhookDisarm,
 			WebhookTrigger:    opts.UniFiWebhookTrigger,
@@ -151,14 +151,13 @@ func main() {
 	// Ingress HTTP server: health endpoints + the keypad/admin UI. Blocks
 	// until SIGTERM.
 	srv := web.New(logger, ingressAddr, web.Options{
-		Engine:             engine,
-		Store:              st,
-		AdminUsernames:     opts.AdminUsernames,
-		ArmModes:           opts.ArmModes,
-		ArmingRequiresCode: opts.ArmingRequiresCode,
-		DisarmRequiresCode: opts.DisarmRequiresCode,
-		EnableUI:           opts.EnableWebUI,
-		Version:            version,
+		Engine:              engine,
+		Store:               st,
+		ArmModes:            opts.ArmModes,
+		RequireCodeToArm:    opts.RequireCodeToArm,
+		RequireCodeToDisarm: opts.RequireCodeToDisarm,
+		EnableUI:            opts.EnableWebUI,
+		Version:             version,
 	})
 	runErr := srv.Run(ctx)
 
@@ -203,11 +202,9 @@ func setupMQTT(ctx context.Context, logger *slog.Logger, opts *config.Options, e
 	})
 	bridge := mqtt.NewBridge(client, engine, st, mqtt.Config{
 		Prefix:              opts.MQTTTopicPrefix,
-		CodeFormat:          opts.MQTTCodeFormat,
 		ArmModes:            opts.ArmModes,
-		ArmingRequiresCode:  opts.ArmingRequiresCode,
-		DisarmRequiresCode:  opts.DisarmRequiresCode,
-		TriggerRequiresCode: opts.TriggerRequiresCode,
+		RequireCodeToArm:    opts.RequireCodeToArm,
+		RequireCodeToDisarm: opts.RequireCodeToDisarm,
 		Version:             version,
 	}, alarmCfg, logger)
 	go client.Run(ctx)
@@ -221,74 +218,19 @@ func setupMQTT(ctx context.Context, logger *slog.Logger, opts *config.Options, e
 // detection without publishing entities.
 type noopPublisher struct{}
 
-func (noopPublisher) EnableProtect()                          {}
-func (noopPublisher) AnnounceZone(string, string)             {}
-func (noopPublisher) PublishProtectStatus(string, bool)       {}
-func (noopPublisher) PublishZone(string, bool)                {}
-
-func toBootstrap(users []config.User) []store.Bootstrap {
-	out := make([]store.Bootstrap, 0, len(users))
-	for _, u := range users {
-		out = append(out, store.Bootstrap{
-			Name:            u.Name,
-			HAUserID:        u.HAUserID,
-			PIN:             u.PIN,
-			Role:            u.Role,
-			AllowedArmModes: u.AllowedArmModes,
-		})
-	}
-	return out
-}
+func (noopPublisher) EnableProtect()                    {}
+func (noopPublisher) AnnounceZone(string, string)       {}
+func (noopPublisher) PublishProtectStatus(string, bool) {}
+func (noopPublisher) PublishZone(string, bool)          {}
 
 func seconds(n int) time.Duration { return time.Duration(n) * time.Second }
-
-// sensorOverrides converts the options sensor list into the alarm engine's
-// per-sensor config, keyed by lowercased name for matching UniFi sensors.
-func sensorOverrides(list []config.SensorOverride) map[string]alarm.SensorConfig {
-	if len(list) == 0 {
-		return nil
-	}
-	out := make(map[string]alarm.SensorConfig, len(list))
-	for _, o := range list {
-		if o.Name == "" {
-			continue
-		}
-		out[strings.ToLower(o.Name)] = alarm.SensorConfig{
-			Name:               o.Name,
-			Modes:              o.Modes,
-			AlwaysOn:           o.AlwaysOn,
-			Immediate:          o.Immediate,
-			UseExitDelay:       o.UseExitDelay,
-			AutoBypass:         o.AutoBypass,
-			AllowOpen:          o.AllowOpen,
-			TriggerUnavailable: o.TriggerUnavailable,
-			Group:              o.Group,
-		}
-	}
-	return out
-}
-
-func sensorGroups(list []config.SensorGroupCfg) []alarm.SensorGroup {
-	out := make([]alarm.SensorGroup, 0, len(list))
-	for _, g := range list {
-		if g.Name == "" {
-			continue
-		}
-		out = append(out, alarm.SensorGroup{
-			Name:       g.Name,
-			EventCount: g.EventCount,
-			Timeout:    time.Duration(g.Timeout) * time.Second,
-		})
-	}
-	return out
-}
 
 type alarmStateFile struct {
 	ArmMode string `json:"arm_mode"`
 }
 
 // readAlarmState returns the committed arm mode persisted before the last
-// shutdown (empty if none), so an armed system survives an add-on restart.
+// shutdown (empty if none), so an armed system survives an app restart.
 func readAlarmState(dir string, logger *slog.Logger) string {
 	b, err := os.ReadFile(filepath.Join(dir, "alarm_state.json"))
 	if err != nil {
@@ -315,7 +257,7 @@ func writeAlarmState(dir, armMode string) {
 	}
 }
 
-// newLogger maps the add-on log_level option onto an slog text handler.
+// newLogger maps the app's log_level option onto an slog text handler.
 func newLogger(level string) *slog.Logger {
 	var lv slog.Level
 	switch strings.ToLower(level) {

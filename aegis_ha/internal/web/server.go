@@ -38,10 +38,9 @@ var tmplFS embed.FS
 type Options struct {
 	Engine              *alarm.Engine
 	Store               *store.Store
-	AdminUsernames      []string
 	ArmModes            []string
-	ArmingRequiresCode  bool
-	DisarmRequiresCode  bool
+	RequireCodeToArm    bool
+	RequireCodeToDisarm bool
 	EnableUI            bool
 	Version             string
 }
@@ -82,9 +81,6 @@ func (s *Server) routes() {
 		s.mux.HandleFunc("POST /arm", s.ui(s.handleArm))
 		s.mux.HandleFunc("POST /disarm", s.ui(s.handleDisarm))
 		s.mux.HandleFunc("POST /trigger", s.ui(s.handleTrigger))
-		s.mux.HandleFunc("GET /admin", s.admin(s.handleAdmin))
-		s.mux.HandleFunc("POST /admin/users", s.admin(s.handleAddUser))
-		s.mux.HandleFunc("POST /admin/users/toggle", s.admin(s.handleToggleUser))
 	} else {
 		s.mux.HandleFunc("GET /{$}", s.handleRoot)
 	}
@@ -118,7 +114,6 @@ func (s *Server) Run(ctx context.Context) error {
 
 type identity struct {
 	ID, Name, Display string
-	IsAdmin           bool
 }
 
 func (s *Server) identify(r *http.Request) identity {
@@ -131,21 +126,7 @@ func (s *Server) identify(r *http.Request) identity {
 	if disp == "" {
 		disp = "user"
 	}
-	return identity{ID: id, Name: name, Display: disp, IsAdmin: s.isAdmin(id, name)}
-}
-
-func (s *Server) isAdmin(id, name string) bool {
-	if name != "" {
-		for _, a := range s.opts.AdminUsernames {
-			if strings.EqualFold(a, name) {
-				return true
-			}
-		}
-	}
-	if u := s.opts.Store.UserByHAID(id); u != nil && u.IsAdmin() {
-		return true
-	}
-	return false
+	return identity{ID: id, Name: name, Display: disp}
 }
 
 // ui gates a handler on a present ingress identity.
@@ -153,22 +134,6 @@ func (s *Server) ui(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.identify(r).ID == "" {
 			http.Error(w, "Open AegisHA from the Home Assistant sidebar (ingress).", http.StatusForbidden)
-			return
-		}
-		next(w, r)
-	}
-}
-
-// admin gates a handler on an admin identity.
-func (s *Server) admin(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := s.identify(r)
-		if id.ID == "" {
-			http.Error(w, "Open AegisHA from the Home Assistant sidebar (ingress).", http.StatusForbidden)
-			return
-		}
-		if !id.IsAdmin {
-			http.Error(w, "Admin only.", http.StatusForbidden)
 			return
 		}
 		next(w, r)
@@ -196,7 +161,6 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "index", map[string]any{
 		"Base":     ingressBase(r),
 		"User":     id,
-		"IsAdmin":  id.IsAdmin,
 		"ArmModes": s.opts.ArmModes,
 		"Snapshot": s.opts.Engine.Current(),
 		"Digits":   []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"},
@@ -292,16 +256,16 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, action string) {
 	codeRequired := false
 	switch action {
 	case "arm":
-		codeRequired = s.opts.ArmingRequiresCode
+		codeRequired = s.opts.RequireCodeToArm
 	case "disarm":
-		codeRequired = s.opts.DisarmRequiresCode
+		codeRequired = s.opts.RequireCodeToDisarm
 	}
-	dec := s.opts.Store.AuthorizeUser(id.ID, pin, store.Perm{Action: action, Mode: mode, CodeRequired: codeRequired}, time.Now())
+	dec := s.opts.Store.AuthorizeUser(pin, store.Perm{Action: action, Mode: mode, CodeRequired: codeRequired}, time.Now())
 
+	// The actor is always the authenticated Home Assistant user (the
+	// non-spoofable ingress identity); the shared code is only an extra gate,
+	// never the identity.
 	actor := alarm.Actor{Name: id.Display, UserID: id.ID}
-	if dec.User != nil {
-		actor.Name, actor.Role = dec.User.Name, dec.User.Role
-	}
 
 	var msg string
 	switch {
@@ -329,44 +293,6 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, action string) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = fmt.Fprint(w, html.EscapeString(msg))
-}
-
-func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
-	s.renderAdmin(w, r, "")
-}
-
-func (s *Server) renderAdmin(w http.ResponseWriter, r *http.Request, msg string) {
-	s.render(w, "admin", map[string]any{
-		"Base":  ingressBase(r),
-		"Users": s.opts.Store.List(),
-		"Msg":   msg,
-	})
-}
-
-func (s *Server) handleAddUser(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	u := store.User{
-		Name:     strings.TrimSpace(r.FormValue("name")),
-		Role:     r.FormValue("role"),
-		HAUserID: strings.TrimSpace(r.FormValue("ha_user_id")),
-	}
-	if _, err := s.opts.Store.AddUser(u, r.FormValue("pin")); err != nil {
-		s.renderAdmin(w, r, "Could not add user: "+err.Error())
-		return
-	}
-	http.Redirect(w, r, ingressBase(r)+"/admin", http.StatusSeeOther)
-}
-
-func (s *Server) handleToggleUser(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	target := r.FormValue("id")
-	for _, u := range s.opts.Store.List() {
-		if u.ID == target {
-			_ = s.opts.Store.SetEnabled(target, !u.Enabled)
-			break
-		}
-	}
-	http.Redirect(w, r, ingressBase(r)+"/admin", http.StatusSeeOther)
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {

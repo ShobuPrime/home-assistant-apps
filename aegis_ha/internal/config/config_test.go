@@ -35,28 +35,9 @@ func TestStringListUnmarshal(t *testing.T) {
 	}
 }
 
-func TestUserListUnmarshalTolerantOfMockSupervisor(t *testing.T) {
-	// The CI mock Supervisor serializes an empty users option as "[]".
-	var u UserList
-	if err := json.Unmarshal([]byte(`"[]"`), &u); err != nil {
-		t.Fatalf("unmarshal mock users: %v", err)
-	}
-	if u != nil {
-		t.Fatalf("want nil, got %v", u)
-	}
-
-	var u2 UserList
-	if err := json.Unmarshal([]byte(`[{"name":"Anthony","pin":"1234","role":"admin"}]`), &u2); err != nil {
-		t.Fatalf("unmarshal real users: %v", err)
-	}
-	if len(u2) != 1 || u2[0].Name != "Anthony" || u2[0].Role != "admin" {
-		t.Fatalf("unexpected users: %+v", u2)
-	}
-}
-
 // TestMockSupervisorOptionsShape reproduces exactly what the CI mock
-// Supervisor returns (list/object options as bare strings) and asserts the
-// whole Options object decodes and normalizes without error.
+// Supervisor returns (the arm_modes list serialized as a bare string) and
+// asserts the whole Options object decodes and normalizes without error.
 func TestMockSupervisorOptionsShape(t *testing.T) {
 	raw := `{
 		"log_level": "info",
@@ -67,9 +48,8 @@ func TestMockSupervisorOptionsShape(t *testing.T) {
 		"exit_delay": 60,
 		"entry_delay": 30,
 		"trigger_time": 1800,
-		"mqtt_topic_prefix": "aegis_ha",
-		"admin_usernames": "[]",
-		"users": "[]"
+		"code": "",
+		"mqtt_topic_prefix": "aegis_ha"
 	}`
 	var o Options
 	if err := json.Unmarshal([]byte(raw), &o); err != nil {
@@ -82,32 +62,32 @@ func TestMockSupervisorOptionsShape(t *testing.T) {
 	if o.MQTTTopicPrefix != "aegis_ha" || o.ProtectMode != "auto" {
 		t.Errorf("scalar options wrong: prefix=%q mode=%q", o.MQTTTopicPrefix, o.ProtectMode)
 	}
-	if o.PINMinLength != 4 || o.LockoutThreshold != 5 {
-		t.Errorf("policy defaults wrong: min=%d lockout=%d", o.PINMinLength, o.LockoutThreshold)
+	if o.LockoutThreshold != 5 {
+		t.Errorf("policy defaults wrong: lockout=%d", o.LockoutThreshold)
 	}
 }
 
 func TestApplyDefaults(t *testing.T) {
 	var o Options
 	o.applyDefaults()
-	if o.LogLevel != "info" || o.UniFiSite != "default" || o.ProtectMode != "auto" {
+	if o.LogLevel != "info" || o.ProtectMode != "auto" || o.ExitDelaySource != "app" {
 		t.Errorf("defaults not applied: %+v", o)
 	}
-	if o.MQTTCodeFormat != "number" || o.DefaultRole != "user" {
+	if o.TriggerTime != 1800 || o.LockoutThreshold != 5 || o.LockoutDuration != 300 {
 		t.Errorf("defaults not applied: %+v", o)
 	}
 }
 
 func TestRedactedMasksSecrets(t *testing.T) {
-	o := &Options{UniFiAPIKey: "supersecret", Users: UserList{{Name: "a", PIN: "1234"}}}
+	o := &Options{UniFiAPIKey: "supersecret", Code: "1234"}
 	r := o.Redacted()
 	if r.UniFiAPIKey != "***" {
 		t.Errorf("api key not masked: %q", r.UniFiAPIKey)
 	}
-	if r.Users[0].PIN != "" {
-		t.Errorf("user pin not stripped: %q", r.Users[0].PIN)
+	if r.Code != "***" {
+		t.Errorf("code not masked: %q", r.Code)
 	}
-	if o.UniFiAPIKey != "supersecret" || o.Users[0].PIN != "1234" {
+	if o.UniFiAPIKey != "supersecret" || o.Code != "1234" {
 		t.Errorf("Redacted mutated the original options")
 	}
 }

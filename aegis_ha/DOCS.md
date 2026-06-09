@@ -2,234 +2,306 @@
 
 ## Overview
 
-AegisHA is a Home Assistant add-on that implements a dynamic alarm system and
-exposes it natively to Home Assistant. It owns an Alarmo-inspired alarm state
-machine, validates per-user PIN codes itself, and publishes a real
-`alarm_control_panel` entity (plus a set of companion entities) via MQTT
-discovery. It integrates a UniFi Protect gateway for sensors and sirens, and —
-where the Protect Alarm Manager permits — mirrors arm/disarm to the NVR.
+AegisHA is a Home Assistant app that implements a home alarm panel and exposes
+it natively to Home Assistant. It owns an Alarmo-inspired alarm state machine and
+publishes a real `alarm_control_panel` entity (plus a set of companion entities)
+via MQTT discovery. It integrates a UniFi Protect gateway for sensors and sirens,
+reads and mirrors Protect's arm state, and — where the Protect Alarm Manager
+permits — mirrors arm/disarm to the NVR directly.
+
+## You do NOT add AegisHA as an integration
+
+AegisHA is **not** an integration you add under Settings → Devices & Services,
+and it is **not** an MQTT broker. It is an MQTT *client* that publishes its
+entities through **[MQTT discovery][mqtt-discovery]**. For its entities and
+companion card to appear you need the standard Home Assistant MQTT setup:
+
+1. An MQTT **broker** — for example the official
+   **[Mosquitto broker add-on][mosquitto]**.
+2. The **[MQTT integration][mqtt-integration]** configured (Settings → Devices &
+   Services). Home Assistant [auto-discovers the broker][mqtt-broker-setup] right
+   after you install Mosquitto and offers to set the integration up with one
+   click.
+
+AegisHA finds the broker automatically through the Supervisor; you never enter
+broker details into AegisHA. If neither is present, AegisHA still runs and its
+sidebar keypad works, but the `alarm_control_panel` entity, the companion-card
+data, and any zone entities cannot be published — the app log will say
+`no broker available — native alarm entity disabled`.
+
+### Does Home Assistant auto-discover AegisHA?
+
+**The entities — yes, automatically.** With the MQTT integration configured and
+AegisHA running, its alarm panel and companion entities appear on their own as a
+device named **AegisHA** under Settings → Devices & Services → **MQTT**. That is
+[MQTT discovery][mqtt-discovery]: AegisHA publishes retained config to
+`homeassistant/<component>/aegis_ha/<object>/config`, and Home Assistant ingests
+it — no manual YAML, nothing to add. The companion card auto-registers as a
+dashboard resource.
+
+**The app itself — no.** Home Assistant never auto-installs apps/add-ons (a
+deliberate security boundary), so you install AegisHA from the store once. After
+that, everything it exposes is auto-discovered. The end-to-end "seamless" flow is:
+install [Mosquitto][mosquitto] → click *Configure* on the MQTT integration HA
+offers → install & start AegisHA → the AegisHA device shows up by itself.
 
 ## How the native entity works
 
-AegisHA auto-detects the Supervisor-managed MQTT broker (the add-on requests the
-`mqtt` service) and publishes a retained MQTT discovery config for
-`alarm_control_panel.aegis_ha`. The panel is configured with Home Assistant's
-`REMOTE_CODE` sentinel, which means **the PIN you type on the keypad is
-forwarded to AegisHA** for validation against the per-user PIN store — rather than
-being checked locally by Home Assistant against a single static code. This is
-what makes true per-user PINs possible on a stock dashboard card.
+AegisHA publishes a retained discovery config for `alarm_control_panel.aegis_ha`.
+The panel uses Home Assistant's `REMOTE_CODE` sentinel, which means **the PIN you
+type on the keypad is forwarded to AegisHA** for validation against the single
+shared code — rather than being checked locally by Home Assistant. If no code is
+configured, you can arm/disarm with no PIN at all.
 
-> Requires the Home Assistant **MQTT integration** to be configured (not just a
-> broker running). Without it, discovery messages are published but no entity is
-> created.
+## Identity and the alarm code
+
+There is **no per-user PIN list and no admin console**. Identity is simply your
+logged-in Home Assistant user:
+
+- When you open AegisHA from the **HA sidebar** (ingress), the Supervisor injects
+  a trusted, non-spoofable `X-Remote-User-Id` — that is who performed the action
+  (shown in `changed_by`).
+- A single optional **`code`** can be required as an extra gate. It is the only
+  credential. Leave it blank to operate with no code.
+
+This is configured with three options:
+
+- `code` — the optional shared PIN (numeric). Blank = no code. This is the only
+  place a code is set.
+- `require_code_to_arm` — require the code to arm (default **off**; arming is
+  harmless).
+- `require_code_to_disarm` — require the code to disarm (default **on**).
+
+The code is hashed at rest (PBKDF2-SHA256 with a per-code salt) and protected by
+a brute-force lockout (`lockout_threshold` / `lockout_duration`). The lockout
+state persists across restarts; clear it from `button.aegis_ha_clear_lockout`.
 
 ## Configuration
 
-### Option: `log_level`
+Every option also carries a one-line description directly in the app's
+Configuration tab. This is the full reference.
 
-Controls add-on log verbosity: `trace`, `debug`, `info` (default), `notice`,
-`warning`, `error`, `fatal`.
+### `log_level`
+
+Log verbosity: `trace`, `debug`, `info` (default), `notice`, `warning`, `error`,
+`fatal`.
 
 ### UniFi Protect
 
-#### Option: `unifi_host`
+#### `unifi_host`
 
-Hostname or IP of your UniFi gateway (e.g. the UCG Fiber). Local, HTTPS.
+IP or hostname of your UniFi gateway running Protect (e.g. `192.168.1.1`). Leave
+blank to run AegisHA as a standalone alarm with no UniFi connection.
 
-#### Option: `unifi_api_key`
+#### `unifi_api_key`
 
-A UniFi OS API key (stored as a masked `password`). Create it in the UniFi OS UI
-under **Settings → Control Plane → Integrations / Admins → API Keys**. The key is
-sent as the `X-API-KEY` header. It is never logged.
+A UniFi OS API key (masked `password`). Create it in UniFi OS under **Settings →
+Admins → your user → Create API Key**. Sent as the `X-API-KEY` header; never
+logged.
 
-#### Option: `unifi_verify_ssl`
+#### `unifi_verify_ssl`
 
-Verify the gateway's TLS certificate. Default `false`, because UniFi gateways use
-a self-signed certificate. The insecure transport is scoped to the UniFi host
-only and is never shared with the Supervisor, MQTT, or Home Assistant clients.
+Verify the gateway's TLS certificate. Default `false` (gateways use a self-signed
+certificate). The insecure transport is scoped to the UniFi host only and is
+never shared with the Supervisor, MQTT, or Home Assistant clients.
 
-#### Option: `unifi_site`
+#### `protect_mode`
 
-UniFi site id. Default `default`.
-
-#### Option: `protect_mode`
-
-- `auto` (default): detect whether the Alarm Manager is Local or Global and fall
-  back to app-managed automatically
-- `local`: mirror arm/disarm to the NVR's Alarm Manager (requires Local mode)
-- `app-managed`: AegisHA owns arm state entirely; Protect provides sensors and
-  actuators only (works even in Global mode)
+- `auto` (default): detect whether the Alarm Manager is Local or Global, falling
+  back to app-managed automatically.
+- `local`: mirror arm/disarm to the NVR's Alarm Manager (requires Local mode).
+- `app-managed`: AegisHA is the sole source of truth; it ignores Protect's arm
+  state entirely (no read-sync) and uses Protect only for sensors/actuators.
 
 `sensor.aegis_ha_protect_link_mode` always reports the detected capability
 (`local` / `global` / `app-managed` / `unavailable`).
 
-#### Driving the Protect alarm in Global mode (webhooks)
+#### Two-way arm sync
 
-When the Alarm Manager is in **Global** mode, the Protect Integration API blocks
-all arm-profile operations (`GET /v1/arm-profiles` → `400 "not available when
-global alarm manager is enabled"`), so AegisHA cannot read or write a native arm
-profile. To still drive Protect's native alarm hardware (siren/lights/
-notifications) without leaving Global mode, use the **Alarm Manager webhook**
-path — which the API permits in any mode:
+AegisHA keeps its panel in step with Protect's arm state automatically (unless
+`protect_mode` is `app-managed`):
 
-1. In the Protect UI, create an Alarm with a **webhook** trigger and your chosen
-   action (e.g. siren). Note the webhook's trigger ID.
-2. Put that ID in the matching option — AegisHA POSTs
-   `/v1/alarm-manager/webhook/<id>` to fire that alarm when it transitions:
-   - `unifi_webhook_trigger`: fired when AegisHA enters **triggered** (breach) —
-     the main one, e.g. to sound the siren
-   - `unifi_webhook_arm` / `unifi_webhook_disarm`: fired on arm / disarm (e.g. a
-     confirmation chirp or notification)
+- **Protect → AegisHA**: AegisHA polls the NVR's `armMode.status` — which is
+  readable even in Global mode — and when you arm or disarm from the **UniFi
+  Protect app**, the AegisHA panel follows (shown with `changed_by: UniFi
+  Protect`).
+- **AegisHA → Protect**: in **Local** mode AegisHA mirrors arm/disarm to the NVR
+  directly; in **Global** mode it drives Protect through webhooks (below).
 
-These are optional and independent of `protect_mode`.
+The two directions cannot loop: a mirror does not re-fire a webhook back at
+Protect.
 
-#### Option: `exit_delay_source`
+#### Driving the Protect alarm with webhooks (and what the "trigger" one is for)
 
-Controls who owns the exit-delay countdown, and therefore *when* the ARM
-webhook fires:
+In **Global** mode the Integration API blocks arm-profile operations, so AegisHA
+cannot write a native arm profile. To still drive Protect's alarm hardware
+without leaving Global mode, use **Alarm Manager webhooks**, which the API
+permits in any mode. In the Protect app, create an Alarm with a **webhook**
+trigger + the action you want (siren, lights, notification), copy its **Trigger
+ID**, and paste it into the matching option. AegisHA then POSTs
+`/v1/alarm-manager/webhook/<id>` on the corresponding transition:
 
-- `app` (default): AegisHA runs the exit-delay countdown (`exit_delay`, any
-  number of seconds) and fires the ARM webhook **when it finishes arming**.
-  Configure your Protect ARM alarm with no activation delay.
+- **`unifi_webhook_trigger`** — fired the moment the alarm is **tripped**: a
+  sensor is breached while armed, or you press panic. This is the one that
+  *sounds the siren / flashes lights* on an actual alarm. If you only set up one
+  webhook, set up this one. Leave blank if you don't want Protect to react to a
+  breach.
+- **`unifi_webhook_arm`** / **`unifi_webhook_disarm`** — fired when AegisHA arms /
+  disarms (e.g. a confirmation chirp, a notification, or to arm/disarm Protect
+  itself in lockstep). These are what let one AegisHA panel toggle Protect even
+  though Protect's own webhooks are one-shot actions, which is why you create
+  separate ARM and DISARM alarms in Protect.
+
+All three are optional and independent of `protect_mode`.
+
+#### `exit_delay_source`
+
+Who owns the exit-delay countdown, and therefore *when* the ARM webhook fires:
+
+- `app` (default): AegisHA runs the exit-delay countdown (`exit_delay`) and fires
+  the ARM webhook **when it finishes arming**. Configure your Protect ARM alarm
+  with no activation delay.
 - `unifi`: AegisHA fires the ARM webhook the **moment arming begins**, so your
-  Protect alarm's own activation delay (the UI's 1/5/10 min) governs. Set
-  `exit_delay` to match that profile so AegisHA's on-screen countdown lines up.
+  Protect alarm's own activation delay governs. Set `exit_delay` to match so the
+  on-screen countdown lines up.
 
 ### Alarm behavior
 
 - `arm_modes`: which modes the panel exposes — any of `away`, `home`, `night`,
-  `vacation`, `custom` (default `away`, `home`, `night`)
+  `vacation`, `custom` (default `away`, `home`, `night`).
 - `exit_delay`: leave/exit delay in seconds before an armed state commits (0–600,
-  default 60)
-- `entry_delay`: entry delay in seconds before a tripped sensor triggers the
-  alarm (0–600, default 30)
+  default 60; 0 arms instantly).
+- `entry_delay`: entry delay in seconds before a tripped sensor sounds the alarm
+  (0–600, default 30; 0 trips instantly).
 - `trigger_time`: how long the alarm stays triggered, in seconds (0–3600, default
-  1800; 0 = indefinite)
-- `arming_requires_code` / `disarm_requires_code` / `trigger_requires_code`:
-  whether a PIN is required for each action (defaults: arm no, disarm yes,
-  trigger no)
-- `disarm_after_trigger`: disarm automatically when the trigger time expires
-- `ignore_blocking_sensors_after_trigger`: re-arm even if sensors are still open
+  1800; 0 = until manually disarmed).
+- `disarm_after_trigger`: return to disarmed (rather than the prior armed mode)
+  when the trigger time expires.
+- `ignore_blocking_sensors_after_trigger`: allow re-arming even if a sensor that
+  caused the alarm is still open.
+
+### Code / lockout
+
+- `code`, `require_code_to_arm`, `require_code_to_disarm` — see *Identity and the
+  alarm code* above.
+- `lockout_threshold`: wrong-code attempts before lockout (1–20, default 5).
+- `lockout_duration`: lockout length in seconds (0–3600, default 300). Persisted
+  as an absolute time, so it survives a restart.
 
 ### MQTT
 
-- `mqtt_topic_prefix`: topic + entity namespace (default `aegis_ha`)
-- `mqtt_code_format`: `number` (numeric keypad, default) or `text` (alphanumeric)
+- `mqtt_topic_prefix`: topic + entity namespace (default `aegis_ha`). Advanced;
+  leave as-is unless it collides on your broker.
 
-### PIN / lockout policy
+### Web UI / card / zones
 
-- `lockout_threshold`: failed attempts before lockout (1–20, default 5)
-- `lockout_duration`: lockout length in seconds (0–3600, default 300). Persisted
-  as an absolute time, so it survives an add-on restart
-- `pin_min_length` / `pin_max_length`: PIN length bounds (default 4–8)
-- `default_role`: role assigned to new users (`admin`, `user`, `guest`)
-
-### Web UI / card / admin
-
-- `enable_web_ui`: serve the ingress keypad/admin UI (default `true`)
+- `enable_web_ui`: serve the ingress keypad in the HA sidebar (default `true`).
 - `enable_companion_card`: write and auto-register the AegisHA Lovelace card
-  (default `true`)
-- `expose_zone_entities`: publish a `binary_sensor` + bypass `switch` per
-  Protect sensor (default `false`). Leave this **off** if you already run the
-  official UniFi Protect integration — AegisHA still uses the sensor states
-  internally for readiness + breach detection; only the `alarm_control_panel`
-  arm/disarm entity and its `open_sensors`/`bypassed_sensors` attributes are
-  exposed, avoiding duplicate door/window entities.
-- `admin_usernames`: Home Assistant usernames treated as AegisHA admins (least-
-  privilege alternative to elevating the add-on's Supervisor role)
-- `users`: bootstrap keypad users — imported **once** into the hashed store on
-  first boot, after which you should clear the plaintext PINs from options and
-  manage users in the web UI. Each entry:
-  - `name` (required)
-  - `ha_user_id` (optional — the Home Assistant user UUID to bind this PIN to)
-  - `pin` (required, masked)
-  - `role` (`admin` / `user` / `guest`)
-  - `allowed_arm_modes` (subset of `arm_modes`)
+  (default `true`). After install, add it to a dashboard via **Edit dashboard →
+  Add card → search "AegisHA"**, or it auto-registers as a resource on
+  storage-mode dashboards. The card needs the MQTT broker so the alarm entity
+  exists to display.
+- `expose_zone_entities`: publish a `binary_sensor` + bypass `switch` per Protect
+  sensor (default **`false`**). Leave it **off** if you use the official UniFi
+  Protect integration — it already gives you per-sensor entities, and AegisHA
+  still uses the sensor states internally for readiness + breach detection
+  regardless. Turn it **on** only if you do *not* use that integration and want
+  AegisHA to publish the zone entities itself. (This is independent of the
+  companion card — the card shows the alarm panel; zone entities are individual
+  door/window/motion sensors.)
 
-### Sensor model (`sensors` / `sensor_groups`)
+## Companion entities
 
-UniFi Protect sensors are auto-discovered with permissive defaults (active in
-every arm mode, entry+exit delays apply, blocks arming while open). Use the
-`sensors` option to override behavior per sensor, matched by **name** (case-
-insensitive):
+Alongside `alarm_control_panel.aegis_ha`, AegisHA publishes (over MQTT):
 
-- `name` (required, the Protect sensor name)
-- `modes`: arm modes the sensor is active in (default: all)
-- `always_on`: triggers even while disarmed and skips the entry delay (smoke /
-  tamper / water)
-- `immediate`: trips skip the entry delay when armed (instant)
-- `use_exit_delay`: exempt from triggering during the exit/arming countdown
-- `auto_bypass`: if open at arm time, silently bypass it for that session
-- `allow_open`: arm-on-close — may arm while open; not live until it next closes
-- `trigger_unavailable`: treat an unavailable sensor as a trip while armed
-- `group`: name of a `sensor_groups` entry for debouncing
+- `sensor.aegis_ha_changed_by` — who last changed the alarm
+- `sensor.aegis_ha_open_sensors` — count of currently-open sensors
+- `binary_sensor.aegis_ha_lockout_active` — code lockout engaged
+- `sensor.aegis_ha_protect_link_mode` / `binary_sensor.aegis_ha_protect_connected`
+- `number.aegis_ha_exit_delay` / `_entry_delay` / `_trigger_time` — live,
+  settable
+- `button.aegis_ha_panic` / `_skip_delay` / `_clear_lockout`
 
-`sensor_groups` defines false-positive debounce rules — a grouped sensor only
-triggers once `event_count` sensors in the group trip within `timeout` seconds:
-
-- `name`, `event_count` (1–20), `timeout` (1–600 s)
-
-Each sensor also gets a `switch.aegis_ha_bypass_<zone>` entity for manual
-bypass, and the panel's `bypassed_sensors` attribute lists what's bypassed.
-
-## Per-user PINs
-
-AegisHA validates every PIN itself; PINs are hashed at rest (PBKDF2-SHA256 with a
-per-PIN salt) and indexed by a server-side pepper-HMAC so a keypad entry resolves
-to a single user in constant work. Two entry paths are supported:
-
-- **MQTT keypad** (any dashboard): carries no identity, so AegisHA resolves the
-  acting user by matching the PIN. PINs must therefore be globally unique.
-- **Ingress web keypad**: the Supervisor injects a trusted `X-Remote-User-Id`
-  header, so AegisHA binds the PIN to the logged-in Home Assistant user.
-
-Duress PINs silently disarm and fire a duress event. One-time/guest codes expire
-after use. After `lockout_threshold` failures, further attempts are rejected for
-`lockout_duration`; an admin can clear a lockout from the web UI or the
-`button.aegis_ha_clear_lockout` entity.
+The panel also carries attributes (`arm_mode`, `open_sensors`, `bypassed_sensors`,
+`ready_to_arm`, `delay_ends`, `armed_by`, …) for automations.
 
 ## Access Methods
 
-1. **Native entity**: `alarm_control_panel.aegis_ha` on any Lovelace dashboard
-2. **Sidebar (ingress)**: the AegisHA panel (keypad + admin), if `enable_web_ui`
-3. **Companion card**: optional, if `enable_companion_card`
+1. **Native entity**: `alarm_control_panel.aegis_ha` on any Lovelace dashboard.
+2. **Sidebar (ingress)**: the AegisHA keypad, if `enable_web_ui`.
+3. **Companion card**: optional, if `enable_companion_card`.
 
 ## Data Persistence
 
-All state — the hashed PIN store and the alarm configuration — lives in
-`/data/aegis_ha` and is included in Home Assistant backups.
+All state — the hashed code, lockout counters, and the committed arm mode — lives
+in `/data/aegis_ha` and is included in Home Assistant backups.
 
 ## Security Considerations
 
 - The UniFi API key is a high-value, broadly-scoped secret. It is masked in the
   UI and never logged.
-- PINs traverse the MQTT command topic in cleartext — rely on the Supervisor-
-  managed internal broker and consider MQTT-over-TLS; never bridge AegisHA topics
-  off-host.
-- The web UI trusts the `X-Remote-User-*` headers only behind ingress and binds
-  to the Supervisor IP; never expose its port directly.
-- **AppArmor**: a custom profile restricts the add-on.
+- The code traverses the MQTT command topic in cleartext — rely on the
+  Supervisor-managed internal broker and consider MQTT-over-TLS; never bridge
+  AegisHA topics off-host.
+- The keypad UI trusts the `X-Remote-User-*` headers only behind ingress and
+  binds to the Supervisor IP; never expose its port directly.
+- **AppArmor**: a custom profile restricts the app.
 
 ## Troubleshooting
 
 ### No `alarm_control_panel.aegis_ha` entity appears
 
-**Cause:** The MQTT integration is not configured in Home Assistant, or no broker
-is available.
+**Cause:** AegisHA publishes over MQTT discovery, and there is no broker / the
+MQTT integration is not configured. (AegisHA is a client, not a broker, and is
+not added as an integration.)
 
-**Solution:** Install/configure the MQTT integration and a broker (e.g. the
-Mosquitto add-on), then restart AegisHA. The add-on log states whether it found a
+**Solution:** Install the **Mosquitto broker** app and configure the **MQTT
+integration**, then restart AegisHA. The app log states whether it found a
 broker.
 
-### UniFi arm/disarm does nothing
+### "ARM Home" says the code is denied / invalid
+
+**Cause (fixed in 0.2.0):** earlier versions required the logged-in user to be
+pre-registered in a PIN store. Now arming requires no code by default and trusts
+your HA login.
+
+**Solution:** Update to 0.2.0+. If you set a `code` and turned on
+`require_code_to_arm`/`require_code_to_disarm`, enter that code on the keypad.
+
+### Arming from the UniFi Protect app doesn't show on the AegisHA panel
+
+**Cause:** `protect_mode` is `app-managed` (which deliberately ignores Protect's
+arm state), or `unifi_host`/`unifi_api_key` are not set.
+
+**Solution:** Use `protect_mode: auto` and configure the UniFi host + API key.
+The panel mirrors Protect's `armMode.status` within one poll interval.
+
+### UniFi arm/disarm from AegisHA does nothing
 
 **Cause:** The Protect Alarm Manager is in Global mode, which blocks local
-control. This is expected and not a AegisHA bug.
+control. This is expected.
 
-**Solution:** AegisHA runs app-managed in this case (it still owns the alarm). To
-mirror arm/disarm to the NVR, switch the Alarm Manager to Local mode in Protect.
+**Solution:** Use the **webhook** options to drive Protect's alarm from AegisHA
+while staying in Global mode, or switch the Alarm Manager to Local mode in
+Protect to mirror arm/disarm directly.
 
 ## External Resources
 
-- [Alarmo](https://github.com/nielsfaber/alarmo)
-- [Home Assistant MQTT alarm_control_panel](https://www.home-assistant.io/integrations/alarm_control_panel.mqtt/)
+- [Mosquitto broker add-on][mosquitto] — the MQTT broker AegisHA publishes through
+- [MQTT integration][mqtt-integration] / [MQTT discovery][mqtt-discovery] — how
+  AegisHA's entities are created automatically
+- [MQTT alarm_control_panel][mqtt-acp] — the entity type AegisHA exposes (and the
+  `REMOTE_CODE` behavior it relies on)
+- [UniFi Protect integration][unifiprotect] — the official integration AegisHA
+  complements (and avoids duplicating)
+- [Alarmo][alarmo] — the alarm model that inspired AegisHA
+- [Home Assistant apps][ha-apps] — how apps are installed
+
+[mosquitto]: https://github.com/home-assistant/addons/tree/master/mosquitto
+[mqtt-integration]: https://www.home-assistant.io/integrations/mqtt/
+[mqtt-discovery]: https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
+[mqtt-broker-setup]: https://www.home-assistant.io/integrations/mqtt/#setting-up-a-broker
+[mqtt-acp]: https://www.home-assistant.io/integrations/alarm_control_panel.mqtt/
+[unifiprotect]: https://www.home-assistant.io/integrations/unifiprotect/
+[alarmo]: https://github.com/nielsfaber/alarmo
+[ha-apps]: https://www.home-assistant.io/apps/

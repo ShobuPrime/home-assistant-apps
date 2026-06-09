@@ -16,11 +16,9 @@ import (
 // Config configures the discovery/bridge layer.
 type Config struct {
 	Prefix              string
-	CodeFormat          string // number | text
 	ArmModes            []string
-	ArmingRequiresCode  bool
-	DisarmRequiresCode  bool
-	TriggerRequiresCode bool
+	RequireCodeToArm    bool
+	RequireCodeToDisarm bool
 	Version             string
 }
 
@@ -290,11 +288,9 @@ func (b *Bridge) handleSet(m Message) {
 func (b *Bridge) codeRequired(action string) bool {
 	switch action {
 	case "arm":
-		return b.cfg.ArmingRequiresCode
+		return b.cfg.RequireCodeToArm
 	case "disarm":
-		return b.cfg.DisarmRequiresCode
-	case "trigger":
-		return b.cfg.TriggerRequiresCode
+		return b.cfg.RequireCodeToDisarm
 	}
 	return false
 }

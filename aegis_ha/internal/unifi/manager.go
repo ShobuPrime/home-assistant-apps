@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +30,11 @@ type Config struct {
 	Profiles     map[string]string // arm mode -> UniFi armProfileId (local mirror)
 	SirenIDs     []string
 	SirenMillis  int
+
+	// ArmModes is the set of arm modes AegisHA offers; the first (preferring
+	// "away") is used as the target when mirroring an externally-initiated
+	// Protect arm into the engine.
+	ArmModes []string
 
 	// SensorOverrides maps a lowercased sensor name to its Alarmo-style
 	// per-sensor configuration (modes, always_on, immediate, group, …);
@@ -67,14 +73,21 @@ type Manager struct {
 	cfg    Config
 	log    *slog.Logger
 
-	mode          Mode
-	connected     bool
-	prevState     map[string]alarm.SensorEventKind // last event sent per sensor id
-	lastSensorSet string                           // detects when the sensor set/config changes
-	lastState     alarm.State
-	lastMirror    alarm.State
-	wake          chan struct{}
+	mode           Mode
+	connected      bool
+	prevState      map[string]alarm.SensorEventKind // last event sent per sensor id
+	lastSensorSet  string                           // detects when the sensor set/config changes
+	lastState      alarm.State
+	lastMirror     alarm.State
+	lastProtectArm string // last observed Protect armMode.status (for read-sync)
+	wake           chan struct{}
 }
+
+// mirrorActor is the changed_by attribution used when AegisHA mirrors an
+// externally-initiated Protect arm/disarm. onSnapshot recognizes it and
+// skips firing the arm/disarm webhook back at Protect, so a mirror can
+// never echo into a loop.
+const mirrorActor = "UniFi Protect"
 
 // NewManager builds a Manager.
 func NewManager(client *Client, engine *alarm.Engine, pub Publisher, cfg Config, log *slog.Logger) *Manager {
@@ -197,6 +210,8 @@ func (m *Manager) detect(ctx context.Context) {
 }
 
 func (m *Manager) poll(ctx context.Context) {
+	m.syncArmState(ctx)
+
 	sensors, err := m.client.GetSensors(ctx)
 	if err != nil {
 		if m.connected {
@@ -262,18 +277,24 @@ func (m *Manager) onSnapshot(ctx context.Context, snap alarm.Snapshot) {
 	// fire regardless of Global/Local mode (the webhook endpoint is not
 	// blocked in Global), so they're the way to drive Protect's native alarm
 	// (siren/lights/notifications) from AegisHA while staying in Global.
-	switch {
-	case snap.State == alarm.StateTriggered && m.lastState != alarm.StateTriggered:
-		m.fireWebhook(ctx, m.cfg.WebhookTrigger)
-		for _, id := range m.cfg.SirenIDs {
-			if err := m.client.TriggerSiren(ctx, id, m.cfg.SirenMillis); err != nil {
-				m.log.Warn("unifi: siren trigger failed", "siren", id, "err", err)
+	//
+	// Suppress firing when the transition was itself a mirror of a Protect
+	// arm/disarm (changed_by == mirrorActor): Protect is already in that
+	// state, so echoing the webhook back would be redundant and risks a loop.
+	if snap.ChangedBy != mirrorActor {
+		switch {
+		case snap.State == alarm.StateTriggered && m.lastState != alarm.StateTriggered:
+			m.fireWebhook(ctx, m.cfg.WebhookTrigger)
+			for _, id := range m.cfg.SirenIDs {
+				if err := m.client.TriggerSiren(ctx, id, m.cfg.SirenMillis); err != nil {
+					m.log.Warn("unifi: siren trigger failed", "siren", id, "err", err)
+				}
 			}
+		case m.lastState != "" && armWebhookFires(m.lastState, snap.State, m.cfg.WebhookArmAtStart):
+			m.fireWebhook(ctx, m.cfg.WebhookArm)
+		case snap.State == alarm.StateDisarmed && m.lastState != alarm.StateDisarmed && m.lastState != "":
+			m.fireWebhook(ctx, m.cfg.WebhookDisarm)
 		}
-	case m.lastState != "" && armWebhookFires(m.lastState, snap.State, m.cfg.WebhookArmAtStart):
-		m.fireWebhook(ctx, m.cfg.WebhookArm)
-	case snap.State == alarm.StateDisarmed && m.lastState != alarm.StateDisarmed && m.lastState != "":
-		m.fireWebhook(ctx, m.cfg.WebhookDisarm)
 	}
 
 	// Local-mirror arm/disarm.
@@ -315,6 +336,77 @@ func armWebhookFires(prev, cur alarm.State, atStart bool) bool {
 		return prev == alarm.StateDisarmed && (cur == alarm.StateArming || isArmed(cur))
 	}
 	return isArmed(cur) && (prev == alarm.StateArming || prev == alarm.StateDisarmed)
+}
+
+// syncArmState mirrors an externally-initiated Protect arm/disarm into the
+// engine, so the AegisHA panel reflects reality when you arm or disarm from
+// the UniFi Protect app (the bidirectional read-sync). It reads the NVR's
+// armMode.status — which is readable even in Global mode, where AegisHA
+// cannot write arm profiles — and acts only on a *change* in that status,
+// and only when the engine's own state disagrees. App-managed mode opts out
+// (AegisHA is the sole source of truth there). Mirror commands are tagged
+// with mirrorActor so onSnapshot won't echo a webhook back to Protect.
+func (m *Manager) syncArmState(ctx context.Context) {
+	if m.effectiveMode() == ModeAppManaged {
+		return
+	}
+	nvrs, err := m.client.GetNVRs(ctx)
+	if err != nil || len(nvrs) == 0 || nvrs[0].ArmMode == nil {
+		return
+	}
+	status := strings.ToLower(strings.TrimSpace(nvrs[0].ArmMode.Status))
+	if status == "" || status == m.lastProtectArm {
+		return // no externally-observed change
+	}
+	prev := m.lastProtectArm
+	m.lastProtectArm = status
+	if prev == "" {
+		return // first observation: adopt as baseline, never act on startup
+	}
+
+	cur := m.engine.Current().State
+	actor := alarm.Actor{Name: mirrorActor, Role: "system"}
+	if protectArmed(status) {
+		// Protect armed externally — mirror only if AegisHA is fully disarmed
+		// (don't override an in-progress arming/pending/triggered cycle).
+		if cur == alarm.StateDisarmed {
+			mode := m.mirrorArmMode()
+			m.log.Info("unifi: mirroring external Protect arm into AegisHA", "protect_status", status, "mode", mode)
+			if r := m.engine.Arm(mode, actor, true); r.Accepted {
+				m.engine.SkipDelay(actor) // reflect "armed now"; the external arm already happened
+			}
+		}
+	} else {
+		// Protect disarmed externally — mirror only if AegisHA is armed or
+		// counting down (leave a real triggered alarm alone).
+		if isArmed(cur) || cur == alarm.StateArming || cur == alarm.StatePending {
+			m.log.Info("unifi: mirroring external Protect disarm into AegisHA", "protect_status", status)
+			m.engine.Disarm(actor)
+		}
+	}
+}
+
+// protectArmed reports whether a Protect armMode.status string represents an
+// armed (or arming/breach) state, as opposed to disarmed.
+func protectArmed(status string) bool {
+	switch status {
+	case "", "disabled", "disarmed", "off", "idle":
+		return false
+	}
+	return true
+}
+
+// mirrorArmMode picks the engine arm mode to use when mirroring an external
+// Protect arm: "away" when available, else the first configured mode, else
+// "away" as a last resort.
+func (m *Manager) mirrorArmMode() string {
+	if slices.Contains(m.cfg.ArmModes, "away") {
+		return "away"
+	}
+	if len(m.cfg.ArmModes) > 0 {
+		return m.cfg.ArmModes[0]
+	}
+	return "away"
 }
 
 // fireWebhook POSTs a Protect Alarm Manager webhook trigger (async, so it

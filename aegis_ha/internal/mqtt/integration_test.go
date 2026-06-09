@@ -24,7 +24,7 @@ func TestIntegrationRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store: %v", err)
 	}
-	st.AddUser(store.User{Name: "Anthony", Role: "admin"}, "1234")
+	_ = st.SetCode("1234")
 	cfg := alarm.Config{ExitDelay: 0, ArmModes: []string{"away"}}
 	eng := alarm.New(cfg, nil)
 	go eng.Run(ctx)
@@ -35,7 +35,7 @@ func TestIntegrationRoundTrip(t *testing.T) {
 	go sub.Run(ctx)
 
 	bc := New(Options{Broker: broker, ClientID: "aegis_ha-it"})
-	bridge := NewBridge(bc, eng, st, Config{Prefix: "aegis_ha", ArmModes: []string{"away"}, DisarmRequiresCode: true}, cfg, nil)
+	bridge := NewBridge(bc, eng, st, Config{Prefix: "aegis_ha", ArmModes: []string{"away"}, RequireCodeToDisarm: true}, cfg, nil)
 	go bridge.Run(ctx)
 	go bc.Run(ctx)
 
