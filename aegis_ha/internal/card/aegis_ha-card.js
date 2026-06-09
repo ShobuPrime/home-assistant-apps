@@ -75,7 +75,7 @@ class AegisHACard extends HTMLElement {
     if (feat & FEATURES.ARM_CUSTOM_BYPASS) armBtns.push(["custom", "alarm_arm_custom_bypass", "Custom"]);
 
     const colors = {
-      disarmed: "#2e7d32",
+      disarmed: "#16a34a",
       arming: "#ef6c00",
       pending: "#ef6c00",
       triggered: "#c62828",
@@ -102,7 +102,7 @@ class AegisHACard extends HTMLElement {
           .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
           .pad button { font-size:1.3rem; padding:12px; border-radius:10px; border:1px solid var(--divider-color,#ccc); background:var(--card-background-color,#fff); cursor:pointer; }
           .modes { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
-          .modes button { padding:12px; border-radius:10px; border:none; background:var(--primary-color,#059669); color:#fff; font-weight:600; cursor:pointer; }
+          .modes button { padding:12px; border-radius:10px; border:none; background:var(--primary-color,#16a34a); color:#fff; font-weight:600; cursor:pointer; }
           .modes button.disarm { grid-column:1 / -1; background:#455a64; }
         </style>
         <div class="hdr">
