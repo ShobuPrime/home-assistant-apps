@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.1
+
+_2026-06-09_
+
+### Fixes & UX
+
+- **Fix: blank code made the alarm un-disarmable.** With no `code` set, the
+  panel still advertised a PIN field, so anything entered was checked against an
+  empty store and rejected ("denied code"). Now, when no code is configured,
+  AegisHA never prompts for one and never denies on code grounds — your Home
+  Assistant login is the identity. The panel only advertises a PIN field when a
+  code is actually set.
+- **Fix: native UniFi disarm now clears a triggered alarm.** The Protect→AegisHA
+  arm read-sync previously left a `triggered` state alone; disarming in the UniFi
+  Protect app now mirrors through and clears the AegisHA alarm from any state.
+- **Fix: UniFi HTTP 429 rate-limiting.** Event-driven polls are now coalesced
+  (max one per few seconds) and capability detection runs far less often, so
+  AegisHA stays within UniFi's ~10 req/s limit. A transient 429 no longer flaps
+  the detected mode (which had been silently disabling arm-sync).
+- **Surface the trigger cause.** The breaching sensor is logged on every trigger
+  and shown on the keypad ("Triggered by …"), along with open/bypassed sensors.
+- **Polished web keypad.** Redesigned the ingress UI: clearer state card with a
+  live countdown, trigger cause, and open-sensor list; the PIN pad is hidden when
+  no code is required.
+- **Simpler arming.** The default `arm_modes` is now a single `away` (Arm/Disarm),
+  matching UniFi Protect's Alarm Manager, which only has armed/disarmed. Add
+  `home`/`night` back if you want AegisHA-side perimeter modes. (Existing installs
+  keep their saved value — set `arm_modes` to `[away]` for the new single-button
+  panel.)
+
 ## 0.2.0
 
 _2026-06-09_

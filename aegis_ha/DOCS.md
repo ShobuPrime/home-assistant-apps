@@ -168,7 +168,10 @@ Who owns the exit-delay countdown, and therefore *when* the ARM webhook fires:
 ### Alarm behavior
 
 - `arm_modes`: which modes the panel exposes — any of `away`, `home`, `night`,
-  `vacation`, `custom` (default `away`, `home`, `night`).
+  `vacation`, `custom`. **Defaults to just `away`** (a single Arm/Disarm),
+  matching UniFi Protect's Alarm Manager, which only has armed/disarmed — every
+  armed mode maps to the same Protect ARM. Add `home`/`night` only if you want
+  AegisHA-side perimeter modes.
 - `exit_delay`: leave/exit delay in seconds before an armed state commits (0–600,
   default 60; 0 arms instantly).
 - `entry_delay`: entry delay in seconds before a tripped sensor sounds the alarm
@@ -259,14 +262,16 @@ not added as an integration.)
 integration**, then restart AegisHA. The app log states whether it found a
 broker.
 
-### "ARM Home" says the code is denied / invalid
+### Can't arm/disarm, or "code is denied / invalid" with a blank code
 
-**Cause (fixed in 0.2.0):** earlier versions required the logged-in user to be
-pre-registered in a PIN store. Now arming requires no code by default and trusts
-your HA login.
+**Cause (fixed in 0.2.1):** with no `code` set, the panel still showed a PIN
+field, so anything entered was checked against an empty store and rejected.
+(0.2.0 had also required the logged-in user to be pre-registered.)
 
-**Solution:** Update to 0.2.0+. If you set a `code` and turned on
-`require_code_to_arm`/`require_code_to_disarm`, enter that code on the keypad.
+**Solution:** Update to 0.2.1+. With `code` blank, AegisHA no longer prompts for
+or checks a code — your HA login is the identity. If you DO set a `code`, enter
+it on the keypad for whichever actions you turned on
+(`require_code_to_arm`/`require_code_to_disarm`).
 
 ### Arming from the UniFi Protect app doesn't show on the AegisHA panel
 

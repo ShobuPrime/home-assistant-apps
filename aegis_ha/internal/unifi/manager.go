@@ -79,9 +79,20 @@ type Manager struct {
 	lastSensorSet  string                           // detects when the sensor set/config changes
 	lastState      alarm.State
 	lastMirror     alarm.State
-	lastProtectArm string // last observed Protect armMode.status (for read-sync)
+	lastProtectArm string    // last observed Protect armMode.status (for read-sync)
+	lastPoll       time.Time // throttles event-driven polls (UniFi rate limit)
+	lastDetect     time.Time // capability detection runs far less often than polling
 	wake           chan struct{}
 }
+
+// UniFi's Integration API rate-limits to ~10 requests/second. Each poll
+// makes two calls (arm-state read + sensors), so event bursts are coalesced
+// to at most one poll per minPollGap, and capability detection — which
+// rarely changes — runs only every detectInterval rather than every tick.
+const (
+	minPollGap     = 4 * time.Second
+	detectInterval = 60 * time.Second
+)
 
 // mirrorActor is the changed_by attribution used when AegisHA mirrors an
 // externally-initiated Protect arm/disarm. onSnapshot recognizes it and
@@ -101,9 +112,9 @@ func NewManager(client *Client, engine *alarm.Engine, pub Publisher, cfg Config,
 		cfg.SirenMillis = 30000
 	}
 	return &Manager{
-		client:   client,
-		engine:   engine,
-		pub:      pub,
+		client:    client,
+		engine:    engine,
+		pub:       pub,
 		cfg:       cfg,
 		log:       log,
 		prevState: map[string]alarm.SensorEventKind{},
@@ -131,9 +142,15 @@ func (m *Manager) Run(ctx context.Context) {
 		case snap := <-snaps:
 			m.onSnapshot(ctx, snap)
 		case <-m.wake:
-			m.poll(ctx)
+			// Event-driven: coalesce bursts so we don't trip UniFi's rate
+			// limit. The periodic ticker is the backstop if we skip one.
+			if time.Since(m.lastPoll) >= minPollGap {
+				m.poll(ctx)
+			}
 		case <-ticker.C:
-			m.detect(ctx)
+			if time.Since(m.lastDetect) >= detectInterval {
+				m.detect(ctx)
+			}
 			m.poll(ctx)
 		}
 	}
@@ -197,19 +214,27 @@ func (m *Manager) effectiveMode() Mode {
 }
 
 func (m *Manager) detect(ctx context.Context) {
+	m.lastDetect = time.Now()
 	mode, err := m.client.DetectMode(ctx)
-	connected := err == nil && mode != ModeUnavailable
 	if err != nil {
-		m.log.Warn("unifi: capability detection failed", "err", err)
+		// Transient failure (e.g. HTTP 429 rate-limited): keep the last known
+		// mode instead of flapping to unavailable/app-managed, which would
+		// silently disable arm read-sync. Just reflect the momentary
+		// disconnect; the next successful detect restores connectivity.
+		m.log.Warn("unifi: capability detection failed (keeping last mode)", "mode", m.mode, "err", err)
+		m.connected = false
+		m.pub.PublishProtectStatus(string(m.effectiveMode()), false)
+		return
 	}
 	if mode != m.mode {
 		m.log.Info("unifi: alarm manager mode", "mode", mode)
 	}
-	m.mode, m.connected = mode, connected
-	m.pub.PublishProtectStatus(string(m.effectiveMode()), connected)
+	m.mode, m.connected = mode, true
+	m.pub.PublishProtectStatus(string(m.effectiveMode()), true)
 }
 
 func (m *Manager) poll(ctx context.Context) {
+	m.lastPoll = time.Now()
 	m.syncArmState(ctx)
 
 	sensors, err := m.client.GetSensors(ctx)
@@ -377,10 +402,11 @@ func (m *Manager) syncArmState(ctx context.Context) {
 			}
 		}
 	} else {
-		// Protect disarmed externally — mirror only if AegisHA is armed or
-		// counting down (leave a real triggered alarm alone).
-		if isArmed(cur) || cur == alarm.StateArming || cur == alarm.StatePending {
-			m.log.Info("unifi: mirroring external Protect disarm into AegisHA", "protect_status", status)
+		// Protect disarmed externally — mirror into AegisHA from ANY
+		// non-disarmed state, INCLUDING triggered: disarming in the UniFi
+		// Protect app must clear an active AegisHA alarm too.
+		if cur != alarm.StateDisarmed {
+			m.log.Info("unifi: mirroring external Protect disarm into AegisHA", "protect_status", status, "was", cur)
 			m.engine.Disarm(actor)
 		}
 	}

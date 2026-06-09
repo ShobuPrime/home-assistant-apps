@@ -48,6 +48,7 @@ The update script fetches the latest version from changelog.json and updates all
 
 ### Critical Files
 - **`config.yaml`**: App configuration (version, ports, ingress, options schema)
+- **`translations/en.yaml`**: Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options)
 - **`build.yaml`**: Build configuration with base images per architecture
 - **`Dockerfile`**: Multi-stage build that extracts Dockhand from official Docker image
 - **`apparmor.txt`**: Security profile for Docker socket access

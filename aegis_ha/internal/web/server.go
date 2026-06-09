@@ -66,9 +66,37 @@ func New(log *slog.Logger, addr string, opts Options) *Server {
 		mux:     http.NewServeMux(),
 		clients: map[chan alarm.Snapshot]struct{}{},
 	}
-	s.tmpl = template.Must(template.ParseFS(tmplFS, "templates/*.html"))
+	s.tmpl = template.Must(template.New("").Funcs(template.FuncMap{
+		"stateLabel": stateLabel,
+	}).ParseFS(tmplFS, "templates/*.html"))
 	s.routes()
 	return s
+}
+
+// stateLabel renders an alarm state as a friendly, capitalized label for the
+// UI (the raw state string is still emitted in CSS classes/data attributes).
+func stateLabel(s alarm.State) string {
+	switch s {
+	case alarm.StateDisarmed:
+		return "Disarmed"
+	case alarm.StateArming:
+		return "Arming"
+	case alarm.StatePending:
+		return "Entry Delay"
+	case alarm.StateTriggered:
+		return "Triggered"
+	case alarm.StateArmedAway:
+		return "Armed Away"
+	case alarm.StateArmedHome:
+		return "Armed Home"
+	case alarm.StateArmedNight:
+		return "Armed Night"
+	case alarm.StateArmedVacation:
+		return "Armed Vacation"
+	case alarm.StateArmedCustomBypass:
+		return "Armed Custom"
+	}
+	return string(s)
 }
 
 func (s *Server) routes() {
@@ -159,11 +187,12 @@ func (s *Server) handleRoot(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	id := s.identify(r)
 	s.render(w, "index", map[string]any{
-		"Base":     ingressBase(r),
-		"User":     id,
-		"ArmModes": s.opts.ArmModes,
-		"Snapshot": s.opts.Engine.Current(),
-		"Digits":   []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"},
+		"Base":       ingressBase(r),
+		"User":       id,
+		"ArmModes":   s.opts.ArmModes,
+		"Snapshot":   s.opts.Engine.Current(),
+		"Digits":     []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"},
+		"ShowKeypad": s.opts.RequireCodeToArm || s.opts.RequireCodeToDisarm,
 	})
 }
 

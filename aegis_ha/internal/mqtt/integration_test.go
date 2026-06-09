@@ -35,7 +35,7 @@ func TestIntegrationRoundTrip(t *testing.T) {
 	go sub.Run(ctx)
 
 	bc := New(Options{Broker: broker, ClientID: "aegis_ha-it"})
-	bridge := NewBridge(bc, eng, st, Config{Prefix: "aegis_ha", ArmModes: []string{"away"}, RequireCodeToDisarm: true}, cfg, nil)
+	bridge := NewBridge(bc, eng, st, Config{Prefix: "aegis_ha", ArmModes: []string{"away"}, CodeConfigured: true, RequireCodeToDisarm: true}, cfg, nil)
 	go bridge.Run(ctx)
 	go bc.Run(ctx)
 

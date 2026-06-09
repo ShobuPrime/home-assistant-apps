@@ -150,12 +150,13 @@ func main() {
 
 	// Ingress HTTP server: health endpoints + the keypad/admin UI. Blocks
 	// until SIGTERM.
+	codeSet := opts.Code != ""
 	srv := web.New(logger, ingressAddr, web.Options{
 		Engine:              engine,
 		Store:               st,
 		ArmModes:            opts.ArmModes,
-		RequireCodeToArm:    opts.RequireCodeToArm,
-		RequireCodeToDisarm: opts.RequireCodeToDisarm,
+		RequireCodeToArm:    codeSet && opts.RequireCodeToArm,
+		RequireCodeToDisarm: codeSet && opts.RequireCodeToDisarm,
 		EnableUI:            opts.EnableWebUI,
 		Version:             version,
 	})
@@ -200,11 +201,13 @@ func setupMQTT(ctx context.Context, logger *slog.Logger, opts *config.Options, e
 		TLS:       tlsCfg,
 		Logger:    logger,
 	})
+	codeSet := opts.Code != ""
 	bridge := mqtt.NewBridge(client, engine, st, mqtt.Config{
 		Prefix:              opts.MQTTTopicPrefix,
 		ArmModes:            opts.ArmModes,
-		RequireCodeToArm:    opts.RequireCodeToArm,
-		RequireCodeToDisarm: opts.RequireCodeToDisarm,
+		CodeConfigured:      codeSet,
+		RequireCodeToArm:    codeSet && opts.RequireCodeToArm,
+		RequireCodeToDisarm: codeSet && opts.RequireCodeToDisarm,
 		Version:             version,
 	}, alarmCfg, logger)
 	go client.Run(ctx)

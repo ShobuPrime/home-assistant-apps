@@ -60,8 +60,10 @@ configuration:
   arm_modes:
     name: Available arm modes
     description: >-
-      Which arm modes appear on the alarm panel and keypad. "away" arms
-      everything; "home"/"night" typically arm perimeter sensors only.
+      Which arm modes appear on the panel and keypad. Defaults to just "away"
+      (a single Arm/Disarm), matching UniFi Protect's Alarm Manager, which only
+      has armed/disarmed — every armed mode maps to the same Protect ARM. Add
+      "home"/"night"/"vacation" only if you want AegisHA-side perimeter modes.
   exit_delay:
     name: Exit (leave) delay — seconds
     description: >-

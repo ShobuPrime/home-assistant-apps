@@ -1,0 +1,55 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail the app writes to its log. Leave on "info" unless you are
+      troubleshooting, in which case use "debug" or "trace".
+  app_url:
+    name: Public base URL
+    description: >-
+      The base URL Arcane uses when generating links and webhook URLs. Leave
+      blank for the default (http://localhost:3552). Set it to your external
+      address (for example https://arcane.example.com) only if you put Arcane
+      behind a reverse proxy.
+  puid:
+    name: User ID (PUID)
+    description: >-
+      The numeric user ID Arcane runs as and uses when creating files. Default is
+      1000. Change it only if you need files to be owned by a specific user on
+      mounted volumes.
+  pgid:
+    name: Group ID (PGID)
+    description: >-
+      The numeric group ID Arcane runs as and uses when creating files. Default
+      is 1000. Change it only if you need files to be owned by a specific group
+      on mounted volumes.
+  hide_hassio_containers:
+    name: Hide Home Assistant system containers
+    description: >-
+      When ON (default), hides Supervisor, Core, and app containers (anything
+      with an io.hass.type label) from the Arcane UI to reduce clutter. Turn OFF
+      to show every container on the host.
+  traefik_enable:
+    name: Enable Traefik reverse-proxy route
+    description: >-
+      Advanced. When ON, the app writes a Traefik dynamic-config file that routes
+      an external domain to this app over your existing Traefik instance. Leave
+      OFF unless you run Traefik and want to expose Arcane on its own hostname.
+  traefik_domain:
+    name: Traefik domain
+    description: >-
+      The external hostname Traefik should route to Arcane (for example
+      arcane.example.com). Required when the Traefik route is enabled; otherwise
+      leave blank.
+  traefik_entrypoints:
+    name: Traefik entrypoint
+    description: >-
+      Which Traefik entrypoint the route binds to. Defaults to "websecure" (the
+      standard HTTPS entrypoint). Change only if your Traefik setup names its
+      entrypoints differently.
+  traefik_certresolver:
+    name: Traefik certificate resolver
+    description: >-
+      The Traefik certificate resolver used to obtain a TLS certificate for the
+      domain. Defaults to "cloudflare". Set this to the name of a resolver you
+      have already configured in Traefik.

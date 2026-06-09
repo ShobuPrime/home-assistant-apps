@@ -37,6 +37,7 @@ MuninnDB is currently in alpha. Versions follow the pattern `X.Y.Z-alpha` (e.g.,
 
 ### Critical Files
 - **`config.yaml`**: App configuration (version, ports, ingress, options schema)
+- **`translations/en.yaml`**: Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options)
 - **`build.yaml`**: Build configuration with base images per architecture
 - **`Dockerfile`**: Downloads MuninnDB binary from GitHub releases
 - **`apparmor.txt`**: Security profile (no Docker socket access needed)

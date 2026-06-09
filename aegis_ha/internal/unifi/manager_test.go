@@ -161,6 +161,30 @@ func TestManagerMirrorsExternalProtectArm(t *testing.T) {
 	}
 }
 
+// TestManagerMirrorClearsTriggered confirms that disarming in the UniFi app
+// clears an active AegisHA alarm (the triggered state must mirror to disarmed).
+func TestManagerMirrorClearsTriggered(t *testing.T) {
+	mk := &mock{armProfilesGlobal: true, nvrArm: "breach"}
+	c := newMock(t, mk)
+	eng := runEngine(t, alarm.Config{ArmModes: []string{"away"}, ExitDelay: 0, EntryDelay: 0, TriggerTime: 0})
+	m := NewManager(c, eng, newFakePub(), Config{PreferMode: "auto", PollInterval: time.Hour, ArmModes: []string{"away"}}, nil)
+	m.detect(t.Context())
+
+	// Put AegisHA into triggered (panic) and baseline the observed Protect arm.
+	eng.Trigger(true, alarm.Actor{Name: "test"})
+	m.syncArmState(t.Context()) // baseline: observes "breach", takes no action
+	if eng.Current().State != alarm.StateTriggered {
+		t.Fatalf("precondition: want triggered, got %s", eng.Current().State)
+	}
+
+	// Disarm natively in UniFi → AegisHA's triggered alarm must clear.
+	mk.nvrArm = "disabled"
+	m.syncArmState(t.Context())
+	if got := eng.Current().State; got != alarm.StateDisarmed {
+		t.Fatalf("native disarm should clear triggered, got %s", got)
+	}
+}
+
 // TestManagerAppManagedSkipsArmSync confirms app-managed mode opts out of
 // mirroring Protect's arm state (AegisHA is the sole source of truth).
 func TestManagerAppManagedSkipsArmSync(t *testing.T) {

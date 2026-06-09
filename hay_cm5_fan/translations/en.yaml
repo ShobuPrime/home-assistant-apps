@@ -1,0 +1,58 @@
+configuration:
+  gpio_chip:
+    name: GPIO chip
+    description: >-
+      The libgpiod character-device chip that drives the fan pin. Default is
+      "gpiochip0" — the pinctrl-rp1 chip on the CM5. Leave as is for the Home
+      Assistant Yellow; run "gpioinfo" to list chips only if your hardware
+      differs.
+  gpio_line:
+    name: GPIO line
+    description: >-
+      The GPIO line number on the chip that switches the fan (0-53). Default is
+      14 (GPIO14, Pin 8 on the Yellow's 10-pin header). Change only if you wired
+      the fan to a different pin.
+  temp_sensor_path:
+    name: CPU temperature sensor path
+    description: >-
+      The sysfs file read to make fan on/off decisions, in millidegrees Celsius.
+      Default is "/sys/class/hwmon/hwmon0/temp1_input". Change only if your
+      hwmon numbering differs. All other temperature sensors are auto-discovered
+      regardless of this setting.
+  poll_interval:
+    name: Poll interval (seconds)
+    description: >-
+      How often the CPU temperature is checked, in seconds (1-60). Default is 5.
+      Lower values respond faster but use slightly more CPU; temperature changes
+      slowly, so 5 is a good balance.
+  temp_on:
+    name: Fan-on temperature (C)
+    description: >-
+      In "auto" mode, the fan turns ON when the CPU reaches or exceeds this
+      temperature in Celsius (30-90). Default is 50. Must be higher than the
+      fan-off threshold.
+  temp_off:
+    name: Fan-off temperature (C)
+    description: >-
+      In "auto" mode, the fan turns OFF when the CPU drops to or below this
+      temperature in Celsius (25-85). Default is 33. Must be lower than the
+      fan-on threshold — the gap between the two creates hysteresis that
+      prevents rapid on/off cycling.
+  fan_mode:
+    name: Fan mode
+    description: >-
+      "auto" (default) runs hysteresis-based thermal control using the on/off
+      thresholds above. "on" runs the fan continuously regardless of
+      temperature. "off" keeps the fan off regardless of temperature — use with
+      caution, as the CPU may overheat.
+  leave_on_at_shutdown:
+    name: Leave fan on at shutdown
+    description: >-
+      When ON (default and recommended), the fan keeps running if the app stops
+      or restarts, acting as a failsafe so the CPU stays cool while the app is
+      down. When OFF, the fan turns off when the app stops.
+  log_level:
+    name: Log level
+    description: >-
+      How much detail the controller writes to its log. Leave on "info" unless
+      you are troubleshooting, in which case use "debug" or "trace".

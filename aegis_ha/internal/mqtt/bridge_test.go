@@ -31,6 +31,7 @@ func newTestBridge(t *testing.T, arming, disarm bool) (*Bridge, *alarm.Engine, *
 	b := NewBridge(client, eng, st, Config{
 		Prefix:              "aegis_ha",
 		ArmModes:            []string{"away", "home"},
+		CodeConfigured:      true, // newTestBridge sets a shared code
 		RequireCodeToArm:    arming,
 		RequireCodeToDisarm: disarm,
 	}, cfg, nil)
@@ -86,6 +87,25 @@ func TestBridgePanicButton(t *testing.T) {
 	b.handleSet(Message{Topic: "aegis_ha/panic/set", Payload: []byte("PRESS")})
 	if got := eng.Current().State; got != alarm.StateTriggered {
 		t.Fatalf("panic should trigger, got %s", got)
+	}
+}
+
+func TestPanelDiscoveryNoCodeOmitsRemoteCode(t *testing.T) {
+	// A bridge with no shared code configured must NOT advertise a PIN field,
+	// so Home Assistant arms/disarms without prompting (the fix for a blank
+	// code making the panel un-disarmable).
+	b, _, _ := newTestBridge(t, false, false)
+	b.cfg.CodeConfigured = false
+	m := b.panelDiscovery()
+	var p map[string]any
+	if err := json.Unmarshal(m.payload, &p); err != nil {
+		t.Fatalf("discovery payload: %v", err)
+	}
+	if _, hasCode := p["code"]; hasCode {
+		t.Errorf("no-code panel must not set a code field, got %v", p["code"])
+	}
+	if _, hasReq := p["code_disarm_required"]; hasReq {
+		t.Errorf("no-code panel must not set code_disarm_required")
 	}
 }
 

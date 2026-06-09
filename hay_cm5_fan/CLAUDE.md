@@ -56,6 +56,7 @@ All temperature sensors include `state_class: measurement` and `device_class: te
 
 ### Critical Files
 - **`config.yaml`**: App configuration (version, options schema, full_access)
+- **`translations/en.yaml`**: Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options)
 - **`build.yaml`**: Build configuration — **aarch64 only** (CM5 hardware)
 - **`Dockerfile`**: Minimal — curl, jq, libgpiod, and shell scripts (no binary download)
 - **`apparmor.txt`**: Security profile with `/dev/gpiochip*` and hwmon sysfs paths

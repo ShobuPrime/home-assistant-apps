@@ -43,6 +43,7 @@ Unlike simpler apps that use a single Docker image, this app:
 ## Key File Locations
 
 - **`config.yaml`** - App metadata, architecture support, configuration schema
+- **`translations/en.yaml`** - Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options)
 - **`build.yaml`** - Build configuration with base image and architecture args
 - **`Dockerfile`** - Container build instructions (installs Docker Compose, copies rootfs)
 - **`apparmor.txt`** - AppArmor security profile allowing Docker socket access

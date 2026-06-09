@@ -191,7 +191,7 @@ func (o *Options) applyDefaults() {
 		o.ExitDelaySource = "app"
 	}
 	if len(o.ArmModes) == 0 {
-		o.ArmModes = []string{"away", "home", "night"}
+		o.ArmModes = []string{"away"}
 	}
 	if o.TriggerTime == 0 {
 		o.TriggerTime = 1800

@@ -128,6 +128,7 @@ The `internal/ytcast/` tree is a maintained port of an external project. Two inv
 ### Critical Files
 
 - **`config.yaml`**: Addon configuration. `host_network: true` is mandatory — Cast (mDNS) and DIAL (SSDP) are L2 broadcast and don't traverse Docker bridge networking.
+- **`translations/en.yaml`**: Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options).
 - **`build.yaml`**: hassio-addons base image per architecture (auto-bumped by the repo workflow).
 - **`Dockerfile`**: Multi-stage Go builder + hassio-addons base. `ARG BUILD_FROM` has no inline default (per repo policy).
 - **`go.mod`**: Module path `github.com/shobuprime/sonuntius`, Go 1.26.
