@@ -1,0 +1,157 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail MuninnDB writes to its log. Leave on "info" unless you
+      are troubleshooting, in which case use "debug" or "trace".
+  admin_password:
+    name: Admin password
+    description: >-
+      Sets the password for the MuninnDB admin (root) account, applied
+      automatically after startup. Must be at least 8 characters. Leave blank
+      to keep the default root/password credentials — strongly recommended to
+      set this before exposing MuninnDB to the network.
+  default_vault:
+    name: Default vault name
+    description: >-
+      Name of a vault created automatically on first startup. Defaults to
+      "homeassistant" and is created public (no API key required) so AI tools
+      can use it over MCP right away. Leave blank to skip vault creation.
+  default_vault_public:
+    name: Make default vault public
+    description: >-
+      When ON (default), the default vault needs no API key, making it
+      immediately available to AI tools via MCP. Turn OFF to require
+      authentication for the default vault.
+  backup_on_shutdown:
+    name: Back up on shutdown
+    description: >-
+      When ON (default), MuninnDB takes a verified point-in-time backup before
+      the app stops (for updates, restarts, or HA backups). The last 3
+      shutdown backups are kept under /data/muninndb/backups/.
+  backup_interval:
+    name: Backup interval
+    description: >-
+      How often MuninnDB's built-in periodic backup runs, as a duration string
+      (for example "6h" or "30m"). Defaults to "6h".
+  backup_retain:
+    name: Backups to retain
+    description: >-
+      How many periodic backups to keep before the oldest are pruned. Defaults
+      to 5. Does not affect the separately managed shutdown backups.
+  ssl_certfile:
+    name: SSL certificate file
+    description: >-
+      Filename of a TLS certificate in the /ssl/ directory (for example
+      fullchain.pem) to serve MuninnDB over HTTPS. Leave blank to serve over
+      plain HTTP. Pair with the key file below.
+  ssl_keyfile:
+    name: SSL key file
+    description: >-
+      Filename of the TLS private key in the /ssl/ directory (for example
+      privkey.pem) matching the certificate above. Required if a certificate
+      file is set.
+  mem_limit_gb:
+    name: Memory limit (GB)
+    description: >-
+      Caps MuninnDB's memory usage in gigabytes. Leave at 0 for no limit. Set
+      a value on memory-constrained hosts to keep MuninnDB from being killed.
+  local_embed:
+    name: Use bundled local embedder
+    description: >-
+      When ON (default), MuninnDB uses its bundled ONNX embedder so no external
+      provider is needed. Turn OFF to rely solely on a configured remote
+      embedding provider below (saves memory).
+  anthropic_key:
+    name: Anthropic API key
+    description: >-
+      Anthropic API key (sk-ant-...) used for LLM enrichment. When set together
+      with the enrichment URL, MuninnDB uses Claude to enrich existing memories
+      in the background. Stored as a secret and never logged.
+  cohere_key:
+    name: Cohere API key
+    description: >-
+      Cohere API key for using Cohere embeddings. Leave blank if unused.
+      Stored as a secret.
+  enrich_url:
+    name: LLM enrichment URL
+    description: >-
+      Endpoint for background LLM enrichment of memories (for example
+      anthropic://claude-haiku-4-5-20251001). Requires the matching provider
+      key to be set. Leave blank to disable enrichment.
+  google_key:
+    name: Google API key
+    description: >-
+      Google API key for using Google embeddings. Leave blank if unused.
+      Stored as a secret.
+  jina_key:
+    name: Jina AI API key
+    description: >-
+      Jina AI API key for using Jina embeddings. Leave blank if unused. Stored
+      as a secret.
+  mistral_key:
+    name: Mistral AI API key
+    description: >-
+      Mistral AI API key for using Mistral embeddings. Leave blank if unused.
+      Stored as a secret.
+  ollama_url:
+    name: Ollama URL
+    description: >-
+      URL of an Ollama instance to use for embeddings (for example
+      http://homeassistant.local:11434). Leave blank if unused.
+  openai_key:
+    name: OpenAI API key
+    description: >-
+      OpenAI API key for using OpenAI embeddings. Leave blank if unused.
+      Stored as a secret.
+  openai_url:
+    name: OpenAI base URL
+    description: >-
+      Optional override for the OpenAI-compatible endpoint, for using a
+      self-hosted or alternative provider that speaks the OpenAI API. Leave
+      blank to use the default OpenAI endpoint.
+  voyage_key:
+    name: Voyage AI API key
+    description: >-
+      Voyage AI API key for using Voyage embeddings. Leave blank if unused.
+      Stored as a secret.
+  traefik_enable:
+    name: Enable Traefik labels
+    description: >-
+      Turn ON to emit Traefik reverse-proxy routing labels so an external
+      Traefik instance can publish MuninnDB's endpoints. Leave OFF if you only
+      use Home Assistant ingress or direct port access. The options below
+      apply only when this is ON.
+  traefik_domain:
+    name: Traefik domain (Web UI)
+    description: >-
+      Public hostname Traefik should route to the MuninnDB Web UI (port 8476).
+      Required when Traefik labels are enabled.
+  traefik_api_domain:
+    name: Traefik domain (REST API)
+    description: >-
+      Optional public hostname Traefik should route to the REST API (port
+      8475). Leave blank to not expose the REST API through Traefik.
+  traefik_grpc_domain:
+    name: Traefik domain (gRPC)
+    description: >-
+      Optional public hostname Traefik should route to the gRPC API (port
+      8477). Leave blank to not expose gRPC through Traefik.
+  traefik_mcp_domain:
+    name: Traefik domain (MCP)
+    description: >-
+      Optional public hostname Traefik should route to the MCP endpoint (port
+      8750), for AI tool integration. Leave blank to not expose MCP through
+      Traefik.
+  traefik_entrypoints:
+    name: Traefik entrypoints
+    description: >-
+      Which Traefik entrypoint(s) handle MuninnDB traffic. Defaults to
+      "websecure" (HTTPS). Match this to the entrypoint names defined in your
+      Traefik configuration.
+  traefik_certresolver:
+    name: Traefik certificate resolver
+    description: >-
+      The Traefik certificate resolver used to obtain TLS certificates for the
+      domains above. Defaults to "cloudflare". Must match a resolver defined in
+      your Traefik configuration.

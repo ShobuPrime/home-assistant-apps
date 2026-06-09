@@ -106,14 +106,15 @@ Read `references/templates.md` for the exact content templates. Customize each t
 
 1. **`config.yaml`** - Add-on metadata, ports, options schema
 2. **`build.yaml`** - Base image and build args per architecture
-3. **`Dockerfile`** - Container build with binary download or service installation
-4. **`apparmor.txt`** - Security profile (start from the standard template, add addon-specific paths)
-5. **`rootfs/etc/cont-init.d/<name>.sh`** - S6 initialization script
-6. **`rootfs/etc/services.d/<name>/run`** - S6 service runner
-7. **`rootfs/etc/services.d/<name>/finish`** - S6 finish handler
-8. **`build.sh`** - Local build script
-9. **`icon.png`** - PNG icon, minimum 256x256 (required by HA and CI validation). Source from upstream project logo/favicon.
-10. **`CHANGELOG.md`** - Initial version entry
+3. **`translations/en.yaml`** - Plain-English option names + descriptions for the HA Configuration tab (mirrors `config.yaml`'s options). See "translations/en.yaml Format" below.
+4. **`Dockerfile`** - Container build with binary download or service installation
+5. **`apparmor.txt`** - Security profile (start from the standard template, add addon-specific paths)
+6. **`rootfs/etc/cont-init.d/<name>.sh`** - S6 initialization script
+7. **`rootfs/etc/services.d/<name>/run`** - S6 service runner
+8. **`rootfs/etc/services.d/<name>/finish`** - S6 finish handler
+9. **`build.sh`** - Local build script
+10. **`icon.png`** - PNG icon, minimum 256x256 (required by HA and CI validation). Source from upstream project logo/favicon.
+11. **`CHANGELOG.md`** - Initial version entry
 12. **`README.md`** - User-facing overview and installation guide
 13. **`DOCS.md`** - Detailed configuration documentation
 14. **`CLAUDE.md`** - AI assistant guidance for future maintenance
@@ -187,6 +188,30 @@ args:
 ```
 
 Always check what the current base image version is by looking at existing addons' build.yaml files - use the same version.
+
+### translations/en.yaml Format
+
+Every addon ships a `translations/en.yaml` at the addon root. Home Assistant renders it as the option **label** and **helper text** in the addon's Configuration tab, so the raw `config.yaml` keys (e.g. `unifi_api_key`) never appear in the UI. This file is **required** and must stay in sync with `config.yaml`'s `options`/`schema`.
+
+Structure: a single top-level `configuration:` map keyed by the **exact** option keys from `config.yaml`. Each entry has:
+- `name:` — a Title Case, plain-English label (no snake_case, no jargon)
+- `description:` — what the option does plus any guidance/defaults. Use a folded `>-` scalar for multi-line text so it wraps cleanly in the UI.
+
+```yaml
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail the add-on writes to its log. Leave on "info" unless you
+      are troubleshooting, in which case use "debug".
+  some_host:
+    name: Server address
+    description: >-
+      IP address or hostname of the upstream server (for example 192.168.1.1).
+      Leave blank to run standalone.
+```
+
+Add one entry for **every** option in `config.yaml` — including `log_level`. See `aegis_ha/translations/en.yaml` for a complete, well-written exemplar covering hosts, API keys, booleans, numeric delays, and advanced options.
 
 ### Dockerfile Structure
 
@@ -424,6 +449,7 @@ Use `peter-evans/create-pull-request@v6` with `sign-commits: true` and labels `a
 Before considering the addon complete, verify:
 
 - [ ] `config.yaml` has all required fields and valid schema types
+- [ ] `translations/en.yaml` exists and documents **every** `config.yaml` option with a Title Case `name:` and a plain-English `description:`
 - [ ] Version is consistent across `config.yaml`, `build.yaml` args, and `Dockerfile` `ARG <ADDON>_VERSION=`
 - [ ] `build.yaml` uses the same base image version as other addons
 - [ ] Dockerfile starts with `apk upgrade --no-cache` before `apk add`

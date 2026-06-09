@@ -6,11 +6,12 @@ This file contains exact templates for every file in a Home Assistant add-on. Re
 
 1. [AppArmor Profile](#apparmor-profile)
 2. [build.sh](#buildsh)
-3. [README.md](#readmemd)
-4. [DOCS.md](#docsmd)
-5. [CHANGELOG.md](#changelogmd)
-6. [UPDATE_GUIDE.md](#update_guidemd)
-7. [CLAUDE.md](#claudemd)
+3. [translations/en.yaml](#translationsenyaml)
+4. [README.md](#readmemd)
+5. [DOCS.md](#docsmd)
+6. [CHANGELOG.md](#changelogmd)
+7. [UPDATE_GUIDE.md](#update_guidemd)
+8. [CLAUDE.md](#claudemd)
 
 ---
 
@@ -212,6 +213,34 @@ fi
 
 Replace `<ADDON_UPPER>` with the uppercase version ARG name (e.g., `PORTAINER`, `ARCANE`).
 Replace `<port-flags>` with `-p <port>:<port>` for each exposed port.
+
+---
+
+## translations/en.yaml
+
+Lives at `<addon>/translations/en.yaml`. Home Assistant uses it to render the option **label** and **helper text** in the addon's Configuration tab, so the raw `config.yaml` keys never appear in the UI. **Required** for every addon, and must stay in sync with `config.yaml`'s `options`/`schema`.
+
+A single top-level `configuration:` map keyed by the **exact** option keys from `config.yaml`. Each entry has a Title Case `name:` and a plain-English `description:` (use a folded `>-` scalar for multi-line text so it wraps in the UI). Include an entry for **every** option, including `log_level`.
+
+```yaml
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail the add-on writes to its log. Leave on "info" unless you
+      are troubleshooting, in which case use "debug".
+  <option_key>:
+    name: <Title Case Label>
+    description: >-
+      <What this option does, plus guidance/defaults. Keep it plain-English and
+      jargon-free — this is what the user reads in the Configuration tab.>
+  <boolean_option>:
+    name: <Title Case Label>
+    description: >-
+      <When ON ...; when OFF .... State the recommended default.>
+```
+
+See `aegis_ha/translations/en.yaml` for a complete, well-written exemplar covering hosts, API keys, booleans, numeric delays, and advanced options.
 
 ---
 

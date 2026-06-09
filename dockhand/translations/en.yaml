@@ -1,0 +1,49 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail Dockhand writes to its log. Leave on "info" unless you are
+      troubleshooting, in which case use "debug" or "trace".
+  port:
+    name: Web interface port
+    description: >-
+      The TCP port Dockhand listens on internally. Default is 3000. Access
+      through the Home Assistant sidebar (ingress) always uses 3000, so this
+      mainly matters for direct browser access. Change it only if 3000 conflicts
+      with another service.
+  puid:
+    name: User ID (PUID)
+    description: >-
+      The Linux user ID Dockhand runs as. Default is 0 (root), which is required
+      for Docker socket access. Change only if you understand the file-permission
+      implications.
+  pgid:
+    name: Group ID (PGID)
+    description: >-
+      The Linux group ID Dockhand runs as. Default is 0 (root), which is required
+      for Docker socket access. Change only if you understand the file-permission
+      implications.
+  traefik_enable:
+    name: Enable Traefik integration
+    description: >-
+      Advanced. Turn ON only if you front this app with a Traefik reverse proxy
+      and want Dockhand published under your own domain. Leave OFF for normal use
+      through the Home Assistant sidebar (ingress). When OFF, the options below
+      are ignored.
+  traefik_domain:
+    name: Traefik domain
+    description: >-
+      Only used when Traefik is enabled. The hostname Traefik should route to
+      this app, for example "dockhand.example.com". Leave blank if Traefik is off.
+  traefik_entrypoints:
+    name: Traefik entrypoints
+    description: >-
+      Only used when Traefik is enabled. The Traefik entrypoint(s) to expose
+      this app on. Defaults to "websecure" (HTTPS). Change only if your Traefik
+      setup uses differently named entrypoints.
+  traefik_certresolver:
+    name: Traefik certificate resolver
+    description: >-
+      Only used when Traefik is enabled. The name of the Traefik certificate
+      resolver that issues the TLS certificate for the domain above. Defaults to
+      "cloudflare". Must match a resolver defined in your Traefik configuration.

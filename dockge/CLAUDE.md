@@ -99,6 +99,7 @@ This app now uses the official `louislam/dockge:1` Docker image directly, which 
 
 ### Critical Files
 - **`config.yaml`**: App configuration with image reference, ports, ingress settings
+- **`translations/en.yaml`**: Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options)
 - **`apparmor.txt`**: Security profile for Docker socket access
 - **No build files needed**: Uses official Docker image directly
 

@@ -21,6 +21,7 @@ The repository structure was modeled after: https://github.com/boomam/home-assis
 Each app should be created in its own directory with the following files:
 
 - `config.yaml` - Main configuration file defining the app metadata
+- `translations/en.yaml` - Plain-English config-option names + inline descriptions shown in the Home Assistant app UI (mirrors `config.yaml`'s options; see `aegis_ha/translations/en.yaml`)
 - `Dockerfile` - Container build instructions
 - `README.md` - App overview and quick start
 - `DOCS.md` - Detailed documentation and configuration options

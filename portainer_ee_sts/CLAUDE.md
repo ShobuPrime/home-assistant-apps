@@ -47,6 +47,7 @@ The update script filters for STS releases by checking the GitHub release name f
 
 ### Critical Files
 - **`config.yaml`**: App configuration (version, ports, ingress, options schema)
+- **`translations/en.yaml`**: Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options)
 - **`build.yaml`**: Build configuration with base images per architecture
 - **`Dockerfile`**: Downloads Portainer binary, verifies checksum, sets up environment
 - **`apparmor.txt`**: Security profile for Docker socket access

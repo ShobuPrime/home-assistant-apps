@@ -1,0 +1,125 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail Sonuntius writes to its log. Leave on "info" unless you
+      are troubleshooting, in which case use "debug" or "trace".
+  ma_player_id:
+    name: Music Assistant player ID
+    description: >-
+      The Home Assistant media_player entity for your Sendspin speaker (for
+      example media_player.sendspin_living_room). This is the only required
+      option — when it is blank, Sonuntius logs that it is idle and drops cast
+      events instead of playing them.
+  friendly_name_youtube:
+    name: YouTube device name
+    description: >-
+      The name shown in the YouTube / YouTube Music app's cast picker for this
+      receiver. Defaults to "Sonuntius (YouTube)".
+  friendly_name_tidal:
+    name: Tidal device name
+    description: >-
+      The name shown in the Tidal app's cast picker for the Cast (proxy)
+      receiver. Defaults to "Sonuntius (Tidal)".
+  enable_youtube:
+    name: Enable YouTube / YouTube Music
+    description: >-
+      When ON (default), Sonuntius advertises the DIAL endpoint so YouTube and
+      YouTube Music apps can cast to it. Turn OFF to hide the YouTube receiver.
+  enable_tidal_proxy:
+    name: Enable Tidal proxy
+    description: >-
+      When ON (default), Sonuntius advertises the Cast (CASTV2) endpoint used
+      by the Tidal proxy. Requires the user-supplied AirReceiver certificate
+      and key (see paths below); without them the receiver stays silent.
+  cast_cert_path:
+    name: AirReceiver certificate path
+    description: >-
+      Path inside the container to the AirReceiver TLS certificate used by the
+      Tidal Cast proxy. Defaults to /share/sonuntius/airreceiver_cert.pem so you
+      can drop the file on the host without rebuilding. Never shipped in the
+      image.
+  cast_key_path:
+    name: AirReceiver key path
+    description: >-
+      Path inside the container to the AirReceiver TLS private key matching the
+      certificate above. Defaults to /share/sonuntius/airreceiver_key.pem.
+  yt_cast_dial_port:
+    name: YouTube DIAL port
+    description: >-
+      TCP port the yt-cast service uses for its DIAL HTTP listener. Defaults to
+      8008 (the Chromecast reference port) to avoid clashing with Music
+      Assistant's port 3000. Discovery does not depend on this value, so change
+      it only if 8008 conflicts on your host.
+  cast_receiver_tls_port:
+    name: Cast receiver TLS port
+    description: >-
+      TCP port the cast-receiver service uses for its CASTV2 TLS listener.
+      Defaults to 8009 (the Chromecast standard). Senders find it via the mDNS
+      record, so change it only if 8009 is already in use on your host.
+  ha_base_url:
+    name: Home Assistant base URL
+    description: >-
+      Optional override for the Home Assistant REST endpoint (for example
+      http://homeassistant.local:8123). Leave blank to use the Supervisor proxy
+      with the auto-injected token. The core WebSocket URL is derived from this
+      automatically.
+  ha_token:
+    name: Home Assistant token
+    description: >-
+      Optional long-lived access token used to talk to Home Assistant as a
+      named user. Leave blank to use the auto-injected Supervisor token. Stored
+      as a secret and never logged.
+  ma_ws_url:
+    name: Music Assistant WebSocket URL
+    description: >-
+      Optional full WebSocket URL to Music Assistant's /ws endpoint. Leave
+      blank to auto-discover MA's hostname and use ws://<host>:8095/ws. If MA
+      is unreachable, Sonuntius falls back to the HA core WebSocket path.
+  ma_token:
+    name: Music Assistant token
+    description: >-
+      Optional auth token for Music Assistant (required on MA schema 28+).
+      Needed for rich title/artist/thumbnail metadata in the MA UI; without it
+      audio still plays but the MA UI shows the raw stream URL. Stored as a
+      secret.
+  ma_queue_id:
+    name: Music Assistant queue ID
+    description: >-
+      Optional MA internal player_id used as the queue_id for play_media. Leave
+      blank to auto-discover via MA's player list. Set it only when
+      auto-discovery cannot find your speaker — the startup log lists every
+      visible MA player so you can copy the matching player_id.
+  tidal_fallback:
+    name: Tidal Connect fallback
+    description: >-
+      Opt-in iFi Tidal Connect binary fallback for cases the Cast proxy cannot
+      handle. Disabled by default; requires a user-supplied iFi tarball. Expand
+      to configure the options below.
+  enabled:
+    name: Enable Tidal Connect fallback
+    description: >-
+      Turn ON to run the iFi Tidal Connect binary fallback path. Off by
+      default. Also requires placing the iFi tarball at the path below.
+  binary_tarball_path:
+    name: iFi binary tarball path
+    description: >-
+      Path to the user-supplied tarball containing the iFi
+      tidal_connect_application binary and its bundled certificate. Defaults to
+      /share/sonuntius/ifi-tidal-release.tar.gz. Never shipped in the image.
+  cert_filename:
+    name: Certificate filename
+    description: >-
+      Filename of the certificate inside the iFi tarball. Defaults to
+      IfiAudio_ZenStream.dat.
+  friendly_name:
+    name: Tidal Connect device name
+    description: >-
+      The name shown in Tidal's device picker for the Tidal Connect fallback
+      receiver. Defaults to "Sonuntius (Tidal Connect)".
+  sendspin_server_url:
+    name: Sendspin server URL
+    description: >-
+      URL of the Sendspin server that ingests the loopback audio captured from
+      the iFi binary. Required when the Tidal Connect fallback is enabled;
+      leave blank otherwise.
