@@ -1,0 +1,138 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail AegisHA writes to its log. Leave on "info" unless you are
+      troubleshooting, in which case use "debug".
+  unifi_host:
+    name: UniFi gateway address
+    description: >-
+      IP address or hostname of your UniFi gateway / console running Protect
+      (for example 192.168.1.1). Leave blank to run AegisHA as a standalone
+      alarm with no UniFi Protect connection.
+  unifi_api_key:
+    name: UniFi API key
+    description: >-
+      A UniFi OS API key (UniFi OS → Settings → Admins → your user → Create API
+      Key). AegisHA uses it to read your Protect sensors and arm state and to
+      fire alarm webhooks. It is never written to the log.
+  unifi_verify_ssl:
+    name: Verify the gateway's TLS certificate
+    description: >-
+      Leave OFF for a normal local gateway (it uses a self-signed certificate).
+      Turn ON only if your gateway presents a certificate your system trusts.
+  protect_mode:
+    name: UniFi Protect control mode
+    description: >-
+      "auto" (recommended) detects how your Protect Alarm Manager is set up. If
+      Protect is in Global mode, AegisHA cannot arm/disarm it directly and uses
+      webhooks instead — it still reads and mirrors Protect's arm state. Use
+      "app-managed" to ignore Protect's own arm state entirely and let AegisHA
+      be the sole source of truth.
+  unifi_webhook_arm:
+    name: "Webhook: when AegisHA arms"
+    description: >-
+      Optional. The Trigger ID of a UniFi Protect Alarm Manager webhook to fire
+      when AegisHA arms. Use this to make Protect arm itself (or run any Protect
+      alarm action) in lockstep with AegisHA. Create the alarm + webhook in the
+      Protect app, then paste its Trigger ID here. Leave blank to skip.
+  unifi_webhook_disarm:
+    name: "Webhook: when AegisHA disarms"
+    description: >-
+      Optional. The Trigger ID of a UniFi Protect Alarm Manager webhook to fire
+      when AegisHA disarms. Pair it with the arm webhook so Protect follows
+      AegisHA. Leave blank to skip.
+  unifi_webhook_trigger:
+    name: "Webhook: when the alarm is tripped (breach)"
+    description: >-
+      Optional. The Trigger ID of a UniFi Protect Alarm Manager webhook to fire
+      the moment the alarm goes off (a sensor is breached while armed, or you
+      press panic). This is how you sound a Protect siren, flash lights, or send
+      Protect notifications on an actual alarm. Leave blank if you don't want
+      Protect to react to a breach.
+  exit_delay_source:
+    name: Who owns the exit (leave) delay
+    description: >-
+      "app" (recommended): AegisHA runs the leave countdown and fires the arm
+      webhook only once fully armed. "unifi": the arm webhook fires the instant
+      arming begins, so the Protect alarm's own activation delay runs the
+      countdown instead.
+  arm_modes:
+    name: Available arm modes
+    description: >-
+      Which arm modes appear on the alarm panel and keypad. "away" arms
+      everything; "home"/"night" typically arm perimeter sensors only.
+  exit_delay:
+    name: Exit (leave) delay — seconds
+    description: >-
+      Grace period after you arm before the alarm is live, so you can leave.
+      Set to 0 to arm instantly.
+  entry_delay:
+    name: Entry delay — seconds
+    description: >-
+      Grace period after a sensor is tripped before the alarm sounds, so you can
+      disarm on the way in. Set to 0 to trip instantly.
+  trigger_time:
+    name: Siren / triggered duration — seconds
+    description: >-
+      How long the alarm stays in the triggered state before it resolves. Set
+      to 0 to stay triggered until manually disarmed.
+  code:
+    name: Alarm code (PIN)
+    description: >-
+      Optional numeric PIN. Leave blank to control the alarm with no code — when
+      you open AegisHA from the Home Assistant sidebar, your logged-in HA user is
+      your identity. Set a PIN here if you want one shared code required (see the
+      two options below). This is the only place you set a code.
+  require_code_to_arm:
+    name: Require the code to arm
+    description: >-
+      Only applies if a code is set above. When ON, arming requires the PIN.
+      Most people leave this OFF (arming is harmless; disarming is what needs
+      protecting).
+  require_code_to_disarm:
+    name: Require the code to disarm
+    description: >-
+      Only applies if a code is set above. When ON, disarming requires the PIN.
+  disarm_after_trigger:
+    name: Disarm after an alarm resolves
+    description: >-
+      When ON, the system returns to disarmed once the triggered duration ends.
+      When OFF, it returns to the armed mode it was in before the alarm.
+  ignore_blocking_sensors_after_trigger:
+    name: Re-arm even if sensors are still open after an alarm
+    description: >-
+      Advanced. When ON, the system can return to armed after an alarm even if a
+      sensor that caused it is still open, instead of being blocked.
+  lockout_threshold:
+    name: Wrong-code attempts before lockout
+    description: >-
+      Number of consecutive wrong PIN entries that trigger a temporary lockout.
+      Protects a shared code from brute-force guessing.
+  lockout_duration:
+    name: Lockout duration — seconds
+    description: >-
+      How long the keypad stays locked out after too many wrong PIN entries.
+  mqtt_topic_prefix:
+    name: MQTT topic prefix
+    description: >-
+      Advanced. The MQTT topic prefix AegisHA publishes under. Leave as
+      "aegis_ha" unless it collides with something else on your broker.
+  enable_web_ui:
+    name: Enable the built-in keypad UI
+    description: >-
+      Shows the AegisHA keypad in the Home Assistant sidebar (ingress). Turn OFF
+      if you only want the MQTT alarm panel entity and the companion card.
+  enable_companion_card:
+    name: Install the companion Lovelace card
+    description: >-
+      Installs the AegisHA dashboard card and registers it automatically. After
+      install you can add it from a dashboard via "Add card" → search "AegisHA".
+      Requires an MQTT broker so the alarm entity exists to display.
+  expose_zone_entities:
+    name: Publish per-sensor (zone) entities
+    description: >-
+      OFF by default to avoid duplicating the official UniFi Protect
+      integration, which already gives you per-sensor entities. Turn ON only if
+      you do NOT use that integration and want AegisHA to publish a
+      binary_sensor + bypass switch for each Protect sensor.

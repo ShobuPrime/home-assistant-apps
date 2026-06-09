@@ -1,11 +1,11 @@
-// Package config loads AegisHA add-on options from the Supervisor.
+// Package config loads AegisHA app options from the Supervisor.
 //
 // Options are read once at startup from /data/options.json (the real HA
-// add-on path). When that file is absent — as in the CI smoke-test
-// harness, which boots the container against a mock Supervisor — we fall
-// back to the Supervisor REST API at /addons/self/options/config. Either
-// way the result is normalized through applyDefaults so a partial or
-// empty options object still yields a usable configuration.
+// app path). When that file is absent — as in the CI smoke-test harness,
+// which boots the container against a mock Supervisor — we fall back to
+// the Supervisor REST API at /addons/self/options/config. Either way the
+// result is normalized through applyDefaults so a partial or empty options
+// object still yields a usable configuration.
 package config
 
 import (
@@ -61,94 +61,6 @@ func (s *StringList) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// UserList is a []User that tolerates the mock Supervisor serializing an
-// empty/complex option as a bare string.
-type UserList []User
-
-// UnmarshalJSON implements lenient decoding for UserList.
-func (u *UserList) UnmarshalJSON(b []byte) error {
-	b = bytes.TrimSpace(b)
-	if len(b) == 0 || string(b) == "null" || (len(b) > 0 && b[0] == '"') {
-		*u = nil
-		return nil
-	}
-	var arr []User
-	if err := json.Unmarshal(b, &arr); err != nil {
-		return err
-	}
-	*u = arr
-	return nil
-}
-
-// User is a single keypad user/profile entry from the bootstrap options
-// list. The plaintext PIN here is imported once into the hashed store and
-// the user is then advised to clear it from options (see internal/store).
-type User struct {
-	Name            string   `json:"name"`
-	HAUserID        string   `json:"ha_user_id,omitempty"`
-	PIN             string   `json:"pin,omitempty"`
-	Role            string     `json:"role,omitempty"`
-	AllowedArmModes StringList `json:"allowed_arm_modes,omitempty"`
-}
-
-// SensorOverride is an Alarmo-style per-sensor configuration, matched to a
-// discovered UniFi Protect sensor by name (case-insensitive).
-type SensorOverride struct {
-	Name               string     `json:"name"`
-	Modes              StringList `json:"modes,omitempty"`
-	AlwaysOn           bool       `json:"always_on,omitempty"`
-	Immediate          bool       `json:"immediate,omitempty"`
-	UseExitDelay       bool       `json:"use_exit_delay,omitempty"`
-	AutoBypass         bool       `json:"auto_bypass,omitempty"`
-	AllowOpen          bool       `json:"allow_open,omitempty"`
-	TriggerUnavailable bool       `json:"trigger_unavailable,omitempty"`
-	Group              string     `json:"group,omitempty"`
-}
-
-// SensorGroupCfg defines a sensor-group debounce rule.
-type SensorGroupCfg struct {
-	Name       string `json:"name"`
-	EventCount int    `json:"event_count"`
-	Timeout    int    `json:"timeout"` // seconds
-}
-
-// SensorOverrideList tolerates the mock Supervisor serializing an empty
-// list option as a bare string (see StringList/UserList).
-type SensorOverrideList []SensorOverride
-
-// UnmarshalJSON implements lenient decoding for SensorOverrideList.
-func (l *SensorOverrideList) UnmarshalJSON(b []byte) error {
-	b = bytes.TrimSpace(b)
-	if len(b) == 0 || string(b) == "null" || (len(b) > 0 && b[0] == '"') {
-		*l = nil
-		return nil
-	}
-	var arr []SensorOverride
-	if err := json.Unmarshal(b, &arr); err != nil {
-		return err
-	}
-	*l = arr
-	return nil
-}
-
-// SensorGroupList tolerates the mock Supervisor's bare-string empty list.
-type SensorGroupList []SensorGroupCfg
-
-// UnmarshalJSON implements lenient decoding for SensorGroupList.
-func (l *SensorGroupList) UnmarshalJSON(b []byte) error {
-	b = bytes.TrimSpace(b)
-	if len(b) == 0 || string(b) == "null" || (len(b) > 0 && b[0] == '"') {
-		*l = nil
-		return nil
-	}
-	var arr []SensorGroupCfg
-	if err := json.Unmarshal(b, &arr); err != nil {
-		return err
-	}
-	*l = arr
-	return nil
-}
-
 // Options is the full AegisHA configuration surface. JSON tags match the
 // keys in config.yaml's options/schema blocks exactly.
 type Options struct {
@@ -158,14 +70,13 @@ type Options struct {
 	UniFiHost      string `json:"unifi_host"`
 	UniFiAPIKey    string `json:"unifi_api_key"`
 	UniFiVerifySSL bool   `json:"unifi_verify_ssl"`
-	UniFiSite      string `json:"unifi_site"`
 	ProtectMode    string `json:"protect_mode"` // auto | local | app-managed
 
 	// Protect Alarm Manager webhook trigger IDs (Global-mode actuation):
 	// AegisHA POSTs /v1/alarm-manager/webhook/<id> to fire the bound Protect
 	// alarm's actions when it arms / disarms / triggers. Works in Global mode
 	// (unlike arm profiles). Create the alarms + webhook triggers in the
-	// Protect UI and paste the IDs here.
+	// Protect app and paste the IDs here.
 	UniFiWebhookArm     string `json:"unifi_webhook_arm"`
 	UniFiWebhookDisarm  string `json:"unifi_webhook_disarm"`
 	UniFiWebhookTrigger string `json:"unifi_webhook_trigger"`
@@ -176,36 +87,31 @@ type Options struct {
 
 	// Alarm behavior
 	ArmModes                   StringList `json:"arm_modes"`
-	ExitDelay                  int      `json:"exit_delay"`
-	EntryDelay                 int      `json:"entry_delay"`
-	TriggerTime                int      `json:"trigger_time"`
-	ArmingRequiresCode         bool     `json:"arming_requires_code"`
-	DisarmRequiresCode         bool     `json:"disarm_requires_code"`
-	TriggerRequiresCode        bool     `json:"trigger_requires_code"`
-	DisarmAfterTrigger         bool     `json:"disarm_after_trigger"`
-	IgnoreBlockingAfterTrigger bool     `json:"ignore_blocking_sensors_after_trigger"`
+	ExitDelay                  int        `json:"exit_delay"`
+	EntryDelay                 int        `json:"entry_delay"`
+	TriggerTime                int        `json:"trigger_time"`
+	DisarmAfterTrigger         bool       `json:"disarm_after_trigger"`
+	IgnoreBlockingAfterTrigger bool       `json:"ignore_blocking_sensors_after_trigger"`
+
+	// Code / identity model. Code is a single optional shared PIN; when it is
+	// empty no code is ever required and the authenticated Home Assistant user
+	// (ingress identity) is the actor. The require_* toggles only matter when
+	// a code is set.
+	Code                string `json:"code"`
+	RequireCodeToArm    bool   `json:"require_code_to_arm"`
+	RequireCodeToDisarm bool   `json:"require_code_to_disarm"`
+
+	// Brute-force protection on the shared code.
+	LockoutThreshold int `json:"lockout_threshold"`
+	LockoutDuration  int `json:"lockout_duration"`
 
 	// MQTT
 	MQTTTopicPrefix string `json:"mqtt_topic_prefix"`
-	MQTTCodeFormat  string `json:"mqtt_code_format"` // number | text
 
-	// PIN / lockout policy
-	LockoutThreshold int    `json:"lockout_threshold"`
-	LockoutDuration  int    `json:"lockout_duration"`
-	PINMinLength     int    `json:"pin_min_length"`
-	PINMaxLength     int    `json:"pin_max_length"`
-	DefaultRole      string `json:"default_role"`
-
-	// Web UI / card / admin
-	EnableWebUI         bool       `json:"enable_web_ui"`
-	EnableCompanionCard bool       `json:"enable_companion_card"`
-	ExposeZoneEntities  bool       `json:"expose_zone_entities"`
-	AdminUsernames      StringList `json:"admin_usernames"`
-	Users               UserList   `json:"users"`
-
-	// Sensor model (Alarmo-style per-sensor overrides + group debounce)
-	Sensors      SensorOverrideList `json:"sensors"`
-	SensorGroups SensorGroupList    `json:"sensor_groups"`
+	// Web UI / card / zones
+	EnableWebUI         bool `json:"enable_web_ui"`
+	EnableCompanionCard bool `json:"enable_companion_card"`
+	ExposeZoneEntities  bool `json:"expose_zone_entities"`
 }
 
 const (
@@ -213,7 +119,7 @@ const (
 	supervisorOptURL = "http://supervisor/addons/self/options/config"
 )
 
-// Load reads and normalizes the add-on options.
+// Load reads and normalizes the app options.
 func Load(ctx context.Context) (*Options, error) {
 	raw, err := loadRaw(ctx)
 	if err != nil {
@@ -278,9 +184,6 @@ func (o *Options) applyDefaults() {
 	if o.LogLevel == "" {
 		o.LogLevel = "info"
 	}
-	if o.UniFiSite == "" {
-		o.UniFiSite = "default"
-	}
 	if o.ProtectMode == "" {
 		o.ProtectMode = "auto"
 	}
@@ -296,37 +199,23 @@ func (o *Options) applyDefaults() {
 	if o.MQTTTopicPrefix == "" {
 		o.MQTTTopicPrefix = "aegis_ha"
 	}
-	if o.MQTTCodeFormat == "" {
-		o.MQTTCodeFormat = "number"
-	}
 	if o.LockoutThreshold == 0 {
 		o.LockoutThreshold = 5
 	}
 	if o.LockoutDuration == 0 {
 		o.LockoutDuration = 300
 	}
-	if o.PINMinLength == 0 {
-		o.PINMinLength = 4
-	}
-	if o.PINMaxLength == 0 {
-		o.PINMaxLength = 8
-	}
-	if o.DefaultRole == "" {
-		o.DefaultRole = "user"
-	}
 }
 
 // Redacted returns a copy of the options safe for logging: secrets are
-// masked and the bootstrap users' PINs are stripped.
+// masked.
 func (o *Options) Redacted() Options {
 	c := *o
 	if c.UniFiAPIKey != "" {
 		c.UniFiAPIKey = "***"
 	}
-	c.Users = make(UserList, len(o.Users))
-	for i, u := range o.Users {
-		u.PIN = ""
-		c.Users[i] = u
+	if c.Code != "" {
+		c.Code = "***"
 	}
 	return c
 }

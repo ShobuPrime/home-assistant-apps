@@ -54,37 +54,50 @@ func (s *Store) AuthorizeMQTT(pin string, p Perm, now time.Time) Decision {
 	return s.decideLocked(u, p, now, true)
 }
 
-// AuthorizeUser authorizes a command on the ingress path where the HA user
-// identity is already trusted (from the X-Remote-User-Id header). The PIN
-// must belong to that user.
-func (s *Store) AuthorizeUser(haUserID, pin string, p Perm, now time.Time) Decision {
+// AuthorizeUser authorizes a command on the ingress path, where the Home
+// Assistant user identity is already trusted (the non-spoofable
+// X-Remote-User-Id header is present). Because the login establishes who
+// the actor is, AuthorizeUser enforces only the shared code: an action
+// that does not require a code is allowed outright, otherwise the entered
+// PIN must match the configured shared code. The caller supplies the real
+// HA identity as the actor name. This is identical to AuthorizeMQTT — both
+// gate solely on the single shared code — and is kept as a separate name
+// to document the trusted-identity call site.
+func (s *Store) AuthorizeUser(pin string, p Perm, now time.Time) Decision {
+	return s.AuthorizeMQTT(pin, p, now)
+}
+
+// SetCode replaces the single shared alarm code, the only credential in the
+// shared-code model. An empty code removes any stored code, so the alarm
+// can be controlled with no PIN (the authenticated Home Assistant user is
+// the identity). The code is stored exactly like a PIN — PBKDF2-hashed with
+// an HMAC lookup index — so the existing constant-time verification and
+// brute-force lockout paths apply unchanged. The persisted lockout counters
+// are preserved across the rewrite.
+func (s *Store) SetCode(code string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	var u *User
-	for _, c := range s.users {
-		if c.HAUserID != "" && c.HAUserID == haUserID {
-			u = c
-			break
-		}
+	s.users = nil
+	s.byID = map[string]*User{}
+	s.byLookup = map[string]*User{}
+	if normalizePIN(code) == "" {
+		return s.save()
 	}
-	if u == nil {
-		return Decision{Reason: "invalid_code"}
+	now := time.Now()
+	u := &User{
+		ID:        newID(),
+		Name:      "AegisHA",
+		Enabled:   true,
+		Role:      RoleAdmin,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
-	if s.userLocked(u, now) {
-		return Decision{Reason: "locked"}
+	if err := s.setPINLocked(u, code); err != nil {
+		return err
 	}
-	if p.CodeRequired || pin != "" {
-		if !verifyPIN(pin, u.PINHash, u.PINSalt) {
-			u.FailedAttempts++
-			if u.FailedAttempts >= s.policy.LockoutThreshold {
-				u.LockedUntil = now.Add(s.policy.LockoutDuration)
-			}
-			_ = s.save()
-			return Decision{Reason: "invalid_code"}
-		}
-	}
-	return s.decideLocked(u, p, now, false)
+	s.users = append(s.users, u)
+	s.byID[u.ID] = u
+	return s.save()
 }
 
 // decideLocked applies the post-verification policy (duress, expiry,

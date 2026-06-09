@@ -51,10 +51,9 @@ func (b *Bridge) allDiscovery() []discoveryMsg {
 }
 
 func (b *Bridge) panelDiscovery() discoveryMsg {
-	code := "REMOTE_CODE"
-	if b.cfg.CodeFormat == "text" {
-		code = "REMOTE_CODE_TEXT"
-	}
+	// REMOTE_CODE forwards the entered PIN to AegisHA (which holds the single
+	// shared code); the panel keypad is numeric.
+	const code = "REMOTE_CODE"
 	var feats []string
 	for _, m := range b.cfg.ArmModes {
 		switch m {
@@ -81,9 +80,8 @@ func (b *Bridge) panelDiscovery() discoveryMsg {
 		"json_attributes_topic": b.topic("panel", "attrs"),
 		"code":                  code,
 		"command_template":      `{"action":"{{action}}","code":"{{code}}"}`,
-		"code_arm_required":     b.cfg.ArmingRequiresCode,
-		"code_disarm_required":  b.cfg.DisarmRequiresCode,
-		"code_trigger_required": b.cfg.TriggerRequiresCode,
+		"code_arm_required":     b.cfg.RequireCodeToArm,
+		"code_disarm_required":  b.cfg.RequireCodeToDisarm,
 		"supported_features":    feats,
 	})
 }

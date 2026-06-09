@@ -42,7 +42,7 @@
 <div class="wrap">
   <header>
     <h1>AegisHA</h1>
-    <span>{{.User.Display}}{{if .IsAdmin}} &middot; <a href="{{.Base}}/admin">admin</a>{{end}}</span>
+    <span>{{.User.Display}}</span>
   </header>
 
   <div hx-ext="ws" ws-connect="{{.Base}}/ws">

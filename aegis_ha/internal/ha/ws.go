@@ -12,7 +12,7 @@ import (
 
 // RegisterLovelaceResource registers a JavaScript-module Lovelace resource
 // in Home Assistant via the Supervisor Core-WebSocket proxy
-// (ws://supervisor/core/websocket). The proxy authenticates the add-on's
+// (ws://supervisor/core/websocket). The proxy authenticates the app's
 // SUPERVISOR_TOKEN and connects upstream as the admin Supervisor system
 // user, so the admin-gated lovelace/resources/create succeeds — no Core
 // admin token of our own is needed (requires homeassistant_api: true).

@@ -1,14 +1,14 @@
-# Update Guide for the AegisHA Add-on
+# Update Guide for the AegisHA App
 
 ## How AegisHA is versioned
 
-AegisHA has no upstream binary to track — the add-on **is** the software. There is
+AegisHA has no upstream binary to track — the app **is** the software. There is
 no automated update workflow. New versions ship by bumping the `version` field in
 `config.yaml` and adding a `CHANGELOG.md` entry, then rebuilding.
 
 The only automated maintenance is the shared **base image** updater
 (`.github/scripts/update-base-image.sh`), which keeps `aegis_ha/build.yaml` on the
-current `ghcr.io/hassio-addons/base` release alongside the other add-ons.
+current `ghcr.io/hassio-addons/base` release alongside the other apps.
 
 ## Releasing a new version
 
@@ -32,7 +32,7 @@ git pull
 # Rebuild
 ./build.sh
 
-# Supervisor -> Add-on Store -> Check for updates
+# Supervisor -> App Store -> Check for updates
 ```
 
 ## Checking the current version
@@ -44,6 +44,6 @@ grep "version:" /addons/aegis_ha/config.yaml
 ## Best Practices
 
 1. Always run `go test ./...` and the smoke test before releasing.
-2. Back up Home Assistant before updating an alarm add-on.
+2. Back up Home Assistant before updating an alarm app.
 3. Verify `alarm_control_panel.aegis_ha` arms/disarms after an update before relying
    on it.

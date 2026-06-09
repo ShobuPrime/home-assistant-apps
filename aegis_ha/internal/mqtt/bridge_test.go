@@ -16,8 +16,8 @@ func newTestBridge(t *testing.T, arming, disarm bool) (*Bridge, *alarm.Engine, *
 	if err != nil {
 		t.Fatalf("store: %v", err)
 	}
-	if _, err := st.AddUser(store.User{Name: "Anthony", Role: "admin"}, "1234"); err != nil {
-		t.Fatalf("add user: %v", err)
+	if err := st.SetCode("1234"); err != nil {
+		t.Fatalf("set code: %v", err)
 	}
 	cfg := alarm.Config{ExitDelay: 0, ArmModes: []string{"away", "home"}}
 	eng := alarm.New(cfg, nil)
@@ -29,10 +29,10 @@ func newTestBridge(t *testing.T, arming, disarm bool) (*Bridge, *alarm.Engine, *
 	// fine — we exercise the inbound command path only.
 	client := New(Options{Broker: "127.0.0.1:1", ClientID: "test"})
 	b := NewBridge(client, eng, st, Config{
-		Prefix:             "aegis_ha",
-		ArmModes:           []string{"away", "home"},
-		ArmingRequiresCode: arming,
-		DisarmRequiresCode: disarm,
+		Prefix:              "aegis_ha",
+		ArmModes:            []string{"away", "home"},
+		RequireCodeToArm:    arming,
+		RequireCodeToDisarm: disarm,
 	}, cfg, nil)
 	return b, eng, st
 }

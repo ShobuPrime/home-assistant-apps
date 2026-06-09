@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.2.0
+
+_2026-06-09_
+
+### Simplified configuration and identity (breaking)
+
+- **Identity is now your Home Assistant login.** Removed the per-user PIN list
+  and the admin user-management console. Replaced the whole user/role model with
+  a single optional shared **`code`** (PIN) — the only place a code is set.
+- **Fixed "ARM Home → denied code".** The keypad no longer requires the
+  logged-in user to be pre-registered; with no code required (the default),
+  any authenticated Home Assistant user can arm/disarm. A code is only enforced
+  when set and the matching `require_code_to_arm` / `require_code_to_disarm`
+  toggle is on.
+- **Two-way arm sync with UniFi Protect.** AegisHA now reads the NVR's
+  `armMode.status` (readable even in Global mode) and mirrors it: arm/disarm from
+  the UniFi Protect app is reflected on the AegisHA panel (`changed_by: UniFi
+  Protect`). Echo-suppressed so it can't loop with the arm/disarm webhooks.
+  `protect_mode: app-managed` opts out.
+- **Plain-English options with inline descriptions.** Added `translations/en.yaml`
+  so every option shows a friendly name + description in the Configuration tab.
+- **Removed confusing/unused options:** `users`, `admin_usernames`,
+  `default_role`, `sensors`, `sensor_groups`, `unifi_site`, `pin_min_length`,
+  `pin_max_length`, `mqtt_code_format`, and the three `*_requires_code` options
+  (replaced by `code` + `require_code_to_arm` + `require_code_to_disarm`).
+- **Clarified MQTT setup.** Documented that AegisHA is an MQTT *client* — not a
+  broker, and not added as an integration — and needs the Mosquitto broker app +
+  the MQTT integration for its entities and card to appear. Startup log is
+  explicit when no broker is found.
+- Wording: "Add-on" → "App" throughout, matching Home Assistant's terminology.
+
 ## 0.1.0
 
 _2026-06-06_

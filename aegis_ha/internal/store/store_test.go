@@ -125,18 +125,40 @@ func TestArmModeRestriction(t *testing.T) {
 	}
 }
 
-func TestAuthorizeUserIdentityPath(t *testing.T) {
+func TestSharedCode(t *testing.T) {
 	s := testStore(t)
-	s.AddUser(User{Name: "Anthony", HAUserID: "uuid-abc"}, "4321")
 	now := time.Now()
-	if d := s.AuthorizeUser("uuid-abc", "4321", disarmCode(), now); !d.Allowed {
-		t.Fatalf("correct identity+pin: %+v", d)
+
+	// No code configured: an action that needs no code is allowed for the
+	// (already-authenticated) ingress user; one that needs a code is not.
+	if d := s.AuthorizeUser("", Perm{Action: "arm", Mode: "away"}, now); !d.Allowed {
+		t.Fatalf("no-code arm should be allowed with no code set: %+v", d)
 	}
-	if d := s.AuthorizeUser("uuid-abc", "0000", disarmCode(), now); d.Allowed || d.Reason != "invalid_code" {
-		t.Fatalf("wrong pin: %+v", d)
+	if d := s.AuthorizeUser("", disarmCode(), now); d.Allowed || d.Reason != "invalid_code" {
+		t.Fatalf("code-required disarm should fail with no code set: %+v", d)
 	}
-	if d := s.AuthorizeUser("uuid-other", "4321", disarmCode(), now); d.Allowed {
-		t.Fatalf("unknown identity should fail: %+v", d)
+
+	// Configure a shared code.
+	if err := s.SetCode("4321"); err != nil {
+		t.Fatalf("set code: %v", err)
+	}
+	if d := s.AuthorizeUser("4321", disarmCode(), now); !d.Allowed {
+		t.Fatalf("correct shared code: %+v", d)
+	}
+	if d := s.AuthorizeUser("0000", disarmCode(), now); d.Allowed || d.Reason != "invalid_code" {
+		t.Fatalf("wrong code: %+v", d)
+	}
+	// The MQTT (identity-less) path validates against the same shared code.
+	if d := s.AuthorizeMQTT("4321", disarmCode(), now); !d.Allowed {
+		t.Fatalf("mqtt shared code: %+v", d)
+	}
+
+	// Clearing the code returns to no-code operation.
+	if err := s.SetCode(""); err != nil {
+		t.Fatalf("clear code: %v", err)
+	}
+	if d := s.AuthorizeUser("", Perm{Action: "disarm"}, now); !d.Allowed {
+		t.Fatalf("no-code disarm should be allowed after clearing code: %+v", d)
 	}
 }
 

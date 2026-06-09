@@ -60,7 +60,7 @@ type Config struct {
 
 	// RestoreArmMode, if set to a valid arm mode, starts the engine in the
 	// corresponding armed_* state (used to restore a committed armed state
-	// across an add-on restart). Transient countdown states are never
+	// across an app restart). Transient countdown states are never
 	// restored — they fail safe to disarmed.
 	RestoreArmMode string
 	// OnCommit is called with the arm mode whenever the engine settles into

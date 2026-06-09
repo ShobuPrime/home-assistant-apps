@@ -21,15 +21,15 @@ func newTestServer(t *testing.T) (*Server, *alarm.Engine) {
 	if err != nil {
 		t.Fatalf("store: %v", err)
 	}
-	if _, err := st.AddUser(store.User{Name: "Anthony", HAUserID: "u-1", Role: "admin"}, "1234"); err != nil {
-		t.Fatalf("add user: %v", err)
+	if err := st.SetCode("1234"); err != nil {
+		t.Fatalf("set code: %v", err)
 	}
 	eng := alarm.New(alarm.Config{ExitDelay: 0, ArmModes: []string{"away", "home"}}, nil)
 	go eng.Run(t.Context())
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s := New(log, ":0", Options{
 		Engine: eng, Store: st, ArmModes: []string{"away", "home"},
-		DisarmRequiresCode: true, EnableUI: true, Version: "test",
+		RequireCodeToDisarm: true, EnableUI: true, Version: "test",
 	})
 	return s, eng
 }
@@ -77,6 +77,21 @@ func TestArmViaKeypad(t *testing.T) {
 	}
 }
 
+// TestArmWithoutCodeAllowed is the regression test for the "ARM Home →
+// denied code" bug: arming does not require a code (RequireCodeToArm is
+// false), so any authenticated ingress user may arm with no PIN entered —
+// they no longer need to be pre-registered in a PIN store.
+func TestArmWithoutCodeAllowed(t *testing.T) {
+	s, eng := newTestServer(t)
+	rec := doForm(s, "POST", "/arm", "any-ha-user", url.Values{"mode": {"home"}})
+	if rec.Code != 200 || strings.Contains(rec.Body.String(), "Denied") {
+		t.Fatalf("no-code arm should be allowed: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := eng.Current().State; got != alarm.StateArmedHome {
+		t.Fatalf("engine state = %s, want armed_home", got)
+	}
+}
+
 func TestWrongPinDenied(t *testing.T) {
 	s, eng := newTestServer(t)
 	rec := doForm(s, "POST", "/disarm", "u-1", url.Values{"code": {"0000"}})
@@ -88,17 +103,6 @@ func TestWrongPinDenied(t *testing.T) {
 	doForm(s, "POST", "/disarm", "u-1", url.Values{"code": {"0000"}})
 	if eng.Current().State != alarm.StateArmedAway {
 		t.Fatal("wrong pin disarmed the system")
-	}
-}
-
-func TestAdminGating(t *testing.T) {
-	s, _ := newTestServer(t)
-	// u-2 has no user record → not admin.
-	if rec := doForm(s, "GET", "/admin", "u-2", nil); rec.Code != 403 {
-		t.Fatalf("non-admin should be 403, got %d", rec.Code)
-	}
-	if rec := doForm(s, "GET", "/admin", "u-1", nil); rec.Code != 200 {
-		t.Fatalf("admin should be 200, got %d", rec.Code)
 	}
 }
 
@@ -141,18 +145,5 @@ func TestWebSocketLiveState(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("did not observe armed_away over the websocket")
 		}
-	}
-}
-
-func TestAddUserViaAdmin(t *testing.T) {
-	s, _ := newTestServer(t)
-	rec := doForm(s, "POST", "/admin/users", "u-1", url.Values{
-		"name": {"Guest"}, "pin": {"5678"}, "role": {"guest"},
-	})
-	if rec.Code != 303 {
-		t.Fatalf("add user should redirect, got %d", rec.Code)
-	}
-	if s.opts.Store.Count() != 2 {
-		t.Fatalf("want 2 users, got %d", s.opts.Store.Count())
 	}
 }

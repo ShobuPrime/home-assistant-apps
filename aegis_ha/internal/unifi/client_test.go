@@ -11,9 +11,10 @@ import (
 )
 
 type mock struct {
-	armProfilesOK     bool // GET /v1/arm-profiles returns 200 (Local mode)
-	armProfilesGlobal bool // GET /v1/arm-profiles returns 400 'global' (Global mode)
-	enableGlobal      bool // POST /v1/arm-profiles/enable returns 400 'global'
+	armProfilesOK     bool   // GET /v1/arm-profiles returns 200 (Local mode)
+	armProfilesGlobal bool   // GET /v1/arm-profiles returns 400 'global' (Global mode)
+	enableGlobal      bool   // POST /v1/arm-profiles/enable returns 400 'global'
+	nvrArm            string // armMode.status reported by GET /v1/nvrs (default "disabled")
 	lastAPIKey        string
 	lastWebhook       string
 }
@@ -27,9 +28,13 @@ func newMock(t *testing.T, m *mock) *Client {
 	// an object (status/armProfileId), so the mock matches that shape.
 	mux.HandleFunc(p+"/nvrs", func(w http.ResponseWriter, r *http.Request) {
 		m.lastAPIKey = r.Header.Get("X-API-KEY")
+		arm := m.nvrArm
+		if arm == "" {
+			arm = "disabled"
+		}
 		_ = json.NewEncoder(w).Encode(NVR{
 			ID: "nvr1", Name: "UCG Fiber", ModelKey: "nvr",
-			ArmMode: &NVRArmMode{Status: "disabled", ArmProfileID: "p-away"},
+			ArmMode: &NVRArmMode{Status: arm, ArmProfileID: "p-away"},
 		})
 	})
 	mux.HandleFunc(p+"/arm-profiles", func(w http.ResponseWriter, r *http.Request) {

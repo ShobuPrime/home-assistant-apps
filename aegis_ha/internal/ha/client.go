@@ -1,5 +1,5 @@
 // Package ha is a thin client for the Home Assistant Core API, routed
-// through the add-on Supervisor proxy (http://supervisor/core/api). AegisHA
+// through the app's Supervisor proxy (http://supervisor/core/api). AegisHA
 // uses it to fire bus events (e.g. aegis_ha_command_success, aegis_ha_failed_to_
 // arm, aegis_ha_triggered, aegis_ha_duress) so automations can react the same
 // way they would to Alarmo's events, in addition to the MQTT entities.

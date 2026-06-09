@@ -129,6 +129,53 @@ func TestManagerSkipsZoneEntitiesWhenNotExposed(t *testing.T) {
 	}
 }
 
+func TestManagerMirrorsExternalProtectArm(t *testing.T) {
+	mk := &mock{armProfilesGlobal: true, nvrArm: "disabled"}
+	c := newMock(t, mk)
+	pub := newFakePub()
+	eng := runEngine(t, alarm.Config{ArmModes: []string{"away"}, ExitDelay: 0})
+	m := NewManager(c, eng, pub, Config{PreferMode: "auto", PollInterval: time.Hour, ArmModes: []string{"away"}}, nil)
+	m.detect(t.Context()) // global mode → read-sync active
+
+	// First observation establishes the baseline and must not act.
+	m.syncArmState(t.Context())
+	if got := eng.Current().State; got != alarm.StateDisarmed {
+		t.Fatalf("baseline sync should not change state, got %s", got)
+	}
+
+	// Armed from the UniFi Protect app → AegisHA mirrors to armed_away.
+	mk.nvrArm = "armed"
+	m.syncArmState(t.Context())
+	if got := eng.Current().State; got != alarm.StateArmedAway {
+		t.Fatalf("external Protect arm should mirror to armed_away, got %s", got)
+	}
+	if cb := eng.Current().ChangedBy; cb != mirrorActor {
+		t.Fatalf("mirror arm changed_by = %q, want %q", cb, mirrorActor)
+	}
+
+	// Disarmed from the app → AegisHA mirrors back to disarmed.
+	mk.nvrArm = "disabled"
+	m.syncArmState(t.Context())
+	if got := eng.Current().State; got != alarm.StateDisarmed {
+		t.Fatalf("external Protect disarm should mirror to disarmed, got %s", got)
+	}
+}
+
+// TestManagerAppManagedSkipsArmSync confirms app-managed mode opts out of
+// mirroring Protect's arm state (AegisHA is the sole source of truth).
+func TestManagerAppManagedSkipsArmSync(t *testing.T) {
+	mk := &mock{nvrArm: "armed"}
+	c := newMock(t, mk)
+	eng := runEngine(t, alarm.Config{ArmModes: []string{"away"}, ExitDelay: 0})
+	m := NewManager(c, eng, newFakePub(), Config{PreferMode: "app-managed", PollInterval: time.Hour, ArmModes: []string{"away"}}, nil)
+
+	m.syncArmState(t.Context())
+	m.syncArmState(t.Context())
+	if got := eng.Current().State; got != alarm.StateDisarmed {
+		t.Fatalf("app-managed mode should ignore Protect arm state, got %s", got)
+	}
+}
+
 func TestManagerBreachTriggersWhenArmed(t *testing.T) {
 	c := newMock(t, &mock{armProfilesOK: true})
 	pub := newFakePub()
