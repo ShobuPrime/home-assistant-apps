@@ -4,15 +4,23 @@ FROM $BUILD_FROM
 # Build arguments for version
 ARG ARCANE_VERSION=2.0.2
 
-# Install requirements
-# Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
+# Install requirements.
+# The base image pins libcrypto3/libssl3 in apk "world" at an exact older
+# revision (e.g. =3.5.6-r0). When the Alpine repo moves ahead — openssl 3.5.7-r0
+# requires libcrypto3/libssl3=3.5.7-r0 — a plain `apk add openssl` can't resolve
+# against the held libs. `apk add --upgrade libcrypto3 libssl3 openssl` rewrites
+# those world entries and upgrades the whole TLS stack to the repo version in one
+# transaction (no version pinning). Listing the libs explicitly is required:
+# under apk-tools 3, `apk upgrade [--available]` does not override an exact pin.
 RUN \
     apk upgrade --no-cache \
-    && apk add --no-cache \
+    && apk add --no-cache --upgrade \
         ca-certificates \
         curl \
         jq \
-        openssl
+        openssl \
+        libcrypto3 \
+        libssl3
 
 # Download and install Arcane
 # Release assets are raw binaries named: arcane_linux_amd64, arcane_linux_arm64
