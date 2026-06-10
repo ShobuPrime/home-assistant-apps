@@ -453,28 +453,32 @@ case "${SLUG}" in
         ;;
 
     hay_cm5_fan)
-        # Hardware-specific app — no /dev/gpiochip0 on CI runners.
-        # Verify the image built successfully and the init script runs
-        # (it will fail at GPIO check, which is expected).
-        sleep 5
-        LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
-        if echo "${LOGS}" | grep -q "Initializing HAY CM5 Fan Controller"; then
-            pass "Init script executed"
-        else
-            fail "Init script did not run"
-        fi
-        if echo "${LOGS}" | grep -q "libgpiod tools found"; then
+        # Hardware-specific app (aarch64-only) — on CI it runs emulated under
+        # qemu (slow) and has no /dev/gpiochip0 or hwmon. The init warns (not
+        # fails) on missing hardware and the daemon stays up, so we POLL for its
+        # log lines with a generous timeout (a fixed short sleep is too short
+        # under emulation) and confirm the container stays running.
+        wait_for_log "Initializing HAY CM5 Fan Controller" "Init script executed" 90
+        if docker logs "${CONTAINER_NAME}" 2>&1 | grep -q "libgpiod tools found"; then
             pass "libgpiod installed"
         else
             fail "libgpiod not found in image"
         fi
-        if echo "${LOGS}" | grep -q "GPIO chip device.*not found"; then
+        if docker logs "${CONTAINER_NAME}" 2>&1 | grep -q "GPIO chip device.*not found"; then
             info "GPIO device not available (expected on CI)"
         fi
+        # The daemon must reach its run loop and stay up despite missing hardware.
+        wait_for_log "Starting HAY CM5 Fan Controller daemon" "Fan daemon started" 60
         if docker exec "${CONTAINER_NAME}" vcgencmd --version > /dev/null 2>&1; then
             pass "vcgencmd installed"
         else
             info "vcgencmd not testable without /dev/vcio"
+        fi
+        if docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
+            pass "Container running (daemon stable without hardware)"
+        else
+            docker logs "${CONTAINER_NAME}" 2>&1 | tail -20
+            fail "Container exited"
         fi
         ;;
 
