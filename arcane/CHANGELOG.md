@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.0.2
+
+_2026-06-10_
+
+
+### Bug fixes
+
+* update dockerfiles to use correct linker path for version details([725c003](https://github.com/getarcaneapp/arcane/commit/725c0034680aa366dbc8a5e02e827d1057f34ffb) by `kmendell`)
+* newly synced git content does not show without a refresh ([#2870](https://github.com/getarcaneapp/arcane/pull/2870) by `kmendell`)
+* incorrect height on dashboard cards on smaller screens ([#2878](https://github.com/getarcaneapp/arcane/pull/2878) by `kmendell`)
+* add missing swarm-identity endpoint in edge tunnel ([#2886](https://github.com/getarcaneapp/arcane/pull/2886) by `kmendell`)
+* activities stream using main context causing app to hang at certain places ([#2887](https://github.com/getarcaneapp/arcane/pull/2887) by `kmendell`)
+* x-arcane.icon-light/icon-dark overwriting service-level icons ([#2888](https://github.com/getarcaneapp/arcane/pull/2888) by `kmendell`)
+* bind mounts fail to update after git syncs ([#2891](https://github.com/getarcaneapp/arcane/pull/2891) by `kmendell`)
+* normalize
+
+---
+
+
 ## 2.0.1
 
 _2026-06-08_
