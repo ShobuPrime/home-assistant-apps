@@ -118,9 +118,27 @@ class Handler(BaseHTTPRequestHandler):
             "/addons/self/options/config": OPTIONS_CONFIG,
             "/addons/self/options": {"result": "ok", "data": {"options": options}},
             "/supervisor/info": SUPERVISOR_INFO,
+            "/supervisor/ping": {"result": "ok", "data": {}},
             "/os/info": OS_INFO,
             "/core/info": CORE_INFO,
             "/info": SUPERVISOR_INFO,
+            # hassio-addons base >= 20.2.0 queries the store during startup
+            # (banner version check / bashio init); a 404 here is now fatal to
+            # cont-init, so serve a valid (empty) store + this addon's entry.
+            "/store": {"result": "ok", "data": {"addons": [], "repositories": []}},
+            "/store/addons": {
+                "result": "ok",
+                "data": [
+                    {
+                        "slug": addon_slug,
+                        "name": addon_name,
+                        "version": addon_version,
+                        "version_latest": addon_version,
+                        "installed": addon_version,
+                        "update_available": False,
+                    }
+                ],
+            },
         }
 
         if path in routes:
