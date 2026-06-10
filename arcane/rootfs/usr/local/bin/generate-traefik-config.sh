@@ -12,7 +12,7 @@
 # ==============================================================================
 
 # Addon slug (from config.yaml)
-ADDON_SLUG=$(bashio::addon.slug)
+ADDON_SLUG=$(bashio::app.slug)
 TRAEFIK_DIR="/share/traefik/dynamic"
 CONFIG_FILE="${TRAEFIK_DIR}/${ADDON_SLUG}.yml"
 
@@ -74,7 +74,7 @@ ROUTER_NAME=$(echo "${ADDON_SLUG}" | tr '_' '-')
 # Addons can set these via environment before calling this script:
 #   TRAEFIK_PORT=9443 TRAEFIK_SCHEME=https generate-traefik-config.sh
 # Defaults: read from config.yaml ingress_port, scheme=http
-SERVICE_PORT="${TRAEFIK_PORT:-$(bashio::addon.ingress_port 2>/dev/null || echo "")}"
+SERVICE_PORT="${TRAEFIK_PORT:-$(bashio::app.ingress_port 2>/dev/null || echo "")}"
 SERVICE_SCHEME="${TRAEFIK_SCHEME:-http}"
 
 if [ -z "${SERVICE_PORT}" ]; then

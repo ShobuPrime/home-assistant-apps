@@ -1,5 +1,7 @@
 # Changelog
 
+> _Maintenance (2026-06-10):_ added hassio_role: manager so bashio can read the app config + Supervisor API on base 20.2.0 (fixes "Unable to access the API, forbidden"); migrated bashio::addon.* to bashio::app.*. Rebuild the app to apply the new role.
+
 ## 0.6.1
 
 _2026-05-27_

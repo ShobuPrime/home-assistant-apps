@@ -18,7 +18,7 @@ TEMP_OFF=$(bashio::config 'temp_off')
 FAN_MODE=$(bashio::config 'fan_mode')
 TEMP_SENSOR=$(bashio::config 'temp_sensor_path')
 ADDON_HOSTNAME=$(hostname)
-ADDON_VERSION=$(bashio::addon.version)
+ADDON_VERSION=$(bashio::app.version)
 
 # State tracking
 FAN_STATE=""
