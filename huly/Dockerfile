@@ -13,17 +13,25 @@ ENV HULY_VERSION=v${HULY_VERSION}
 ENV S6_SERVICES_GRACETIME=90000 \
     S6_KILL_FINISH_MAXTIME=90000
 
-# Install requirements
-# Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
+# Install requirements.
+# The base image pins libcrypto3/libssl3 in apk "world" at an exact older
+# revision (e.g. =3.5.6-r0). When the Alpine repo moves ahead — openssl 3.5.7-r0
+# requires libcrypto3/libssl3=3.5.7-r0 — a plain `apk add openssl` can't resolve
+# against the held libs. `apk add --upgrade libcrypto3 libssl3 openssl` rewrites
+# those world entries and upgrades the whole TLS stack to the repo version in one
+# transaction (no version pinning). Listing the libs explicitly is required:
+# under apk-tools 3, `apk upgrade [--available]` does not override an exact pin.
 RUN \
     apk upgrade --no-cache \
-    && apk add --no-cache \
+    && apk add --no-cache --upgrade \
         bash \
         ca-certificates \
         curl \
         docker-cli \
         jq \
         openssl \
+        libcrypto3 \
+        libssl3 \
         socat
 
 # Install Docker Compose as a standalone binary (NOT as a CLI plugin)

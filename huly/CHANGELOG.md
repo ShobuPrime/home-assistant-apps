@@ -3,6 +3,11 @@
 ## 0.7.423
 
 _2026-05-10_
+
+### App build fix (2026-06-10)
+
+* Fix the image build failing at the Alpine package step on base `20.2.0`. The base pins `libcrypto3`/`libssl3` in apk `world` at an exact older revision; once the repo moved to `openssl 3.5.7-r0` (which requires `libcrypto3`/`libssl3=3.5.7-r0`), `apk add openssl` could not resolve against the held libs. Now `apk add --no-cache --upgrade openssl libcrypto3 libssl3 ...` rewrites those world entries and upgrades the whole TLS stack in one transaction — no version pinning.
+
 Update to v0.7.423 (#299)
 
 Signed-off-by: Artem Savchenko <armisav@gmail.com>
