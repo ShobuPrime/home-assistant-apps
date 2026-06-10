@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.2.4
+
+_2026-06-10_
+
+### Companion card lifecycle
+
+- **Reconcile the card on every start.** AegisHA now treats the card
+  declaratively: when `enable_companion_card` is on it deploys + registers (and
+  updates the resource URL if the version changed); when it's off it **removes**
+  the deployed `aegis_ha-card.js` and **unregisters** the Lovelace resource. So
+  disabling the option no longer leaves a stale file and a dangling resource
+  pointing at it.
+- This runs on install and every boot. Changing the option restarts the add-on,
+  so the card is cleaned up (or re-deployed) on that restart automatically. Both
+  the file removal and the resource unregister are idempotent — safe no-ops when
+  there's nothing to clean.
+
+## 0.2.3
+
+_2026-06-10_
+
+### Fix: companion card 404
+
+- **The Lovelace card now actually loads.** It was written to `/config/www`
+  inside the add-on's own container, but the `homeassistant_config:rw` map mounts
+  Home Assistant's config at **`/homeassistant`** — so `/local/aegis_ha/aegis_ha-card.js`
+  (which serves HA's `/config/www`) had no file and 404'd. The card is now written
+  to `/homeassistant/www/aegis_ha/`, the correct location for the `/local/` URL.
+- Deploy now verifies the file exists at the HA www path before logging "deployed"
+  and registering the resource, so a bad mapping can't silently advertise a 404
+  URL. (Combined with the 0.2.2 cache-buster fix, an upgrade now both writes the
+  card to the right place and re-points the resource so the browser re-fetches it.)
+- Recorded the UniFi Global-mode arm-state limitation (the full evidence + the
+  decision to keep AegisHA as the source of truth) in DOCS so it isn't
+  re-investigated.
+
+## 0.2.2
+
+_2026-06-09_
+
+### UniFi arm-sync reality, card naming, and the card cache-buster
+
+- **Global-mode arm read-sync honestly scoped.** Verified live against UCG Fiber
+  firmware 7.1.77 that the UniFi Integration API does not expose the global arm
+  state — `GET /v1/nvrs` returns `armMode.status: "disabled"` even while armed in
+  the Protect app, and there is no alarm-manager status endpoint. AegisHA now
+  only polls the arm state in **Local** mode (where it is meaningful), logs the
+  limitation once in Global mode, and stops wasting API calls polling it in
+  Global (also easing the rate limit). In Global mode AegisHA is the source of
+  truth and drives Protect via webhooks; arm from AegisHA, not the Protect app.
+- **Fix: companion card / entity showed "AegisHA AegisHA".** Entity names are now
+  the role only ("Alarm Manager", "Last Changed By", "Panic", …) so Home
+  Assistant composes them with the device name as "AegisHA Alarm Manager", etc.
+- **Fix: card showed all arm modes (Arm Home/Away/…).** HA's MQTT alarm panel
+  always reports every arm mode in `supported_features`; the card now renders the
+  configured modes from a new `arm_modes` panel attribute instead, and labels a
+  single mode simply "Arm". The card also shows a title and the trigger cause.
+- **Fix: card updates didn't reach the browser.** The Lovelace resource
+  registration kept the original `?v=` cache-buster forever; it now updates the
+  resource URL on a version change so browsers re-fetch the new card.
+
 ## 0.2.1
 
 _2026-06-09_

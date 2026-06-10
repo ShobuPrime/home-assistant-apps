@@ -20,6 +20,18 @@ const FEATURES = {
   ARM_VACATION: 32,
 };
 
+const STATE_LABELS = {
+  disarmed: "Disarmed",
+  arming: "Arming",
+  pending: "Entry Delay",
+  triggered: "Triggered",
+  armed_away: "Armed Away",
+  armed_home: "Armed Home",
+  armed_night: "Armed Night",
+  armed_vacation: "Armed Vacation",
+  armed_custom_bypass: "Armed Custom",
+};
+
 class AegisHACard extends HTMLElement {
   setConfig(config) {
     this._entity = (config && config.entity) || "alarm_control_panel.aegis_ha";
@@ -65,14 +77,34 @@ class AegisHACard extends HTMLElement {
       return;
     }
     const state = st.state;
-    const feat = st.attributes.supported_features || 0;
     const codeFormat = st.attributes.code_format; // "number" | "text" | null
-    const armBtns = [];
-    if (feat & FEATURES.ARM_AWAY) armBtns.push(["away", "alarm_arm_away", "Away"]);
-    if (feat & FEATURES.ARM_HOME) armBtns.push(["home", "alarm_arm_home", "Home"]);
-    if (feat & FEATURES.ARM_NIGHT) armBtns.push(["night", "alarm_arm_night", "Night"]);
-    if (feat & FEATURES.ARM_VACATION) armBtns.push(["vacation", "alarm_arm_vacation", "Vacation"]);
-    if (feat & FEATURES.ARM_CUSTOM_BYPASS) armBtns.push(["custom", "alarm_arm_custom_bypass", "Custom"]);
+    const title = st.attributes.friendly_name || this._title;
+
+    // Prefer the panel's configured arm_modes attribute (AegisHA publishes
+    // exactly the modes it offers) over supported_features — HA's MQTT alarm
+    // panel always reports ALL arm modes there, which would show buttons the
+    // app doesn't use. Fall back to supported_features for a stock entity.
+    const SVC = {
+      away: ["alarm_arm_away", "Away"],
+      home: ["alarm_arm_home", "Home"],
+      night: ["alarm_arm_night", "Night"],
+      vacation: ["alarm_arm_vacation", "Vacation"],
+      custom: ["alarm_arm_custom_bypass", "Custom"],
+    };
+    let armBtns = [];
+    const modes = st.attributes.arm_modes;
+    if (Array.isArray(modes) && modes.length) {
+      armBtns = modes.filter((m) => SVC[m]).map((m) => [m, SVC[m][0], SVC[m][1]]);
+    } else {
+      const feat = st.attributes.supported_features || 0;
+      if (feat & FEATURES.ARM_AWAY) armBtns.push(["away", "alarm_arm_away", "Away"]);
+      if (feat & FEATURES.ARM_HOME) armBtns.push(["home", "alarm_arm_home", "Home"]);
+      if (feat & FEATURES.ARM_NIGHT) armBtns.push(["night", "alarm_arm_night", "Night"]);
+      if (feat & FEATURES.ARM_VACATION) armBtns.push(["vacation", "alarm_arm_vacation", "Vacation"]);
+      if (feat & FEATURES.ARM_CUSTOM_BYPASS) armBtns.push(["custom", "alarm_arm_custom_bypass", "Custom"]);
+    }
+    // A single mode reads as just "Arm" rather than "Arm Away".
+    const armLabel = (label) => (armBtns.length === 1 ? "Arm" : "Arm " + label);
 
     const colors = {
       disarmed: "#16a34a",
@@ -95,8 +127,10 @@ class AegisHACard extends HTMLElement {
       <ha-card>
         <style>
           .hdr { background:${bg}; color:#fff; padding:18px; text-align:center; border-radius:12px 12px 0 0; }
+          .hdr .t { font-size:.8rem; font-weight:600; opacity:.85; letter-spacing:.04em; margin-bottom:4px; }
           .hdr .s { font-size:1.5rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
-          .hdr .m { opacity:.85; font-size:.85rem; }
+          .hdr .m { opacity:.85; font-size:.85rem; margin-top:2px; }
+          .modes.single button { grid-column:1 / -1; }
           .body { padding:14px; }
           .code { text-align:center; letter-spacing:.4em; min-height:1.2rem; margin:6px 0; }
           .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
@@ -106,16 +140,18 @@ class AegisHACard extends HTMLElement {
           .modes button.disarm { grid-column:1 / -1; background:#455a64; }
         </style>
         <div class="hdr">
-          <div class="s">${state.replace("armed_", "")}</div>
+          <div class="t">${title}</div>
+          <div class="s">${(STATE_LABELS[state] || state).toString()}</div>
           ${st.attributes.armed_by ? `<div class="m">by ${st.attributes.armed_by}</div>` : ""}
           ${state === "arming" || state === "pending" ? `<div class="m cd" id="cd"></div>` : ""}
+          ${state === "triggered" && st.attributes.armed_by ? `<div class="m">⚠ triggered by ${st.attributes.armed_by}</div>` : ""}
           ${st.attributes.open_sensor_count ? `<div class="m">${st.attributes.open_sensor_count} open sensor(s)</div>` : ""}
         </div>
         <div class="body">
           ${pad}
-          <div class="modes">
+          <div class="modes${armBtns.length === 1 ? " single" : ""}">
             ${armBtns
-              .map(([m, svc, label]) => `<button data-svc="${svc}">Arm ${label}</button>`)
+              .map(([m, svc, label]) => `<button data-svc="${svc}">${armLabel(label)}</button>`)
               .join("")}
             <button class="disarm" data-svc="alarm_disarm">Disarm</button>
           </div>

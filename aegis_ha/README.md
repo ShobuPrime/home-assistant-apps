@@ -18,10 +18,14 @@ both problems:
 
 - **AegisHA owns the alarm.** It runs its own Alarmo-faithful state machine, so
   arming/disarming works regardless of Protect's mode.
-- **It still reflects Protect.** Even in Global mode AegisHA reads Protect's arm
-  state and mirrors it, so arming from the UniFi Protect app shows up on the
-  AegisHA panel — and AegisHA can drive Protect's siren/lights on a breach via
-  Alarm Manager webhooks.
+- **AegisHA is the source of truth, and drives Protect.** Arm/disarm in AegisHA
+  and it drives the Protect alarm via Alarm Manager webhooks (which work even in
+  Global mode), including sounding the siren/lights on a breach. **Heads-up:** in
+  Protect **Global** mode the UniFi API does not expose the arm state for
+  reading, so an arm done *in the UniFi Protect app* cannot be reflected back
+  into AegisHA — arm from AegisHA instead. Switch the Protect Alarm Manager to
+  **Local** mode if you want full two-way sync (then AegisHA also mirrors arming
+  done in Protect).
 - **Protect is used for what it is good at** — door/motion/leak sensors, sirens,
   alarm-hub outputs, and cameras.
 
@@ -41,8 +45,8 @@ Identity is simply your logged-in Home Assistant user. A single optional `code`
   (`number`), fire panic / skip-delay / clear-lockout (`button`), read
   `changed_by` / open-sensor count / lockout (`sensor`/`binary_sensor`) — all
   readable *and* settable from automations, dashboards, and voice
-- **Two-way arm sync with UniFi Protect** — arm from the Protect app and the
-  AegisHA panel follows, and vice-versa
+- **Drives UniFi Protect** via Alarm Manager webhooks (arm/disarm/breach), with
+  full two-way arm mirroring when Protect is in Local mode
 - **Honest UniFi Protect handling** with non-destructive capability detection and
   a `sensor.aegis_ha_protect_link_mode` that tells you exactly what mode you are in
 - **Optional ingress keypad UI** and an **optional companion Lovelace card**
@@ -140,4 +144,4 @@ Questions or bugs? Open an issue on the GitHub repository.
 
 ## Version
 
-Currently running AegisHA 0.2.1
+Currently running AegisHA 0.2.4

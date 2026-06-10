@@ -228,6 +228,9 @@ func (m *Manager) detect(ctx context.Context) {
 	}
 	if mode != m.mode {
 		m.log.Info("unifi: alarm manager mode", "mode", mode)
+		if mode == ModeGlobal {
+			m.log.Info("unifi: Global mode — Protect's arm state is NOT readable via the API, so AegisHA cannot mirror an arm done in the UniFi Protect app. AegisHA is the source of truth: arm/disarm from AegisHA (it drives Protect via the configured webhooks). Switch the Protect Alarm Manager to Local mode for true two-way sync.")
+		}
 	}
 	m.mode, m.connected = mode, true
 	m.pub.PublishProtectStatus(string(m.effectiveMode()), true)
@@ -372,7 +375,13 @@ func armWebhookFires(prev, cur alarm.State, atStart bool) bool {
 // (AegisHA is the sole source of truth there). Mirror commands are tagged
 // with mirrorActor so onSnapshot won't echo a webhook back to Protect.
 func (m *Manager) syncArmState(ctx context.Context) {
-	if m.effectiveMode() == ModeAppManaged {
+	// armMode.status only reflects the arm state in LOCAL mode. In GLOBAL mode
+	// the UniFi Integration API does not expose the global arm state at all —
+	// /v1/nvrs reports status:"disabled" even while armed, and there is no
+	// alarm-manager GET endpoint — so polling it is futile and just spends the
+	// API rate-limit budget. In app-managed mode AegisHA is the sole source of
+	// truth. Only Local mode has a readable, mirror-able arm state.
+	if m.effectiveMode() != ModeLocal {
 		return
 	}
 	nvrs, err := m.client.GetNVRs(ctx)

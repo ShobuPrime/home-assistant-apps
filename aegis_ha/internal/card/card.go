@@ -17,7 +17,11 @@ import (
 //go:embed aegis_ha-card.js
 var cardJS []byte
 
-const wwwDir = "/config/www/aegis_ha"
+// wwwDir is Home Assistant's config www directory as seen from inside the
+// add-on. The homeassistant_config:rw map mounts HA's config dir at
+// /homeassistant (NOT /config — that's the add-on's own throwaway space), so
+// HA's /config/www — what the /local/ URL serves — is /homeassistant/www here.
+const wwwDir = "/homeassistant/www/aegis_ha"
 
 // ResourceURL is the stable /local URL the card is served at (with a
 // version cache-buster).
@@ -25,8 +29,8 @@ func ResourceURL(version string) string {
 	return "/local/aegis_ha/aegis_ha-card.js?v=" + version
 }
 
-// Deploy writes the card to /config/www/aegis_ha and returns the Lovelace
-// resource URL to register (empty string if the write failed).
+// Deploy writes the card to HA's www dir (wwwDir) and returns the Lovelace
+// resource URL to register (empty string if the write/verify failed).
 func Deploy(version string, log *slog.Logger) string {
 	if err := os.MkdirAll(wwwDir, 0o755); err != nil {
 		log.Warn("card: cannot create www directory (is homeassistant_config:rw mapped?)", "err", err)
@@ -34,10 +38,33 @@ func Deploy(version string, log *slog.Logger) string {
 	}
 	path := filepath.Join(wwwDir, "aegis_ha-card.js")
 	if err := os.WriteFile(path, cardJS, 0o644); err != nil {
-		log.Warn("card: failed to write card file", "err", err)
+		log.Warn("card: failed to write card file", "path", path, "err", err)
+		return ""
+	}
+	// Confirm the file is actually present at the HA www path before claiming
+	// success — a wrong/absent mapping would otherwise log "deployed" for a URL
+	// that 404s. Only a verified file gets its resource registered.
+	if _, err := os.Stat(path); err != nil {
+		log.Warn("card: card file not found after write — skipping registration", "path", path, "err", err)
 		return ""
 	}
 	url := ResourceURL(version)
-	log.Info("card: companion Lovelace card deployed", "served_at", url)
+	log.Info("card: companion Lovelace card deployed", "path", path, "served_at", url)
 	return url
+}
+
+// Remove deletes the deployed card file (and its directory if now empty). It is
+// idempotent — a missing file is not an error — and is called when the
+// companion card is disabled so a stale card.js does not linger in HA's www.
+func Remove(log *slog.Logger) {
+	path := filepath.Join(wwwDir, "aegis_ha-card.js")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return // nothing deployed
+	}
+	if err := os.Remove(path); err != nil {
+		log.Warn("card: failed to remove card file", "path", path, "err", err)
+		return
+	}
+	_ = os.Remove(wwwDir) // best-effort: drop the dir if now empty
+	log.Info("card: companion card file removed (card disabled)", "path", path)
 }

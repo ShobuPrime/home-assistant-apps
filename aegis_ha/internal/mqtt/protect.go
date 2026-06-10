@@ -70,8 +70,8 @@ func (b *Bridge) protectDiscovery() []discoveryMsg {
 		return nil
 	}
 	msgs := []discoveryMsg{
-		b.sensorDiscovery("protect_link_mode", "AegisHA Protect Link Mode", "mdi:shield-link-variant", "", ""),
-		b.binarySensorDiscovery("protect_connected", "AegisHA Protect Connected", "mdi:lan-connect", "connectivity"),
+		b.sensorDiscovery("protect_link_mode", "Protect Link Mode", "mdi:shield-link-variant", "", ""),
+		b.binarySensorDiscovery("protect_connected", "Protect Connected", "mdi:lan-connect", "connectivity"),
 	}
 	for _, z := range zones {
 		msgs = append(msgs, b.zoneDiscovery(z.id, z.name), b.bypassDiscovery(z.id, z.name))

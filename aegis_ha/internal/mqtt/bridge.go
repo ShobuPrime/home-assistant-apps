@@ -142,6 +142,9 @@ func (b *Bridge) publishState(snap alarm.Snapshot) {
 		"ready_to_arm":      snap.ReadyToArm,
 		"delay_total":       snap.DelayTotal,
 		"armed_by":          snap.ChangedBy,
+		// The configured arm modes, so the companion card shows exactly these
+		// (HA's MQTT alarm panel always reports all modes in supported_features).
+		"arm_modes": b.cfg.ArmModes,
 	}
 	if snap.DelayEndsUnix > 0 {
 		attrs["delay_ends"] = snap.DelayEndsUnix

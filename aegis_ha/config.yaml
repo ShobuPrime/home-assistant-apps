@@ -1,6 +1,6 @@
 name: "AegisHA"
 description: "Home alarm panel for Home Assistant, backed by UniFi Protect, with a native MQTT alarm_control_panel entity and companion Lovelace card"
-version: "0.2.1"
+version: "0.2.4"
 slug: "aegis_ha"
 url: "https://github.com/ShobuPrime/home-assistant-apps/tree/master/aegis_ha"
 init: false
