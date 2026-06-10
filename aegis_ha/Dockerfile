@@ -12,7 +12,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-ARG BUILD_VERSION=0.2.3
+ARG BUILD_VERSION=0.2.4
 RUN go build -ldflags="-s -w -X main.version=${BUILD_VERSION}" -o /out/aegis_ha ./cmd/aegis_ha
 
 # ---------------------------------------------------------------------------

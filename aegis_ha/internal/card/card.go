@@ -29,8 +29,8 @@ func ResourceURL(version string) string {
 	return "/local/aegis_ha/aegis_ha-card.js?v=" + version
 }
 
-// Deploy writes the card to /config/www/aegis_ha and returns the Lovelace
-// resource URL to register (empty string if the write failed).
+// Deploy writes the card to HA's www dir (wwwDir) and returns the Lovelace
+// resource URL to register (empty string if the write/verify failed).
 func Deploy(version string, log *slog.Logger) string {
 	if err := os.MkdirAll(wwwDir, 0o755); err != nil {
 		log.Warn("card: cannot create www directory (is homeassistant_config:rw mapped?)", "err", err)
@@ -51,4 +51,20 @@ func Deploy(version string, log *slog.Logger) string {
 	url := ResourceURL(version)
 	log.Info("card: companion Lovelace card deployed", "path", path, "served_at", url)
 	return url
+}
+
+// Remove deletes the deployed card file (and its directory if now empty). It is
+// idempotent — a missing file is not an error — and is called when the
+// companion card is disabled so a stale card.js does not linger in HA's www.
+func Remove(log *slog.Logger) {
+	path := filepath.Join(wwwDir, "aegis_ha-card.js")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return // nothing deployed
+	}
+	if err := os.Remove(path); err != nil {
+		log.Warn("card: failed to remove card file", "path", path, "err", err)
+		return
+	}
+	_ = os.Remove(wwwDir) // best-effort: drop the dir if now empty
+	log.Info("card: companion card file removed (card disabled)", "path", path)
 }

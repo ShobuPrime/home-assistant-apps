@@ -83,14 +83,23 @@ func main() {
 		_ = st.SetCode("")
 	}
 
-	// Optional companion Lovelace card: write it to /config/www and
+	// Companion Lovelace card. When enabled, write it to HA's www dir and
 	// auto-register it as a Lovelace resource over the Supervisor Core-WS
-	// (storage mode); on YAML-mode dashboards, log the manual snippet.
+	// (storage mode; on YAML-mode dashboards, log the manual snippet). When
+	// disabled, tear it down — remove the deployed file and unregister the
+	// resource — so a stale card.js + dangling resource don't linger.
 	if opts.EnableCompanionCard {
 		if url := card.Deploy(version, logger); url != "" && token != "" {
 			if err := ha.RegisterLovelaceResource(token, url, logger); err != nil {
 				logger.Warn("card: auto-registration failed — add it manually as a JavaScript Module resource (storage-mode Lovelace auto-registers)",
 					"url", url, "err", err)
+			}
+		}
+	} else {
+		card.Remove(logger)
+		if token != "" {
+			if err := ha.UnregisterLovelaceResource(token, card.ResourceURL(version), logger); err != nil {
+				logger.Debug("card: resource unregister failed (it may not have been registered)", "err", err)
 			}
 		}
 	}

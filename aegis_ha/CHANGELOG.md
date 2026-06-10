@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.4
+
+_2026-06-10_
+
+### Companion card lifecycle
+
+- **Reconcile the card on every start.** AegisHA now treats the card
+  declaratively: when `enable_companion_card` is on it deploys + registers (and
+  updates the resource URL if the version changed); when it's off it **removes**
+  the deployed `aegis_ha-card.js` and **unregisters** the Lovelace resource. So
+  disabling the option no longer leaves a stale file and a dangling resource
+  pointing at it.
+- This runs on install and every boot. Changing the option restarts the add-on,
+  so the card is cleaned up (or re-deployed) on that restart automatically. Both
+  the file removal and the resource unregister are idempotent — safe no-ops when
+  there's nothing to clean.
+
 ## 0.2.3
 
 _2026-06-10_

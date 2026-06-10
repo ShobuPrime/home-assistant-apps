@@ -100,6 +100,67 @@ func RegisterLovelaceResource(token, resourceURL string, log *slog.Logger) error
 	return nil
 }
 
+// UnregisterLovelaceResource removes the AegisHA Lovelace resource (matched by
+// base path, ignoring the ?v= cache-buster) over the Core-WebSocket. It is
+// idempotent — a no-op when no matching resource exists — and is used when the
+// companion card is disabled so a dangling resource pointing at a removed file
+// doesn't remain. Best-effort: only works in storage-mode Lovelace.
+func UnregisterLovelaceResource(token, resourceURL string, log *slog.Logger) error {
+	conn, err := websocket.Dial("ws://supervisor/core/websocket", "", "http://supervisor")
+	if err != nil {
+		return fmt.Errorf("ha: dial core ws: %w", err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(20 * time.Second))
+
+	// Auth handshake: auth_required -> auth -> auth_ok.
+	if _, err := readFrame(conn); err != nil {
+		return err
+	}
+	if err := websocket.JSON.Send(conn, map[string]any{"type": "auth", "access_token": token}); err != nil {
+		return err
+	}
+	auth, err := readFrame(conn)
+	if err != nil {
+		return err
+	}
+	if auth.Type != "auth_ok" {
+		return fmt.Errorf("ha: core ws auth failed: %s %s", auth.Type, auth.Message)
+	}
+
+	if err := websocket.JSON.Send(conn, map[string]any{"id": 1, "type": "lovelace/resources"}); err != nil {
+		return err
+	}
+	list, err := readResult(conn, 1)
+	if err != nil {
+		return err
+	}
+	if !list.Success {
+		return fmt.Errorf("ha: list resources: %s", list.Error.Message)
+	}
+	want := stripVersion(resourceURL)
+	for _, r := range list.Result {
+		if stripVersion(r.URL) != want {
+			continue
+		}
+		if err := websocket.JSON.Send(conn, map[string]any{
+			"id": 2, "type": "lovelace/resources/delete", "resource_id": r.ID,
+		}); err != nil {
+			return err
+		}
+		del, err := readResult(conn, 2)
+		if err != nil {
+			return err
+		}
+		if !del.Success {
+			return fmt.Errorf("ha: delete resource: %s (%s)", del.Error.Message, del.Error.Code)
+		}
+		log.Info("card: Lovelace resource unregistered (card disabled)", "url", r.URL)
+		return nil
+	}
+	return nil // nothing registered — no-op
+}
+
 type wsFrame struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
