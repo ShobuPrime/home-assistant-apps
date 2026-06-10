@@ -29,6 +29,7 @@ ports_description:
 host_network: false
 apparmor: true
 hassio_api: true
+hassio_role: manager
 map:
   - ssl:ro
   - data:rw

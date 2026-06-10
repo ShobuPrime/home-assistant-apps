@@ -1,5 +1,7 @@
 # Changelog
 
+> _Maintenance (2026-06-10):_ hassio-addons base 20.2.0 compatibility — migrated the Traefik helper scripts from the deprecated bashio::addon.* functions to bashio::app.*.
+
 ## 0.7.423
 
 _2026-05-10_

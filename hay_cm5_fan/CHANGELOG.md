@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1
+
+_2026-06-10_
+
+### Fixes (hassio-addons base 20.2.0)
+
+- **Add `hassio_role: manager`.** With only `hassio_api: true` and no role, base 20.2.0's stricter Supervisor returns `Unable to access the API, forbidden` — so `bashio::config` couldn't read the fan options and the banner showed no name/version. A role restores Supervisor API access (config + entity publishing).
+- **Migrate `bashio::addon.version` → `bashio::app.version`** in the service runner (base 20.2.0 deprecated the `bashio::addon.*` functions).
+
 ## 1.0.0
 
 _2026-03-21_

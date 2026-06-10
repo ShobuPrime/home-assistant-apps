@@ -88,4 +88,4 @@ Got questions or found a bug? Please open an issue on the [GitHub repository](ht
 
 ## Version
 
-Currently running HAY CM5 Fan Controller 1.0.0
+Currently running HAY CM5 Fan Controller 1.0.1
