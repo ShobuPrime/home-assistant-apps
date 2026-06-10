@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.3
+
+_2026-06-10_
+
+### Fix: companion card 404
+
+- **The Lovelace card now actually loads.** It was written to `/config/www`
+  inside the add-on's own container, but the `homeassistant_config:rw` map mounts
+  Home Assistant's config at **`/homeassistant`** — so `/local/aegis_ha/aegis_ha-card.js`
+  (which serves HA's `/config/www`) had no file and 404'd. The card is now written
+  to `/homeassistant/www/aegis_ha/`, the correct location for the `/local/` URL.
+- Deploy now verifies the file exists at the HA www path before logging "deployed"
+  and registering the resource, so a bad mapping can't silently advertise a 404
+  URL. (Combined with the 0.2.2 cache-buster fix, an upgrade now both writes the
+  card to the right place and re-points the resource so the browser re-fetches it.)
+- Recorded the UniFi Global-mode arm-state limitation (the full evidence + the
+  decision to keep AegisHA as the source of truth) in DOCS so it isn't
+  re-investigated.
+
 ## 0.2.2
 
 _2026-06-09_

@@ -127,14 +127,31 @@ never shared with the Supervisor, MQTT, or Home Assistant clients.
   (shown with `changed_by: UniFi Protect`). The two directions can't loop — a
   mirror never re-fires a webhook.
 
-> **Global-mode limitation (verified against UCG Fiber firmware 7.1.77):** the
-> UniFi Protect Integration API does **not** expose the global arm state for
-> reading — `GET /v1/nvrs` reports `armMode.status: "disabled"` even while the
-> system is armed in the Protect app, and there is no alarm-manager status
-> endpoint. So in Global mode AegisHA **cannot** reflect an arm done in the
-> Protect app. Arm from AegisHA (it drives Protect via the webhooks), or switch
-> the Alarm Manager to **Local** mode for true two-way sync. This is a UniFi API
-> limitation, not an AegisHA bug.
+> **Global-mode limitation (verified against UCG Fiber firmware 7.1.77).** The
+> UniFi Protect *Integration* API (the one a scoped API key can reach) does
+> **not** expose the global arm state for reading. Every avenue was checked
+> live, while the system was armed in the Protect app:
+>
+> | Source | Result while armed |
+> |---|---|
+> | `GET /integration/v1/nvrs` → `armMode.status` | `"disabled"` (does not reflect the arm) |
+> | `GET /integration/v1/alarm-manager` | `404` (no such endpoint) |
+> | `GET /integration/v1/alarm-hubs` | `[]` (no hub hardware) |
+> | `GET /integration/v1/events` | `404` |
+> | WS `/integration/v1/subscribe/devices` + `/subscribe/events` | only motion/smartDetect — nothing on arm/disarm |
+> | `GET /proxy/protect/api/{events,nvr,bootstrap}` (internal API) | `401` — rejects the API key |
+>
+> The arm state **does** exist server-side (the WebUI's activity log shows it),
+> but only Protect's **internal** API (`/proxy/protect/api/...`) carries it, and
+> that requires the WebUI's *session login* (UniFi username/password → cookie +
+> CSRF), not the scoped API key. Reading it would mean storing full account
+> credentials and depending on an undocumented API — a deliberate non-goal.
+>
+> **Decision:** in Global mode AegisHA is the **source of truth**. Arm/disarm
+> from AegisHA (it drives Protect via the webhooks); an arm done in the Protect
+> app will not reflect back. For true two-way sync, switch the Alarm Manager to
+> **Local** mode (then `armMode.status` is live). This is a UniFi limitation, not
+> an AegisHA bug — don't re-litigate it without new firmware/hardware.
 
 #### Driving the Protect alarm with webhooks (and what the "trigger" one is for)
 
