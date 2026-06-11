@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: AegisHA
+# Home Assistant App: AegisHA
 # Prepare the runtime environment: persistent data directory.
 # ==============================================================================
 

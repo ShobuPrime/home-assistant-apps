@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Sonuntius
+# Home Assistant App: Sonuntius
 # Phase 5 — iFi Tidal Connect binary fallback (opt-in).
 #
 # When tidal_fallback.enabled = true:
@@ -45,7 +45,7 @@ CERT_FILENAME="$(bashio::config 'tidal_fallback.cert_filename')"
 
 if [[ -z "${TARBALL}" || ! -f "${TARBALL}" ]]; then
     bashio::log.warning "Phase 5: iFi tarball not found at '${TARBALL}'."
-    bashio::log.warning "Phase 5: place the iFi Tidal Connect release tarball there and restart the addon."
+    bashio::log.warning "Phase 5: place the iFi Tidal Connect release tarball there and restart the app."
     bashio::log.warning "Phase 5: see DOCS.md → Tidal Connect fallback for provenance and sourcing instructions."
     exit 0
 fi

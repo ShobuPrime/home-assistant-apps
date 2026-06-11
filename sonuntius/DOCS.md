@@ -1,6 +1,6 @@
 # Sonuntius — Configuration
 
-As of v0.1.0 all six phases of the addon are functional. Five S6
+As of v0.1.0 all six phases of the app are functional. Five S6
 services are supervised — three active by default (`ma-bridge`,
 `yt-cast`, `cast-receiver`) and two opt-in (`tidal-connect`,
 `alsa-to-sendspin`).
@@ -9,7 +9,7 @@ services are supervised — three active by default (`ma-bridge`,
 
 ### `log_level`
 
-The log level for the addon's services. One of:
+The log level for the app's services. One of:
 `trace`, `debug`, `info`, `notice`, `warning`, `error`, `fatal`.
 Default: `info`.
 
@@ -50,7 +50,7 @@ Default: `8008` (the Chromecast reference DIAL port). The upstream
 `yt-cast-receiver` library defaults to 3000, but on a Home Assistant
 host that also runs **Music Assistant** (which binds 3000 for its
 frontend with `host_network: true`) that port is already taken — so
-the addon picks 8008. Change this if 8008 conflicts with anything else
+the app picks 8008. Change this if 8008 conflicts with anything else
 on your host. DIAL discovery does not require a specific port; the
 SSDP advertisement carries the actual port via the `LOCATION` header.
 
@@ -82,7 +82,7 @@ Defaults:
 ### `ha_base_url` / `ha_token` (optional)
 
 Override the Home Assistant REST endpoint and authentication identity.
-All four override fields are empty by default; the addon then uses the
+All four override fields are empty by default; the app then uses the
 Supervisor proxy at `http://supervisor/core/api` with the auto-injected
 `SUPERVISOR_TOKEN`. Set these only when you want to talk to HA as a
 named user (long-lived token) or to a different HA instance.
@@ -90,7 +90,7 @@ named user (long-lived token) or to a different HA instance.
 | Field | Default | Purpose |
 | --- | --- | --- |
 | `ha_base_url` | `""` (uses Supervisor proxy) | Full URL prefix, e.g. `http://homeassistant.local:8123` |
-| `ha_token` | `""` (uses `$SUPERVISOR_TOKEN`) | Long-lived access token. Hidden in the addon UI (`password?` schema). |
+| `ha_token` | `""` (uses `$SUPERVISOR_TOKEN`) | Long-lived access token. Hidden in the app UI (`password?` schema). |
 
 When `ha_base_url` is set, the HA core WebSocket URL is derived
 automatically (`http://...` → `ws://.../core/websocket`,
@@ -107,11 +107,11 @@ WebSocket subscription path.
 | Field | Default | Purpose |
 | --- | --- | --- |
 | `ma_ws_url` | `""` (auto-discover) | Full WebSocket URL to MA's `/ws` endpoint |
-| `ma_token` | `""` (no auth — addon-local trust) | Auth token used when MA's schema version is ≥ 28. Hidden in the addon UI. |
+| `ma_token` | `""` (no auth — app-local trust) | Auth token used when MA's schema version is ≥ 28. Hidden in the app UI. |
 | `ma_queue_id` | `""` (auto-discover via `players/all`) | MA's internal `player_id` — the value MA uses as `queue_id` for `player_queues/play_media`. Set this only when auto-discovery doesn't find your speaker. The startup log lists every visible MA player at info — copy the `player_id` of the row whose `display_name` matches your speaker. |
 
 > **`ma_token` is required for rich metadata in the MA UI.** On MA
-> schema ≥ 28 the addon must authenticate before issuing
+> schema ≥ 28 the app must authenticate before issuing
 > `player_queues/play_media` — which is the only call path that
 > carries title / artist / thumbnail through to the MA UI for URL
 > playbacks (YouTube watch URLs). Without a token the bridge still
@@ -120,7 +120,7 @@ WebSocket subscription path.
 >
 > To create one: open Music Assistant → **Settings** → **Security** →
 > **API Tokens**, mint a token, and paste it into the `ma_token`
-> field of the Sonuntius addon options. Restart the addon. Look for
+> field of the Sonuntius app options. Restart the app. Look for
 > `ma: authenticated` in the log.
 
 ### `tidal_fallback.*`
@@ -142,7 +142,7 @@ Opt-in iFi Tidal Connect binary fallback. Disabled by default. See the
 Phone (YT / YTM / Tidal)
         │  Cast / DIAL
         ▼
-Sonuntius (this addon)        ← extracts intent, never relays audio
+Sonuntius (this app)        ← extracts intent, never relays audio
         │  REST / WS
         ▼
 Music Assistant
@@ -151,11 +151,11 @@ Music Assistant
 Sendspin speaker
 ```
 
-In **proxy mode** (Phases 1–4) the addon extracts the track / video ID
+In **proxy mode** (Phases 1–4) the app extracts the track / video ID
 from the sender's protocol and asks Music Assistant to play it via its
-own YouTube Music or Tidal provider. Audio never traverses the addon.
+own YouTube Music or Tidal provider. Audio never traverses the app.
 
-In **Tidal Connect fallback** (Phase 5, opt-in) the addon runs the
+In **Tidal Connect fallback** (Phase 5, opt-in) the app runs the
 iFi `tidal_connect_application` binary, which receives actual decoded
 PCM via the kernel's ALSA loopback, and a small GStreamer pipeline
 pushes that audio onto the Sendspin server.
@@ -164,7 +164,7 @@ pushes that audio onto the Sendspin server.
 
 The CASTV2 receiver in proxy mode needs an AirReceiver certificate so
 Cast senders accept its device-auth response. We **do not** redistribute
-that cert in this repository or in the addon image.
+that cert in this repository or in the app image.
 
 To enable the Tidal proxy:
 
@@ -175,9 +175,9 @@ To enable the Tidal proxy:
 2. Place them on the HA host at:
    - `/share/sonuntius/airreceiver_cert.pem`
    - `/share/sonuntius/airreceiver_key.pem`
-3. Restart the addon.
+3. Restart the app.
 
-If the cert is missing the addon logs a warning and disables the Cast
+If the cert is missing the app logs a warning and disables the Cast
 endpoint. The YouTube path (DIAL) is unaffected.
 
 ## Tidal Connect fallback (opt-in)
@@ -217,7 +217,7 @@ echo snd-aloop > /etc/modules-load.d/snd-aloop.conf
 
 ## Health endpoint
 
-The addon exposes a loopback HTTP endpoint at `http://127.0.0.1:8099/health`
+The app exposes a loopback HTTP endpoint at `http://127.0.0.1:8099/health`
 (hosted inside the container by `ma-bridge`) that returns the
 aggregated status of every component as JSON:
 
@@ -238,17 +238,17 @@ aggregated status of every component as JSON:
 `status` flips to `degraded` when any component is unhealthy (for
 example, when `ma_player_id` is unset and the dispatcher would drop
 events). The HTTP response code stays `200` so the HA watchdog only
-restarts the addon on hard failures — the body is the source of truth
+restarts the app on hard failures — the body is the source of truth
 for finer-grained health distinctions.
 
 ## Troubleshooting
 
 - **Phone doesn't see Sonuntius.** Verify `host_network: true` (it
-  should be — that's the default). On the addon host, run
+  should be — that's the default). On the app host, run
   `avahi-browse -art` and confirm `_googlecast._tcp.local.` includes the
   Sonuntius friendly name. If not, check the host's mDNS firewall rules.
 - **Tidal proxy plays the wrong / no track.** Set `log_level: debug` and
-  capture the raw `LOAD` payload from the addon logs. Tidal's
+  capture the raw `LOAD` payload from the app logs. Tidal's
   `customData` schema is reverse-engineered and may change without
   notice; refining the parser is straightforward once a sample is in
   hand.
@@ -267,5 +267,5 @@ External references:
 - Chromium openscreen Cast spec: https://chromium.googlesource.com/openscreen/+/refs/heads/main/cast/
 - `ifi-tidal-release` (Phase 5 binary source): https://github.com/shawaj/ifi-tidal-release
 - `tidal-connect-docker` (Phase 5 binary source): https://github.com/TonyTromp/tidal-connect-docker
-- Home Assistant addon docs: https://developers.home-assistant.io/docs/add-ons
+- Home Assistant app docs: https://developers.home-assistant.io/docs/add-ons
 - hassio-addons base image: https://github.com/hassio-addons/addon-base

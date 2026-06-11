@@ -99,9 +99,9 @@ jobs:
 
             ${{ needs.check-update.outputs.changelog }}
 
-            ### Affected Addons
+            ### Affected Apps
 
-            All addons using the hassio-addons base image:
+            All apps using the hassio-addons base image:
             - `arcane`
             - `dockge`
             - `dockhand`
@@ -111,7 +111,7 @@ jobs:
 
             ### Changes
 
-            - Updated `build.yaml` base image version in all addons
+            - Updated `build.yaml` base image version in all apps
             - Updated any Dockerfiles with inline `BUILD_FROM` defaults
 
             ### Release Info
@@ -137,6 +137,6 @@ jobs:
                 "pull_request_number": "${{ steps.create-pr.outputs.pull-request-number }}",
                 "head_sha": "${{ steps.create-pr.outputs.pull-request-head-sha }}",
                 "branch": "update-base-image-${{ needs.check-update.outputs.latest_version }}",
-                "addon": "all"
+                "app": "all"
               }
             }'

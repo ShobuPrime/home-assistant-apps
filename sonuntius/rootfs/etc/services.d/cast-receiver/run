@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Sonuntius
+# Home Assistant App: Sonuntius
 # Cast (CASTV2 + mDNS) receiver service.
 # Binary at /usr/local/bin/cast-receiver. Reads /data/options.json
 # directly; tolerates a missing AirReceiver cert by suppressing the TLS

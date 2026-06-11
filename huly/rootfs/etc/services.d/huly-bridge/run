@@ -1,16 +1,16 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Huly
+# Home Assistant App: Huly
 # Bridges HA ingress (port 4859) to the compose nginx service.
 #
 # The compose services run as sibling containers on the host Docker daemon.
-# This addon container is on the HA hassio network, not the compose network.
+# This app container is on the HA hassio network, not the compose network.
 # We connect to the compose network, resolve nginx's IP, and use socat to
 # forward port 4859 → nginx:80.
 # ==============================================================================
 
 COMPOSE_NETWORK="huly_ha_huly_net"
-ADDON_CONTAINER=""
+APP_CONTAINER=""
 MAX_WAIT=120
 
 # Wait for the compose network to exist (huly service creates it)
@@ -32,22 +32,22 @@ if [[ ${WAITED} -ge ${MAX_WAIT} ]]; then
 fi
 
 # Get our own container ID (no -P flag — Alpine busybox grep doesn't support Perl regex)
-ADDON_CONTAINER=$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -1)
-if [[ -z "${ADDON_CONTAINER}" ]]; then
-    ADDON_CONTAINER="addon_$(hostname | sed 's/-/_/g')"
+APP_CONTAINER=$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -1)
+if [[ -z "${APP_CONTAINER}" ]]; then
+    APP_CONTAINER="addon_$(hostname | sed 's/-/_/g')"
 fi
-bashio::log.info "Addon container: ${ADDON_CONTAINER}"
+bashio::log.info "App container: ${APP_CONTAINER}"
 
-# Connect addon container to the compose network (if not already connected)
+# Connect app container to the compose network (if not already connected)
 CONNECTED=$(curl -sf --unix-socket /var/run/docker.sock \
     "http://localhost/networks/${COMPOSE_NETWORK}" 2>/dev/null \
-    | jq -r ".Containers[\"${ADDON_CONTAINER}\"] // empty" 2>/dev/null)
+    | jq -r ".Containers[\"${APP_CONTAINER}\"] // empty" 2>/dev/null)
 
 if [[ -z "${CONNECTED}" ]]; then
-    bashio::log.info "Connecting addon to compose network ${COMPOSE_NETWORK}..."
+    bashio::log.info "Connecting app to compose network ${COMPOSE_NETWORK}..."
     curl -sf --unix-socket /var/run/docker.sock \
         -X POST -H "Content-Type: application/json" \
-        -d "{\"Container\": \"${ADDON_CONTAINER}\"}" \
+        -d "{\"Container\": \"${APP_CONTAINER}\"}" \
         "http://localhost/networks/${COMPOSE_NETWORK}/connect" > /dev/null 2>&1
     bashio::log.info "Connected to compose network"
 else
@@ -82,6 +82,6 @@ if [[ -z "${NGINX_IP}" ]]; then
 fi
 
 # Forward port 4859 → nginx:80 via socat
-# This makes the Huly web UI accessible at the addon's ingress port.
+# This makes the Huly web UI accessible at the app's ingress port.
 bashio::log.info "Starting port bridge: 0.0.0.0:4859 → ${NGINX_IP}:80"
 exec socat TCP-LISTEN:4859,fork,reuseaddr TCP:${NGINX_IP}:80

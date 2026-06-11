@@ -60,7 +60,7 @@ an MQTT *client* — **not** a broker, and **not** something you add as an
 integration. For the alarm entity and companion card to appear you need the
 standard Home Assistant MQTT setup:
 
-1. An MQTT **broker** — the official **[Mosquitto broker add-on][mosquitto]** is
+1. An MQTT **broker** — the official **[Mosquitto broker app][mosquitto]** is
    the easy choice.
 2. The **[MQTT integration][mqtt-integration]** configured (Settings → Devices &
    Services). After you install Mosquitto, Home Assistant **auto-discovers** the
@@ -82,7 +82,7 @@ manual YAML and **nothing to "add as an integration."** The companion card also
 auto-registers as a dashboard resource.
 
 **The app itself: no — you install it once.** Home Assistant never auto-installs
-apps/add-ons (by design), so you add AegisHA from the store yourself. After that
+apps (by design), so you add AegisHA from the store yourself. After that
 single install, everything it exposes is auto-discovered. In short: install
 Mosquitto → click *Configure* on the MQTT integration HA offers → install &
 start AegisHA → the AegisHA device shows up by itself.
@@ -115,7 +115,7 @@ See the **Documentation** tab (`DOCS.md`) for the full reference.
 
 ## References & further reading
 
-- **[Mosquitto broker add-on][mosquitto]** — the MQTT broker AegisHA publishes
+- **[Mosquitto broker app][mosquitto]** — the MQTT broker AegisHA publishes
   through
 - **[MQTT integration][mqtt-integration]** & **[MQTT discovery][mqtt-discovery]**
   — how AegisHA's entities are created automatically

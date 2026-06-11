@@ -1,5 +1,5 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: MuninnDB
+# Home Assistant App: MuninnDB
 # Provisioning service finish handler — do not restart on exit
 # ==============================================================================

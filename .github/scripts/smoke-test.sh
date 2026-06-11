@@ -7,11 +7,11 @@
 
 set -e
 
-ADDON_DIR="${1:?Usage: smoke-test.sh <addon-dir> <image-name>}"
-IMAGE_NAME="${2:?Usage: smoke-test.sh <addon-dir> <image-name>}"
+APP_DIR="${1:?Usage: smoke-test.sh <app-dir> <image-name>}"
+IMAGE_NAME="${2:?Usage: smoke-test.sh <app-dir> <image-name>}"
 NETWORK_NAME="smoke-test-net"
 SUPERVISOR_NAME="smoke-test-supervisor"
-CONTAINER_NAME="smoke-test-$(basename "${ADDON_DIR}")"
+CONTAINER_NAME="smoke-test-$(basename "${APP_DIR}")"
 MAX_WAIT=120
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -43,7 +43,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 # Parse app config
 # ---------------------------------------------------------------------------
-CONFIG="${ADDON_DIR}/config.yaml"
+CONFIG="${APP_DIR}/config.yaml"
 if [ ! -f "${CONFIG}" ]; then
     echo "Error: ${CONFIG} not found"
     exit 1
@@ -78,9 +78,9 @@ docker run -d \
     --network "${NETWORK_NAME}" \
     --network-alias supervisor \
     -v "${SCRIPT_DIR}/mock-supervisor.py:/mock-supervisor.py:ro" \
-    -v "$(pwd)/${ADDON_DIR}:/addon:ro" \
+    -v "$(pwd)/${APP_DIR}:/app:ro" \
     python:3-slim \
-    python3 /mock-supervisor.py /addon 80 > /dev/null
+    python3 /mock-supervisor.py /app 80 > /dev/null
 
 # Wait for mock supervisor to be ready
 for i in 1 2 3 4 5 6 7 8 9 10; do

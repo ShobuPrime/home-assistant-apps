@@ -1,6 +1,6 @@
-# Multi-Service / Compose-Based Addon Patterns
+# Multi-Service / Compose-Based App Patterns
 
-This reference covers how to build Home Assistant addons that run multiple cooperating processes (e.g., app server + database + cache + reverse proxy). This is more complex than single-binary addons and requires careful handling of service dependencies, inter-process communication, and data isolation.
+This reference covers how to build Home Assistant apps that run multiple cooperating processes (e.g., app server + database + cache + reverse proxy). This is more complex than single-binary apps and requires careful handling of service dependencies, inter-process communication, and data isolation.
 
 ## Table of Contents
 
@@ -30,10 +30,10 @@ Use this pattern when:
 
 ### Option A: All-in-One Container with S6 (Recommended)
 
-Run all services inside a single HA addon container using S6-overlay to manage multiple processes. This is the standard HA addon approach.
+Run all services inside a single HA app container using S6-overlay to manage multiple processes. This is the standard HA app approach.
 
 **Pros:**
-- Follows HA addon conventions
+- Follows HA app conventions
 - Single container to manage
 - S6 handles service dependencies and restart
 - Works with HA backup system
@@ -44,7 +44,7 @@ Run all services inside a single HA addon container using S6-overlay to manage m
 
 ### Option B: Docker Compose Inside Container
 
-Run Docker Compose from within the addon container. This requires `docker_api: true` and is more complex but allows using upstream Docker images directly.
+Run Docker Compose from within the app container. This requires `docker_api: true` and is more complex but allows using upstream Docker images directly.
 
 **Pros:**
 - Can use upstream Docker images as-is
@@ -203,7 +203,7 @@ Alpine packages are small, but for large applications consider:
 - Elasticsearch: NOT available via apk - must download binary (~300MB+)
 - MongoDB: NOT available via apk on Alpine - must download binary
 
-For services not in Alpine's package repos, download binaries in the Dockerfile (same pattern as single-binary addons).
+For services not in Alpine's package repos, download binaries in the Dockerfile (same pattern as single-binary apps).
 
 ---
 
@@ -245,9 +245,9 @@ ports:
 #!/usr/bin/with-contenv bashio
 # 01-init-database.sh
 
-DB_DATA="/data/<addon>/postgresql"
-DB_NAME="<addon>"
-DB_USER="<addon>"
+DB_DATA="/data/<app>/postgresql"
+DB_NAME="<app>"
+DB_USER="<app>"
 
 # Initialize PostgreSQL data directory if needed
 if [[ ! -d "${DB_DATA}" ]]; then
@@ -281,7 +281,7 @@ fi
 #!/usr/bin/with-contenv bashio
 # services.d/database/run
 
-DB_DATA="/data/<addon>/postgresql"
+DB_DATA="/data/<app>/postgresql"
 
 bashio::log.info "Starting PostgreSQL..."
 
@@ -304,7 +304,7 @@ bashio::log.info "Starting Redis..."
 exec redis-server \
     --bind 127.0.0.1 \
     --port 6379 \
-    --dir /data/<addon>/redis \
+    --dir /data/<app>/redis \
     --maxmemory 64mb \
     --maxmemory-policy allkeys-lru
 ```
@@ -381,10 +381,10 @@ NGINX_EOF
 
 ## Data Directory Layout
 
-For multi-service addons, organize persistent data under `/data/<addon>/`:
+For multi-service apps, organize persistent data under `/data/<app>/`:
 
 ```
-/data/<addon>/
+/data/<app>/
 ├── postgresql/          # Database data files
 ├── redis/               # Redis persistence
 ├── elasticsearch/       # Search index data
@@ -399,29 +399,29 @@ Init script should create all directories:
 #!/usr/bin/with-contenv bashio
 # 00-init-data.sh
 
-ADDON_DATA="/data/<addon>"
+APP_DATA="/data/<app>"
 
 bashio::log.info "Creating data directories..."
-mkdir -p "${ADDON_DATA}/postgresql"
-mkdir -p "${ADDON_DATA}/redis"
-mkdir -p "${ADDON_DATA}/app"
+mkdir -p "${APP_DATA}/postgresql"
+mkdir -p "${APP_DATA}/redis"
+mkdir -p "${APP_DATA}/app"
 
 # Database dirs need specific ownership
-chown -R postgres:postgres "${ADDON_DATA}/postgresql"
-chmod 700 "${ADDON_DATA}/postgresql"
+chown -R postgres:postgres "${APP_DATA}/postgresql"
+chmod 700 "${APP_DATA}/postgresql"
 
 # Redis
-chmod 755 "${ADDON_DATA}/redis"
+chmod 755 "${APP_DATA}/redis"
 
 # App data
-chmod 755 "${ADDON_DATA}/app"
+chmod 755 "${APP_DATA}/app"
 ```
 
 ---
 
 ## Health Checks
 
-For multi-service addons, the watchdog should check the main web UI port:
+For multi-service apps, the watchdog should check the main web UI port:
 
 ```yaml
 # config.yaml
@@ -477,7 +477,7 @@ RUN adduser -D -u 1000 elasticsearch
 
 ### 4. Memory Limits
 
-HA addons don't have memory limits by default, but services like Elasticsearch and PostgreSQL can consume a lot of memory. Configure conservative defaults:
+HA apps don't have memory limits by default, but services like Elasticsearch and PostgreSQL can consume a lot of memory. Configure conservative defaults:
 
 - PostgreSQL `shared_buffers`: 128MB
 - Redis `maxmemory`: 64MB
@@ -506,7 +506,7 @@ fi
 
 ### 7. Log Output
 
-All services should log to stdout/stderr so logs appear in the HA addon log viewer. Avoid writing to log files unless necessary. If a service insists on file logging, consider:
+All services should log to stdout/stderr so logs appear in the HA app log viewer. Avoid writing to log files unless necessary. If a service insists on file logging, consider:
 
 ```bash
 exec /opt/app/server 2>&1

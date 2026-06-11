@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: HAY CM5 Fan Controller
+# Home Assistant App: HAY CM5 Fan Controller
 # Validates libgpiod and hardware prerequisites
 # ==============================================================================
 

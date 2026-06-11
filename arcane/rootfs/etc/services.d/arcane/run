@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Arcane Docker Manager
+# Home Assistant App: Arcane Docker Manager
 # Runs Arcane
 # ==============================================================================
 
@@ -13,7 +13,7 @@ if [[ -f "${SECRETS_FILE}" ]]; then
     export ENCRYPTION_KEY
     export JWT_SECRET
 else
-    bashio::log.error "Secrets file not found! Please restart the addon."
+    bashio::log.error "Secrets file not found! Please restart the app."
     exit 1
 fi
 

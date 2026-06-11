@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script to check and update hassio-addons base image version across all addons
+# Script to check and update hassio-addons base image version across all apps
 # Used by GitHub Actions workflow
 
 set -e
@@ -13,8 +13,8 @@ JSON_OUTPUT="${JSON_OUTPUT:-false}"
 BASE_IMAGE_REPO="hassio-addons/app-base"
 BASE_IMAGE_REGISTRY="ghcr.io/hassio-addons/base"
 
-# All addon directories that use the base image
-ADDON_DIRS="arcane dockge dockhand hay_cm5_fan huly muninndb portainer_ee_lts portainer_ee_sts sonuntius aegis_ha"
+# All app directories that use the base image
+APP_DIRS="arcane dockge dockhand hay_cm5_fan huly muninndb portainer_ee_lts portainer_ee_sts sonuntius aegis_ha"
 
 # Colors for output
 RED='\033[0;31m'
@@ -80,23 +80,23 @@ get_changelog() {
     fi
 }
 
-# Function to get current base image version from any addon's build.yaml
+# Function to get current base image version from any app's build.yaml
 get_current_version() {
-    local first_addon=""
-    for addon in $ADDON_DIRS; do
-        if [ -f "$REPO_ROOT/$addon/build.yaml" ]; then
-            first_addon="$addon"
+    local first_app=""
+    for app in $APP_DIRS; do
+        if [ -f "$REPO_ROOT/$app/build.yaml" ]; then
+            first_app="$app"
             break
         fi
     done
 
-    if [ -z "$first_addon" ]; then
-        log "${RED}Error: No addon build.yaml files found!${NC}" >&2
+    if [ -z "$first_app" ]; then
+        log "${RED}Error: No app build.yaml files found!${NC}" >&2
         exit 1
     fi
 
     # Extract version from base image reference (use | delimiter to avoid conflicts with / in URLs)
-    grep "${BASE_IMAGE_REGISTRY}" "$REPO_ROOT/$first_addon/build.yaml" | head -1 | \
+    grep "${BASE_IMAGE_REGISTRY}" "$REPO_ROOT/$first_app/build.yaml" | head -1 | \
         sed "s|.*${BASE_IMAGE_REGISTRY}:\([0-9.]*\).*|\1|"
 }
 
@@ -109,7 +109,7 @@ is_major_bump() {
     [ "$current_major" != "$latest_major" ]
 }
 
-# Function to update all addon files
+# Function to update all app files
 update_files() {
     local current_version="$1"
     local new_version="$2"
@@ -117,22 +117,22 @@ update_files() {
     local old_image="${BASE_IMAGE_REGISTRY}:${current_version}"
     local new_image="${BASE_IMAGE_REGISTRY}:${new_version}"
 
-    # Update build.yaml in all addon directories
-    for addon in $ADDON_DIRS; do
-        local build_file="$REPO_ROOT/$addon/build.yaml"
+    # Update build.yaml in all app directories
+    for app in $APP_DIRS; do
+        local build_file="$REPO_ROOT/$app/build.yaml"
         if [ -f "$build_file" ]; then
             sed -i "s|${old_image}|${new_image}|g" "$build_file"
-            log "${GREEN}${NC} Updated $addon/build.yaml"
+            log "${GREEN}${NC} Updated $app/build.yaml"
         fi
     done
 
     # Update any Dockerfiles with inline BUILD_FROM defaults
-    for addon in $ADDON_DIRS; do
-        local dockerfile="$REPO_ROOT/$addon/Dockerfile"
+    for app in $APP_DIRS; do
+        local dockerfile="$REPO_ROOT/$app/Dockerfile"
         if [ -f "$dockerfile" ]; then
             if grep -q "ARG BUILD_FROM=${BASE_IMAGE_REGISTRY}" "$dockerfile"; then
                 sed -i "s|ARG BUILD_FROM=${old_image}|ARG BUILD_FROM=${new_image}|g" "$dockerfile"
-                log "${GREEN}${NC} Updated $addon/Dockerfile inline BUILD_FROM"
+                log "${GREEN}${NC} Updated $app/Dockerfile inline BUILD_FROM"
             fi
         fi
     done
@@ -140,22 +140,22 @@ update_files() {
 
 # Main execution
 main() {
-    log "=== Hassio-Addons Base Image Updater ==="
+    log "=== Hassio-Apps Base Image Updater ==="
 
-    # Verify we can find at least one addon
-    local found_addon=false
-    for addon in $ADDON_DIRS; do
-        if [ -f "$REPO_ROOT/$addon/build.yaml" ]; then
-            found_addon=true
+    # Verify we can find at least one app
+    local found_app=false
+    for app in $APP_DIRS; do
+        if [ -f "$REPO_ROOT/$app/build.yaml" ]; then
+            found_app=true
             break
         fi
     done
 
-    if [ "$found_addon" = "false" ]; then
+    if [ "$found_app" = "false" ]; then
         if [ "$JSON_OUTPUT" = "true" ]; then
-            echo "{\"error\": \"No addon build.yaml files found in $REPO_ROOT\"}"
+            echo "{\"error\": \"No app build.yaml files found in $REPO_ROOT\"}"
         else
-            log "${RED}Error: No addon build.yaml files found in $REPO_ROOT!${NC}" >&2
+            log "${RED}Error: No app build.yaml files found in $REPO_ROOT!${NC}" >&2
         fi
         exit 1
     fi
@@ -231,10 +231,10 @@ main() {
         log ""
         log "${GREEN}Update complete!${NC} Base image updated from ${YELLOW}$CURRENT_VERSION${NC} to ${GREEN}$LATEST_VERSION${NC}"
         log ""
-        log "Updated addons:"
-        for addon in $ADDON_DIRS; do
-            if [ -f "$REPO_ROOT/$addon/build.yaml" ]; then
-                log "  - $addon"
+        log "Updated apps:"
+        for app in $APP_DIRS; do
+            if [ -f "$REPO_ROOT/$app/build.yaml" ]; then
+                log "  - $app"
             fi
         done
     fi

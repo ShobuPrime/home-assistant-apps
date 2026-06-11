@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Portainer EE
+# Home Assistant App: Portainer EE
 # Take down the S6 supervision tree when Portainer fails
 # ==============================================================================
 if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then

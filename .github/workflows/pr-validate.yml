@@ -20,7 +20,7 @@ jobs:
       pr_number: ${{ steps.context.outputs.pr_number }}
       head_sha: ${{ steps.context.outputs.head_sha }}
       base_ref: ${{ steps.context.outputs.base_ref }}
-      addon: ${{ steps.context.outputs.addon }}
+      app: ${{ steps.context.outputs.app }}
     steps:
       - name: Resolve context from event
         id: context
@@ -29,12 +29,12 @@ jobs:
             echo "pr_number=${{ github.event.client_payload.pull_request_number }}" >> $GITHUB_OUTPUT
             echo "head_sha=${{ github.event.client_payload.head_sha }}" >> $GITHUB_OUTPUT
             echo "base_ref=master" >> $GITHUB_OUTPUT
-            echo "addon=${{ github.event.client_payload.addon }}" >> $GITHUB_OUTPUT
+            echo "app=${{ github.event.client_payload.app }}" >> $GITHUB_OUTPUT
           else
             echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
             echo "head_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
             echo "base_ref=${{ github.base_ref }}" >> $GITHUB_OUTPUT
-            echo "addon=" >> $GITHUB_OUTPUT
+            echo "app=" >> $GITHUB_OUTPUT
           fi
 
   validate-structure:
@@ -48,77 +48,77 @@ jobs:
           ref: ${{ needs.resolve-context.outputs.head_sha }}
           fetch-depth: 0
 
-      - name: Get changed addons
+      - name: Get changed apps
         id: changed
         run: |
           BASE_REF="${{ needs.resolve-context.outputs.base_ref }}"
           git fetch origin "${BASE_REF}"
           CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD")
 
-          # Find which addon directories have changes
-          CHANGED_ADDONS=""
-          for addon_dir in */config.yaml; do
-            addon_dir=$(dirname "$addon_dir")
-            if echo "$CHANGED_FILES" | grep -q "^${addon_dir}/"; then
-              CHANGED_ADDONS="${CHANGED_ADDONS} ${addon_dir}"
+          # Find which app directories have changes
+          CHANGED_APPS=""
+          for app_dir in */config.yaml; do
+            app_dir=$(dirname "$app_dir")
+            if echo "$CHANGED_FILES" | grep -q "^${app_dir}/"; then
+              CHANGED_APPS="${CHANGED_APPS} ${app_dir}"
             fi
           done
 
-          CHANGED_ADDONS=$(echo "$CHANGED_ADDONS" | xargs)
-          echo "changed_addons=${CHANGED_ADDONS}" >> $GITHUB_OUTPUT
-          echo "Changed addons: ${CHANGED_ADDONS:-none}"
+          CHANGED_APPS=$(echo "$CHANGED_APPS" | xargs)
+          echo "changed_apps=${CHANGED_APPS}" >> $GITHUB_OUTPUT
+          echo "Changed apps: ${CHANGED_APPS:-none}"
 
-      - name: Validate addon structure
+      - name: Validate app structure
         id: validate
         run: |
-          CHANGED_ADDONS="${{ steps.changed.outputs.changed_addons }}"
+          CHANGED_APPS="${{ steps.changed.outputs.changed_apps }}"
 
-          # If no addon-specific changes (e.g., workflow-only changes), skip
-          if [ -z "$CHANGED_ADDONS" ]; then
-            echo "✓ No addon-specific changes detected, skipping structure validation"
+          # If no app-specific changes (e.g., workflow-only changes), skip
+          if [ -z "$CHANGED_APPS" ]; then
+            echo "✓ No app-specific changes detected, skipping structure validation"
             exit 0
           fi
 
           EXIT_CODE=0
           ERRORS=""
 
-          # Only validate changed addon directories
-          for addon_dir in $CHANGED_ADDONS; do
-            echo "Validating $addon_dir..."
+          # Only validate changed app directories
+          for app_dir in $CHANGED_APPS; do
+            echo "Validating $app_dir..."
 
             # Check required files
             for required_file in config.yaml Dockerfile README.md DOCS.md CHANGELOG.md icon.png; do
-              if [ ! -f "$addon_dir/$required_file" ]; then
-                ERRORS="${ERRORS}\n- Missing $required_file in $addon_dir"
+              if [ ! -f "$app_dir/$required_file" ]; then
+                ERRORS="${ERRORS}\n- Missing $required_file in $app_dir"
                 EXIT_CODE=1
               fi
             done
 
             # Validate config.yaml structure
-            if [ -f "$addon_dir/config.yaml" ]; then
+            if [ -f "$app_dir/config.yaml" ]; then
               # Check for required fields
               for field in name version slug description arch; do
-                if ! grep -q "^${field}:" "$addon_dir/config.yaml"; then
-                  ERRORS="${ERRORS}\n- Missing required field '$field' in $addon_dir/config.yaml"
+                if ! grep -q "^${field}:" "$app_dir/config.yaml"; then
+                  ERRORS="${ERRORS}\n- Missing required field '$field' in $app_dir/config.yaml"
                   EXIT_CODE=1
                 fi
               done
 
               # Extract version for validation
-              VERSION=$(grep "^version:" "$addon_dir/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+              VERSION=$(grep "^version:" "$app_dir/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
 
               # Validate version format (semver, with optional pre-release suffix)
               if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-][a-zA-Z0-9.]+)*$'; then
-                ERRORS="${ERRORS}\n- Invalid version format in $addon_dir/config.yaml: $VERSION (should be X.Y.Z or X.Y.Z-suffix)"
+                ERRORS="${ERRORS}\n- Invalid version format in $app_dir/config.yaml: $VERSION (should be X.Y.Z or X.Y.Z-suffix)"
                 EXIT_CODE=1
               fi
             fi
 
             # Validate Dockerfile
-            if [ -f "$addon_dir/Dockerfile" ]; then
+            if [ -f "$app_dir/Dockerfile" ]; then
               # Check for FROM instruction
-              if ! grep -q "^FROM" "$addon_dir/Dockerfile"; then
-                ERRORS="${ERRORS}\n- Missing FROM instruction in $addon_dir/Dockerfile"
+              if ! grep -q "^FROM" "$app_dir/Dockerfile"; then
+                ERRORS="${ERRORS}\n- Missing FROM instruction in $app_dir/Dockerfile"
                 EXIT_CODE=1
               fi
             fi
@@ -173,21 +173,21 @@ jobs:
           EXIT_CODE=0
           WARNINGS=""
 
-          # Check if any addon files were modified
-          for addon_dir in */config.yaml; do
-            addon_dir=$(dirname "$addon_dir")
+          # Check if any app files were modified
+          for app_dir in */config.yaml; do
+            app_dir=$(dirname "$app_dir")
 
-            # Check if addon files were modified
-            if echo "$CHANGED_FILES" | grep -q "^${addon_dir}/"; then
+            # Check if app files were modified
+            if echo "$CHANGED_FILES" | grep -q "^${app_dir}/"; then
               # Check if CHANGELOG was updated
-              if ! echo "$CHANGED_FILES" | grep -q "^${addon_dir}/CHANGELOG.md"; then
-                WARNINGS="${WARNINGS}\n- $addon_dir modified but CHANGELOG.md not updated"
+              if ! echo "$CHANGED_FILES" | grep -q "^${app_dir}/CHANGELOG.md"; then
+                WARNINGS="${WARNINGS}\n- $app_dir modified but CHANGELOG.md not updated"
               else
                 # Verify CHANGELOG has content for this version
                 # Support both "## Version X.Y.Z" and "## [X.Y.Z]" formats
-                VERSION=$(grep "^version:" "$addon_dir/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
-                if ! grep -qE "## (Version )?(\[)?${VERSION}(\])?" "$addon_dir/CHANGELOG.md"; then
-                  WARNINGS="${WARNINGS}\n- $addon_dir/CHANGELOG.md missing entry for version $VERSION"
+                VERSION=$(grep "^version:" "$app_dir/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+                if ! grep -qE "## (Version )?(\[)?${VERSION}(\])?" "$app_dir/CHANGELOG.md"; then
+                  WARNINGS="${WARNINGS}\n- $app_dir/CHANGELOG.md missing entry for version $VERSION"
                   EXIT_CODE=1
                 fi
               fi
@@ -433,20 +433,20 @@ jobs:
             console.log('Checking Builder workflow status...');
             const maxAttempts = 60;
             const pollInterval = 30000; // 30 seconds (60 * 30s = 30 min total)
-            const targetAddon = '${{ needs.resolve-context.outputs.addon }}';
-            if (targetAddon) {
-              console.log(`Scoping Builder lookup to addon: ${targetAddon}`);
+            const targetApp = '${{ needs.resolve-context.outputs.app }}';
+            if (targetApp) {
+              console.log(`Scoping Builder lookup to app: ${targetApp}`);
             }
 
             // For dispatch events the Builder runs for *every* dispatched
-            // addon land on master within the same time window, so we have
+            // app land on master within the same time window, so we have
             // to disambiguate by inspecting each candidate run's jobs and
-            // matching against the addon name we were dispatched for.
+            // matching against the app name we were dispatched for.
             // Without this, a failing Arcane Builder run would block the
             // Dockhand PR's auto-merge (and vice versa).
-            const matchesAddon = (jobs, addon) => {
-              if (!addon) return true;
-              const expected = [`Build ${addon} app`, `Smoke test ${addon}`];
+            const matchesApp = (jobs, app) => {
+              if (!app) return true;
+              const expected = [`Build ${app} app`, `Smoke test ${app}`];
               return jobs.some(j => expected.includes(j.name));
             };
 
@@ -473,7 +473,7 @@ jobs:
                     per_page: 20,
                   });
                   // Look across recent dispatch runs and pick the one whose
-                  // jobs actually belong to *our* addon.
+                  // jobs actually belong to *our* app.
                   const recentRuns = runs.workflow_runs.filter(r => {
                     const runTime = new Date(r.created_at).getTime();
                     return (Date.now() - runTime) < 20 * 60 * 1000;
@@ -485,7 +485,7 @@ jobs:
                       repo: context.repo.repo,
                       run_id: run.id,
                     });
-                    if (matchesAddon(jobsResp.jobs, targetAddon)) {
+                    if (matchesApp(jobsResp.jobs, targetApp)) {
                       matchingRun = run;
                       break;
                     }

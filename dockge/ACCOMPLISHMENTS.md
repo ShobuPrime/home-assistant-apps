@@ -1,17 +1,17 @@
-# Dockge Home Assistant Addon - Development Summary
+# Dockge Home Assistant App - Development Summary
 
 ## What We Accomplished
 
-### Created a Complete Home Assistant Addon for Dockge
-- Started with the Portainer EE addon as a template
-- Initially built a complex addon with custom Dockerfile and S6 scripts
+### Created a Complete Home Assistant App for Dockge
+- Started with the Portainer EE app as a template
+- Initially built a complex app with custom Dockerfile and S6 scripts
 - Realized Dockge provides an official multi-arch Docker image
 - Simplified dramatically by using the official image directly
 
-### Final Addon Structure (Minimal & Effective)
+### Final App Structure (Minimal & Effective)
 ```
 dockge/
-├── config.yaml       # HA addon configuration
+├── config.yaml       # HA app configuration
 ├── apparmor.txt      # Security profile for Docker access
 ├── README.md         # User documentation
 ├── CLAUDE.md         # Developer documentation with lessons learned
@@ -46,7 +46,7 @@ dockge/
 ### 4. Configuration Simplicity
 - Avoid duplicate configuration (option + environment variable)
 - Less configuration = fewer user errors
-- No options needed for this addon at all
+- No options needed for this app at all
 
 ### 5. Docker Socket Access Pattern
 ```yaml
@@ -56,7 +56,7 @@ apparmor: true           # Security profile
 # User must disable protection mode
 ```
 
-### 6. Essential Addon Files
+### 6. Essential App Files
 - **Minimal approach** (using official image):
   - config.yaml
   - apparmor.txt
@@ -76,9 +76,9 @@ apparmor: true           # Security profile
 2. **Discovered simplicity**: Official Dockge image exists
 3. **Removed complexity**: Deleted Dockerfile, build files, S6 scripts
 4. **Further simplified**: Removed user configuration options
-5. **Final result**: 5-file addon that just works
+5. **Final result**: 5-file app that just works
 
-## Key Takeaways for Future Addons
+## Key Takeaways for Future Apps
 
 1. **Research first**: Check if official Docker images exist
 2. **Start simple**: Don't assume you need custom builds
@@ -92,4 +92,4 @@ apparmor: true           # Security profile
 - Third commit: Simplified to use official Docker image
 - Fourth commit: Removed unnecessary configuration option
 
-This addon is now production-ready with minimal maintenance burden.
+This app is now production-ready with minimal maintenance burden.

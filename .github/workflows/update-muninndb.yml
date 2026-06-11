@@ -27,7 +27,7 @@ jobs:
         id: check
         run: |
           cd muninndb
-          result=$(ADDON_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-muninndb.sh)
+          result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-muninndb.sh)
           echo "Result: $result"
 
           update_available=$(echo "$result" | jq -r '.update_available')
@@ -59,7 +59,7 @@ jobs:
         id: update
         run: |
           cd muninndb
-          ADDON_PATH=. CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-muninndb.sh
+          APP_PATH=. CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-muninndb.sh
 
       - name: Create Pull Request
         id: create-pr
@@ -117,6 +117,6 @@ jobs:
                 "pull_request_number": "${{ steps.create-pr.outputs.pull-request-number }}",
                 "head_sha": "${{ steps.create-pr.outputs.pull-request-head-sha }}",
                 "branch": "update-muninndb-${{ needs.check-update.outputs.latest_version }}",
-                "addon": "muninndb"
+                "app": "muninndb"
               }
             }'

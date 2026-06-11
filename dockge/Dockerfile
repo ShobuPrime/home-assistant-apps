@@ -80,7 +80,7 @@ LABEL \
     dockge.version="${DOCKGE_VERSION}" \
     org.opencontainers.image.title="${BUILD_NAME}" \
     org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
-    org.opencontainers.image.vendor="Home Assistant Add-ons" \
+    org.opencontainers.image.vendor="Home Assistant Apps" \
     org.opencontainers.image.authors="Dockge for Home Assistant" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.url="https://github.com/louislam/dockge" \

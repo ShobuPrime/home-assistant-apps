@@ -1,22 +1,22 @@
 ---
 name: ha-addon-builder
-description: Build new Home Assistant add-ons for the ShobuPrime/home-assistant-apps repository. Use this skill whenever the user wants to create a new HA addon, scaffold an addon, add a new service to their Home Assistant setup, or integrate a new Docker-based application as a Home Assistant add-on. Also use when the user asks about addon structure, CI/CD automation for addons, or how their existing addons work. This skill covers the full lifecycle - scaffolding all required files, setting up automated version updates, and integrating with the repository's CI/CD pipeline.
+description: Build new Home Assistant apps for the ShobuPrime/home-assistant-apps repository. Use this skill whenever the user wants to create a new HA app, scaffold an app, add a new service to their Home Assistant setup, or integrate a new Docker-based application as a Home Assistant app. Also use when the user asks about app structure, CI/CD automation for apps, or how their existing apps work. This skill covers the full lifecycle - scaffolding all required files, setting up automated version updates, and integrating with the repository's CI/CD pipeline.
 ---
 
-# Home Assistant Add-on Builder
+# Home Assistant App Builder
 
-This skill guides you through creating production-ready Home Assistant add-ons for the `ShobuPrime/home-assistant-apps` repository. It covers the full lifecycle: scaffolding, S6-overlay integration, CI/CD automation, and documentation.
+This skill guides you through creating production-ready Home Assistant apps for the `ShobuPrime/home-assistant-apps` repository. It covers the full lifecycle: scaffolding, S6-overlay integration, CI/CD automation, and documentation.
 
 ## Before You Start
 
-Read `references/templates.md` for exact file templates and `references/ci-automation.md` for GitHub Actions and update script patterns. For multi-service or Docker Compose-based addons, also read `references/multi-service.md`.
+Read `references/templates.md` for exact file templates and `references/ci-automation.md` for GitHub Actions and update script patterns. For multi-service or Docker Compose-based apps, also read `references/multi-service.md`.
 
 ## When to Use This Skill
 
-- User wants to add a new service/application as a Home Assistant add-on
-- User asks to scaffold or create a new addon
+- User wants to add a new service/application as a Home Assistant app
+- User asks to scaffold or create a new app
 - User wants to integrate an existing Docker image or binary into HA
-- User asks about the addon structure or conventions in this repo
+- User asks about the app structure or conventions in this repo
 
 ## Phase 1: Gather Requirements
 
@@ -26,7 +26,7 @@ Before writing any files, determine:
 2. **Version source**: Where to find the latest version (GitHub releases, Docker Hub tags, changelog endpoint)
 3. **Architecture**: What CPU architectures does the upstream software support? This repo only supports `aarch64` and `amd64`.
 4. **Ports**: What ports does the service expose? Which is the main web UI port (for ingress)?
-5. **Data persistence**: What directories need persistent storage? (mapped to `/data/<addon-name>/`)
+5. **Data persistence**: What directories need persistent storage? (mapped to `/data/<app-name>/`)
 6. **Configuration options**: What should be user-configurable? (credentials, URLs, feature toggles)
 7. **Docker API needed?** Does it need access to the Docker socket?
 8. **Single-service or multi-service?** Does it need multiple processes (e.g., app + database + reverse proxy)?
@@ -36,7 +36,7 @@ If the user doesn't know all of these, research the upstream project to fill in 
 
 ## Phase 2: Choose the Pattern
 
-### Single-Binary / Single-Process Addons
+### Single-Binary / Single-Process Apps
 Best for: Applications distributed as a single binary or that run as a single process.
 Examples in this repo: `portainer_ee_sts`, `portainer_ee_lts`, `arcane`
 
@@ -51,7 +51,7 @@ Examples in this repo: `dockge`, `dockhand`
 
 Pattern:
 - Use the upstream Docker image as a build stage: `FROM upstream/image:version AS source`
-- Copy the application files into the hassio-addons base: `COPY --from=source /app /opt/<addon>`
+- Copy the application files into the hassio-addons base: `COPY --from=source /app /opt/<app>`
 - Add S6 scripts for service management
 - Simpler than building from source, and ensures you get the exact upstream build
 
@@ -66,7 +66,7 @@ COPY --from=dockge-source /app /opt/dockge
 
 Trade-off: You can't customize the upstream build, but you get exact parity with what the project ships. Updates are version-bumps to the `FROM` tag.
 
-### Multi-Service / Compose-Based Addons
+### Multi-Service / Compose-Based Apps
 Best for: Applications that require multiple cooperating processes (app server + database + cache + reverse proxy, etc.)
 
 Pattern:
@@ -75,15 +75,15 @@ Pattern:
 - Init scripts handle inter-service dependencies
 - See `references/multi-service.md` for detailed patterns
 
-### Hardware-Specific / Shell-Script Addons
+### Hardware-Specific / Shell-Script Apps
 Best for: Custom daemon scripts that interact with host hardware (GPIO, sensors, firmware). No upstream binary to download.
 Example in this repo: `hay_cm5_fan`
 
 Pattern:
-- No binary download — the addon IS shell scripts in rootfs
+- No binary download — the app IS shell scripts in rootfs
 - May support only `aarch64` (hardware-specific)
 - `build.yaml` may only list one architecture
-- No `ARG <ADDON>_VERSION=` in Dockerfile (no upstream version to track)
+- No `ARG <APP>_VERSION=` in Dockerfile (no upstream version to track)
 - No update script or workflow needed
 - Requires `full_access: true` for `/dev/` and `/sys/` access
 - Smoke test needs a dedicated case since hardware isn't available on CI runners
@@ -94,21 +94,21 @@ Key gotchas discovered building `hay_cm5_fan`:
 - **`local` only inside functions**: bashio uses `set -e`; `local` in a `while` loop body (outside a function) crashes the script
 - **Pipe SIGPIPE**: Piping commands through `grep -q` under bashio's `pipefail` causes SIGPIPE. Write to a temp file first, then grep
 - **MQTT discovery**: REST API entities (`POST /api/states/`) don't get `unique_id`. Add `services: ["mqtt:want"]` to config.yaml and use MQTT discovery with `mosquitto_pub` for proper entity registration with unique_id and device grouping
-- **`vcgencmd`**: Available inside addon containers via `raspberrypi-utils-vcgencmd` when `/dev/vcio` is accessible (`full_access: true`, Protection Mode off)
+- **`vcgencmd`**: Available inside app containers via `raspberrypi-utils-vcgencmd` when `/dev/vcio` is accessible (`full_access: true`, Protection Mode off)
 
-## Phase 3: Create the Addon Directory
+## Phase 3: Create the App Directory
 
-The addon slug should be lowercase, using underscores for word separation. Create all files in `<repo-root>/<addon-slug>/`.
+The app slug should be lowercase, using underscores for word separation. Create all files in `<repo-root>/<app-slug>/`.
 
 ### Required Files (create in this order)
 
-Read `references/templates.md` for the exact content templates. Customize each template for the specific addon.
+Read `references/templates.md` for the exact content templates. Customize each template for the specific app.
 
-1. **`config.yaml`** - Add-on metadata, ports, options schema
+1. **`config.yaml`** - App metadata, ports, options schema
 2. **`build.yaml`** - Base image and build args per architecture
 3. **`translations/en.yaml`** - Plain-English option names + descriptions for the HA Configuration tab (mirrors `config.yaml`'s options). See "translations/en.yaml Format" below.
 4. **`Dockerfile`** - Container build with binary download or service installation
-5. **`apparmor.txt`** - Security profile (start from the standard template, add addon-specific paths)
+5. **`apparmor.txt`** - Security profile (start from the standard template, add app-specific paths)
 6. **`rootfs/etc/cont-init.d/<name>.sh`** - S6 initialization script
 7. **`rootfs/etc/services.d/<name>/run`** - S6 service runner
 8. **`rootfs/etc/services.d/<name>/finish`** - S6 finish handler
@@ -118,7 +118,7 @@ Read `references/templates.md` for the exact content templates. Customize each t
 12. **`README.md`** - User-facing overview and installation guide
 13. **`DOCS.md`** - Detailed configuration documentation
 14. **`CLAUDE.md`** - AI assistant guidance for future maintenance
-15. **`UPDATE_GUIDE.md`** - How to update the addon
+15. **`UPDATE_GUIDE.md`** - How to update the app
 
 ### Critical Conventions (Non-Negotiable)
 
@@ -131,9 +131,9 @@ These patterns exist because they solve real problems encountered in this repo:
 - **`exec`** the main process in the run script so it gets PID 1 and receives signals properly
 - **`#!/usr/bin/with-contenv bashio`** shebang for all S6 scripts
 - **`chmod a+x`** on all scripts in the Dockerfile
-- **Version must appear in three places**: `config.yaml` version field, `build.yaml` args, and `Dockerfile` `ARG <ADDON>_VERSION=` default — all must match. The update scripts maintain all three automatically.
+- **Version must appear in three places**: `config.yaml` version field, `build.yaml` args, and `Dockerfile` `ARG <APP>_VERSION=` default — all must match. The update scripts maintain all three automatically.
 - **`CHANGELOG.md` version header must be bare `## X.Y.Z`** (no `Version ` prefix, no trailing date in parens, no `[brackets]`). Put the date on its own line below as `_YYYY-MM-DD_`. Core's update entity uses the regex `^#* {version}\n` to extract release notes — any other format makes the HA UI dump the entire changelog every release. See `references/templates.md`.
-- **Dockerfile `HEALTHCHECK`** — define one whenever the addon exposes a TCP/HTTP endpoint. Supervisor reads it and gates the `STARTUP → STARTED` state transition (yellow → green dot in the HA UI) on the healthcheck going healthy; without it, the dot turns green the moment the container is running, even if the app inside isn't responsive yet. Reuse the same endpoint that `watchdog:` points to.
+- **Dockerfile `HEALTHCHECK`** — define one whenever the app exposes a TCP/HTTP endpoint. Supervisor reads it and gates the `STARTUP → STARTED` state transition (yellow → green dot in the HA UI) on the healthcheck going healthy; without it, the dot turns green the moment the container is running, even if the app inside isn't responsive yet. Reuse the same endpoint that `watchdog:` points to.
 - **Signed commits** - never add Claude Code attribution lines
 
 ### config.yaml Conventions
@@ -142,7 +142,7 @@ These patterns exist because they solve real problems encountered in this repo:
 name: "Human-Readable Name"
 description: "One-line description"
 version: "X.Y.Z"
-slug: "addon_slug"
+slug: "app_slug"
 init: false
 ingress: true
 ingress_port: <main-web-port>
@@ -171,10 +171,10 @@ map:
   - share:rw
 options:
   log_level: info
-  # addon-specific defaults...
+  # app-specific defaults...
 schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
-  # addon-specific schema...
+  # app-specific schema...
 ```
 
 ### build.yaml Conventions
@@ -184,14 +184,14 @@ build_from:
   aarch64: ghcr.io/hassio-addons/base:20.0.1
   amd64: ghcr.io/hassio-addons/base:20.0.1
 args:
-  <ADDON_NAME>_VERSION: X.Y.Z
+  <APP_NAME>_VERSION: X.Y.Z
 ```
 
-Always check what the current base image version is by looking at existing addons' build.yaml files - use the same version.
+Always check what the current base image version is by looking at existing apps' build.yaml files - use the same version.
 
 ### translations/en.yaml Format
 
-Every addon ships a `translations/en.yaml` at the addon root. Home Assistant renders it as the option **label** and **helper text** in the addon's Configuration tab, so the raw `config.yaml` keys (e.g. `unifi_api_key`) never appear in the UI. This file is **required** and must stay in sync with `config.yaml`'s `options`/`schema`.
+Every app ships a `translations/en.yaml` at the app root. Home Assistant renders it as the option **label** and **helper text** in the app's Configuration tab, so the raw `config.yaml` keys (e.g. `unifi_api_key`) never appear in the UI. This file is **required** and must stay in sync with `config.yaml`'s `options`/`schema`.
 
 Structure: a single top-level `configuration:` map keyed by the **exact** option keys from `config.yaml`. Each entry has:
 - `name:` — a Title Case, plain-English label (no snake_case, no jargon)
@@ -202,7 +202,7 @@ configuration:
   log_level:
     name: Log level
     description: >-
-      How much detail the add-on writes to its log. Leave on "info" unless you
+      How much detail the app writes to its log. Leave on "info" unless you
       are troubleshooting, in which case use "debug".
   some_host:
     name: Server address
@@ -219,7 +219,7 @@ Add one entry for **every** option in `config.yaml` — including `log_level`. S
 ARG BUILD_FROM
 FROM $BUILD_FROM
 
-ARG <ADDON>_VERSION=X.Y.Z
+ARG <APP>_VERSION=X.Y.Z
 
 # Always upgrade first to resolve package conflicts
 RUN apk upgrade --no-cache \
@@ -227,24 +227,24 @@ RUN apk upgrade --no-cache \
         ca-certificates \
         curl \
         jq \
-        # ... addon-specific packages
+        # ... app-specific packages
 
 # Download and install the application
-RUN mkdir -p /opt/<addon> \
+RUN mkdir -p /opt/<app> \
     && ARCH="$(uname -m)" \
     && if [ "${ARCH}" = "aarch64" ]; then \
-        <ADDON>_ARCH="arm64"; \
+        <APP>_ARCH="arm64"; \
     elif [ "${ARCH}" = "x86_64" ]; then \
-        <ADDON>_ARCH="amd64"; \
+        <APP>_ARCH="amd64"; \
     else \
         echo "Unsupported architecture: ${ARCH}"; \
         exit 1; \
     fi \
-    && echo "Downloading <Addon> v${<ADDON>_VERSION} for ${<ADDON>_ARCH}..." \
-    && curl -L -f -S -o /tmp/<addon>.tar.gz \
+    && echo "Downloading <App> v${<APP>_VERSION} for ${<APP>_ARCH}..." \
+    && curl -L -f -S -o /tmp/<app>.tar.gz \
         "<download-url>" \
     && # Extract/install as appropriate \
-    && rm /tmp/<addon>.tar.gz
+    && rm /tmp/<app>.tar.gz
 
 COPY rootfs /
 
@@ -274,12 +274,12 @@ LABEL \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.type="addon" \
     io.hass.version=${BUILD_VERSION} \
-    maintainer="<Addon> for Home Assistant" \
-    <addon>.version="${<ADDON>_VERSION}" \
+    maintainer="<App> for Home Assistant" \
+    <app>.version="${<APP>_VERSION}" \
     org.opencontainers.image.title="${BUILD_NAME}" \
     org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
-    org.opencontainers.image.vendor="Home Assistant Add-ons" \
-    org.opencontainers.image.authors="<Addon> for Home Assistant" \
+    org.opencontainers.image.vendor="Home Assistant Apps" \
+    org.opencontainers.image.authors="<App> for Home Assistant" \
     org.opencontainers.image.licenses="<license>" \
     org.opencontainers.image.url="<project-url>" \
     org.opencontainers.image.source="<source-url>" \
@@ -297,25 +297,25 @@ If the upstream provides checksums, verify them (see Portainer's Dockerfile for 
 ```bash
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: <Addon Name>
-# Runs initialization for <Addon Name>
+# Home Assistant App: <App Name>
+# Runs initialization for <App Name>
 # ==============================================================================
 bashio::require.unprotected  # Only if docker_api: true
 
 # Create data directories
 bashio::log.info "Creating data directories..."
-mkdir -p /data/<addon>
-chmod 755 /data/<addon>
+mkdir -p /data/<app>
+chmod 755 /data/<app>
 
 # Validate installation
-if [[ ! -f /opt/<addon>/<binary> ]]; then
+if [[ ! -f /opt/<app>/<binary> ]]; then
     bashio::log.error "<Binary> not found!"
     exit 1
 fi
 
-if [[ ! -x /opt/<addon>/<binary> ]]; then
+if [[ ! -x /opt/<app>/<binary> ]]; then
     bashio::log.warning "<Binary> not executable, fixing..."
-    chmod +x /opt/<addon>/<binary>
+    chmod +x /opt/<app>/<binary>
 fi
 
 # Check Docker socket (only if docker_api: true)
@@ -329,18 +329,18 @@ fi
 
 # Any one-time setup (secrets generation, DB init, etc.)
 
-bashio::log.info "<Addon Name> initialization complete"
+bashio::log.info "<App Name> initialization complete"
 ```
 
 **services.d/<name>/run** - Service runner (supervised, restarts on exit):
 ```bash
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: <Addon Name>
-# Runs <Addon Name>
+# Home Assistant App: <App Name>
+# Runs <App Name>
 # ==============================================================================
 
-bashio::log.info 'Starting <Addon Name>...'
+bashio::log.info 'Starting <App Name>...'
 
 # Read configuration and set environment variables
 # Use bashio::config for string values
@@ -367,33 +367,33 @@ bashio::log.info "Starting with configuration:"
 bashio::log.info "  KEY: ${VALUE}"
 
 # Execute the main process (MUST use exec)
-exec /opt/<addon>/<binary> [options...]
+exec /opt/<app>/<binary> [options...]
 ```
 
 **services.d/<name>/finish** - Exit handler:
 ```bash
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: <Addon Name>
-# Take down the S6 supervision tree when <Addon Name> fails
+# Home Assistant App: <App Name>
+# Take down the S6 supervision tree when <App Name> fails
 # ==============================================================================
 if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
-    bashio::log.warning "<Addon Name> crashed with exit code ${1}. Respawning..."
+    bashio::log.warning "<App Name> crashed with exit code ${1}. Respawning..."
 fi
 ```
 
 ### AppArmor Profile
 
-Start with the standard template from `references/templates.md`. The profile name should match the addon slug. Add addon-specific paths for:
-- Binary location (`/opt/<addon>/** ix`)
-- Data directories (`owner /data/<addon>/** rwk`)
-- Any additional filesystem paths the addon needs
+Start with the standard template from `references/templates.md`. The profile name should match the app slug. Add app-specific paths for:
+- Binary location (`/opt/<app>/** ix`)
+- Data directories (`owner /data/<app>/** rwk`)
+- Any additional filesystem paths the app needs
 - Docker socket access (if `docker_api: true`)
 
-**Critical: Character device access (GPIO, vcio, etc.)**: If the addon uses `ioctl()` on character devices (e.g., `/dev/gpiochip*`, `/dev/vcio`), do NOT add specific path rules like `/dev/gpiochip* rw,`. Specific path rules override the blanket `file,` rule and strip ioctl permission. Use only the blanket `file,` rule:
+**Critical: Character device access (GPIO, vcio, etc.)**: If the app uses `ioctl()` on character devices (e.g., `/dev/gpiochip*`, `/dev/vcio`), do NOT add specific path rules like `/dev/gpiochip* rw,`. Specific path rules override the blanket `file,` rule and strip ioctl permission. Use only the blanket `file,` rule:
 
 ```
-profile addon_slug flags=(attach_disconnected,mediate_deleted) {
+profile app_slug flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
   capability,
   file,
@@ -406,7 +406,7 @@ If even this doesn't work (HAOS kernel AppArmor version may block ioctl regardle
 
 ### build.sh
 
-The build script follows an identical pattern across all addons. Read `references/templates.md` for the template. Customize:
+The build script follows an identical pattern across all apps. Read `references/templates.md` for the template. Customize:
 - The version ARG name (e.g., `PORTAINER_VERSION`, `ARCANE_VERSION`)
 - The build description string
 - The test `docker run` command with correct ports
@@ -415,11 +415,11 @@ The build script follows an identical pattern across all addons. Read `reference
 
 Read `references/ci-automation.md` for full details. This phase creates:
 
-1. **Update script** (`.github/scripts/update-<addon>.sh`) - Checks upstream for new versions and updates all addon files
-2. **Update workflow** (`.github/workflows/update-<addon>.yml`) - Runs the update script daily and creates PRs
+1. **Update script** (`.github/scripts/update-<app>.sh`) - Checks upstream for new versions and updates all app files
+2. **Update workflow** (`.github/workflows/update-<app>.yml`) - Runs the update script daily and creates PRs
 3. **Modifications to existing files**:
-   - Add the addon to `.github/scripts/update-base-image.sh` addon list
-   - The builder workflow (`builder.yml`) auto-discovers addons, so no changes needed there
+   - Add the app to the `APP_DIRS` list in `.github/scripts/update-base-image.sh`
+   - The builder workflow (`builder.yml`) auto-discovers apps, so no changes needed there
 
 ### Update Script Pattern
 
@@ -435,23 +435,23 @@ The update script must:
 ### Update Workflow Pattern
 
 ```yaml
-name: Update <Addon Name>
+name: Update <App Name>
 on:
   schedule:
     - cron: '<MM> <HH> * * *'  # Pick a unique time slot (check existing workflows)
   workflow_dispatch:
 ```
 
-Use `peter-evans/create-pull-request@v6` with `sign-commits: true` and labels `automated, <addon-slug>, update`. Trigger `repository_dispatch` after PR creation so the validation workflow runs.
+Use `peter-evans/create-pull-request@v6` with `sign-commits: true` and labels `automated, <app-slug>, update`. Trigger `repository_dispatch` after PR creation so the validation workflow runs.
 
 ## Phase 5: Verification Checklist
 
-Before considering the addon complete, verify:
+Before considering the app complete, verify:
 
 - [ ] `config.yaml` has all required fields and valid schema types
 - [ ] `translations/en.yaml` exists and documents **every** `config.yaml` option with a Title Case `name:` and a plain-English `description:`
-- [ ] Version is consistent across `config.yaml`, `build.yaml` args, and `Dockerfile` `ARG <ADDON>_VERSION=`
-- [ ] `build.yaml` uses the same base image version as other addons
+- [ ] Version is consistent across `config.yaml`, `build.yaml` args, and `Dockerfile` `ARG <APP>_VERSION=`
+- [ ] `build.yaml` uses the same base image version as other apps
 - [ ] Dockerfile starts with `apk upgrade --no-cache` before `apk add`
 - [ ] Dockerfile has `ARG BUILD_FROM` with no default (version comes from `build.yaml`)
 - [ ] Architecture detection covers aarch64 and amd64 only
@@ -463,13 +463,13 @@ Before considering the addon complete, verify:
 - [ ] `build.sh` extracts correct version ARG name from build.yaml
 - [ ] Update script handles the upstream's version format correctly
 - [ ] Update workflow has a unique cron schedule (don't overlap with existing ones)
-- [ ] Base image update script includes the new addon
+- [ ] Base image update script includes the new app
 - [ ] `icon.png` exists (PNG, minimum 256x256, sourced from upstream project branding)
 - [ ] CHANGELOG.md has an initial entry in the regex-compatible format (`## X.Y.Z` on its own line, date on the line below as `_YYYY-MM-DD_`)
-- [ ] Dockerfile defines a `HEALTHCHECK` matching the `watchdog:` endpoint (skip only for headless/hardware addons with no probe target)
+- [ ] Dockerfile defines a `HEALTHCHECK` matching the `watchdog:` endpoint (skip only for headless/hardware apps with no probe target)
 - [ ] README.md has correct architecture shields (only aarch64 and amd64)
-- [ ] CLAUDE.md accurately describes the addon's architecture and critical details
-- [ ] Local build succeeds: `cd <addon> && ./build.sh`
+- [ ] CLAUDE.md accurately describes the app's architecture and critical details
+- [ ] Local build succeeds: `cd <app> && ./build.sh`
 
 ## Existing Cron Schedule Reference
 
@@ -486,13 +486,13 @@ As of last update, the occupied slots were:
 - 3:30 AM UTC - Huly updates
 - 4:00 AM UTC - MuninnDB updates
 
-Pick an unoccupied slot (e.g., 4:00, 4:30, 5:00 AM UTC). Always verify with the grep above since new addons may have claimed slots since this list was written.
+Pick an unoccupied slot (e.g., 4:00, 4:30, 5:00 AM UTC). Always verify with the grep above since new apps may have claimed slots since this list was written.
 
 ## Icon File
 
-Each addon **must** have an `icon.png` in its root directory (CI validation will fail without it). Requirements:
+Each app **must** have an `icon.png` in its root directory (CI validation will fail without it). Requirements:
 - **Format**: PNG, minimum 256x256 pixels
 - **Source**: Download from the upstream project's website or GitHub repo (logo, favicon, og:image)
 - **Conversion** (if needed): `magick input.{jpg,svg,webp} -resize <size>x<size> -background none -flatten PNG32:icon.png`
 
-The icon appears in the Home Assistant addon store and sidebar.
+The icon appears in the Home Assistant app store and sidebar.

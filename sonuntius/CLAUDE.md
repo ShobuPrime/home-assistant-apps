@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant App that bridges Cast / DIAL senders (YouTube, YouTube Music, Tidal) onto a Music Assistant–controlled Sendspin player. The addon does **not** relay audio in proxy mode — it extracts the playback intent (track id, transport command, volume) from the sender's protocol and asks Music Assistant to play the corresponding content via its native YouTube Music / Tidal provider integrations. An opt-in Tidal Connect binary fallback path is documented for the cases where the Cast proxy cannot extract Tidal track IDs.
+This is a Home Assistant App that bridges Cast / DIAL senders (YouTube, YouTube Music, Tidal) onto a Music Assistant–controlled Sendspin player. The app does **not** relay audio in proxy mode — it extracts the playback intent (track id, transport command, volume) from the sender's protocol and asks Music Assistant to play the corresponding content via its native YouTube Music / Tidal provider integrations. An opt-in Tidal Connect binary fallback path is documented for the cases where the Cast proxy cannot extract Tidal track IDs.
 
 The implementation is staged across six phases. The phase plan and rationale are summarized in the **Phase status** section below; for a deeper architectural overview see the `Architecture and Key Components` section further down and the `# Architecture` block in `DOCS.md`.
 
 ### Phase status
 
-- **Phase 0** — Scaffolding (S6 services, addon manifest, smoke test). Done.
+- **Phase 0** — Scaffolding (S6 services, app manifest, smoke test). Done.
 - **Phase 1** — Music Assistant bridge skeleton: HA REST client, IPC broker, dispatcher, HA WS state subscription. Done.
 - **Phase 2** — YouTube / YouTube Music via DIAL + Lounge: full Go 1.26 port of `yt-cast-receiver` v2.1.1 (commit `83d61fa169e33c5e0046c2440b99a17cd9493e73`) under `internal/ytcast/`, plus a sonuntius binary at `cmd/yt-cast/` that emits `PlayIntent` events into the existing IPC broker. Done.
 - **Phase 3** — Tidal proxy via CASTV2 + AirReceiver auth replay. Done.
@@ -41,7 +41,7 @@ The implementation is staged across six phases. The phase plan and rationale are
     format lives (`encodeFrame`) — currently raw-PCM-through, marked as
     a Phase 2.1 TODO pending the public Sendspin spec.
   - Disabled by default. Enable via `tidal_fallback.enabled = true` in
-    addon options, plus drop the iFi tarball at the configured path.
+    app options, plus drop the iFi tarball at the configured path.
 - **Phase 6** — Polish. Done.
   - 6a (Direct MA WS): `internal/ma/` opens `ws://<host>:8095/ws`,
     handles the schema-aware auth handshake, subscribes to MA player
@@ -59,7 +59,7 @@ The implementation is staged across six phases. The phase plan and rationale are
 
 ### Building and Testing
 ```bash
-# Build the addon image locally (auto-detects architecture)
+# Build the app image locally (auto-detects architecture)
 ./build.sh
 
 # Run the full smoke test (mock Supervisor + container + IPC round-trip)
@@ -78,7 +78,7 @@ sonuntius-ctl volume --level 0.4
 
 ### Version Management
 
-This addon has no upstream binary to track — the addon IS the software. Version bumps are manual. There is no update script or automated update workflow.
+This app has no upstream binary to track — the app IS the software. Version bumps are manual. There is no update script or automated update workflow.
 
 ## Architecture and Key Components
 
@@ -86,7 +86,7 @@ This addon has no upstream binary to track — the addon IS the software. Versio
 
 1. **Init script** (`cont-init.d/10-prepare.sh`): Creates `/data/sonuntius/` and `/run/sonuntius/`, validates the `ma-bridge` binary is present.
 2. **ma-bridge daemon** (`services.d/ma-bridge/run` → `/usr/local/bin/ma-bridge`):
-   - Loads addon options from `/data/options.json` (real HA) or the Supervisor REST API (smoke test).
+   - Loads app options from `/data/options.json` (real HA) or the Supervisor REST API (smoke test).
    - Opens the JSON-line UDS broker at `/run/sonuntius/events.sock`.
    - Subscribes to HA WebSocket `state_changed` events for the configured `media_player.*` entity and broadcasts derived `PlayerState` frames to IPC clients.
    - Translates incoming `PlayIntent` / `TransportCommand` / `VolumeCommand` events into HA `media_player.*` REST calls.
@@ -112,13 +112,13 @@ The `internal/ytcast/` tree is a maintained port of an external project. Two inv
 - **`/cmd/yt-cast/`**: YouTube / YT Music DIAL + Lounge receiver service. Wraps the `internal/ytcast` library with a sonuntius-specific Player adapter that emits IPC events.
 - **`/cmd/cast-receiver/`**: Tidal proxy + Default Media Receiver fallback service. Wraps the `internal/castv2` package — mDNS responder + TLS Server + Tidal/Generic parsers — and translates parser-claimed LOAD intents into `PlayIntent` events on the IPC bus.
 - **`/cmd/alsa-to-sendspin/`**: Phase 5 opt-in fallback forwarder. Execs `arecord` against the ALSA loopback capture side (where the iFi `tidal_connect_application` writes its decoded Tidal audio) and pushes PCM frames over WebSocket to the configured Sendspin server. The `encodeFrame` function is the wire-format hook — currently raw-PCM-through pending the public Sendspin spec.
-- **`/internal/config/`**: Addon options loader (file → Supervisor REST fallback).
+- **`/internal/config/`**: App options loader (file → Supervisor REST fallback).
 - **`/internal/events/`**: Wire types for the IPC protocol (`PlayIntent`, `TransportCommand`, `VolumeCommand`, `PlayerState`) with self-describing JSON via a `type` discriminator.
 - **`/internal/ipc/`**: JSON-line UDS broker — server (in ma-bridge) and client (in receivers and `sonuntius-ctl`).
 - **`/internal/ha/`**: HA REST client routed through the Supervisor proxy (`http://supervisor/core/api`).
 - **`/internal/state/`**: HA core WebSocket state watcher; subscribes via `subscribe_trigger` and broadcasts `PlayerState`. Fallback for the direct MA WS path.
-- **`/internal/ma/`**: Music Assistant direct WebSocket client. Preferred state-subscription path when the MA addon is reachable. Handles the schema-aware auth handshake and translates MA `player_updated` events to `PlayerState` frames.
-- **`/internal/health/`**: Loopback HTTP health endpoint (127.0.0.1:8099) hosted by ma-bridge. Aggregates per-component status as JSON for HA's addon watchdog.
+- **`/internal/ma/`**: Music Assistant direct WebSocket client. Preferred state-subscription path when the MA app is reachable. Handles the schema-aware auth handshake and translates MA `player_updated` events to `PlayerState` frames.
+- **`/internal/health/`**: Loopback HTTP health endpoint (127.0.0.1:8099) hosted by ma-bridge. Aggregates per-component status as JSON for HA's app watchdog.
 - **`/internal/dispatcher/`**: Routes IPC events to HA service calls; owns the `(provider, track_id) → media_content_id` URI translation.
 - **`/internal/ytcast/`**: Go 1.26 port of [`yt-cast-receiver`](https://github.com/patrickkfkan/yt-cast-receiver) v2.1.1. Subpackages: `logger`, `datastore`, `asyncq`, `yterrors`, `constants`, `types`, `player`, `dial` (stdlib SSDP + UPnP + DIAL HTTP), `lounge` (RPCConnection, Message, BindParams, Session, Playlist, PairingCode). Top-level files `youtubeapp.go`, `receiver.go`, `engine.go` are the orchestrator. Upstream commit pinned in `constants/upstream.go` and `UPSTREAM.md`. Every file opens with a `// Maps to:` header naming its upstream source.
 - **`/internal/castv2/`**: Stdlib CASTV2 protocol stack. Top-level files implement the wire framing (`castmessage.go`, `framing.go`), the orchestrating `Server`, the `Intent` / `Message` shared types, and a package doc. Subpackages: `auth` (AirReceiver responder), `namespaces` (connection, heartbeat, receiver, media handlers + the `Parser` interface + `LogOnlyParser`), `mdns` (RFC 6762 + RFC 6763 responder), `parsers` (Phase 3b/4 — `NewTidal`, `NewGeneric`). No upstream pin file; the package implements a protocol spec rather than tracking a specific upstream codebase.
@@ -127,7 +127,7 @@ The `internal/ytcast/` tree is a maintained port of an external project. Two inv
 
 ### Critical Files
 
-- **`config.yaml`**: Addon configuration. `host_network: true` is mandatory — Cast (mDNS) and DIAL (SSDP) are L2 broadcast and don't traverse Docker bridge networking.
+- **`config.yaml`**: App configuration. `host_network: true` is mandatory — Cast (mDNS) and DIAL (SSDP) are L2 broadcast and don't traverse Docker bridge networking.
 - **`translations/en.yaml`**: Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options).
 - **`build.yaml`**: hassio-addons base image per architecture (auto-bumped by the repo workflow).
 - **`Dockerfile`**: Multi-stage Go builder + hassio-addons base. `ARG BUILD_FROM` has no inline default (per repo policy).
@@ -143,10 +143,10 @@ armhf / armv7 / i386 are not supported — hassio-addons base v19+ dropped those
 
 ### Port and Network Layout
 
-- **`host_network: true`** is required for mDNS (`_googlecast._tcp.local`, port 5353/udp) and SSDP (port 1900/udp) advertisements. Without it, Android Cast/DIAL senders cannot discover the addon.
+- **`host_network: true`** is required for mDNS (`_googlecast._tcp.local`, port 5353/udp) and SSDP (port 1900/udp) advertisements. Without it, Android Cast/DIAL senders cannot discover the app.
 - **8009/tcp** — CASTV2 receiver (Phase 3+; bound by `cast-receiver`).
 - **8008/tcp** — DIAL HTTP endpoint (Phase 2+; bound by `yt-cast`).
-- **`/run/sonuntius/events.sock`** — UDS IPC broker (internal to the addon).
+- **`/run/sonuntius/events.sock`** — UDS IPC broker (internal to the app).
 
 ## Development Guidelines
 
@@ -158,7 +158,7 @@ armhf / armv7 / i386 are not supported — hassio-addons base v19+ dropped those
 
 ### Configuration Handling
 
-- Addon options are read once at startup. The Go bridge does **not** call bashio — it reads `/data/options.json` directly (or the Supervisor REST API at `/addons/self/options/config` for smoke-test environments).
+- App options are read once at startup. The Go bridge does **not** call bashio — it reads `/data/options.json` directly (or the Supervisor REST API at `/addons/self/options/config` for smoke-test environments).
 - `ma_player_id` is the only required option; the dispatcher logs and drops events when it's empty rather than crashing.
 
 ### IPC Protocol
@@ -210,15 +210,15 @@ When updating version:
 
 ### Issue: ma-bridge logs `SUPERVISOR_TOKEN unset` and exits
 
-**Cause:** The addon is being run outside HA without the Supervisor token injected.
+**Cause:** The app is being run outside HA without the Supervisor token injected.
 
 **Solution:** When running locally, set `SUPERVISOR_TOKEN` manually (the smoke-test harness does this). In real HA, the token is auto-injected because `hassio_api: true` and `homeassistant_api: true` are set in `config.yaml`.
 
 ### Issue: Dispatcher logs `dispatcher idle (ma_player_id unset)` and drops events
 
-**Cause:** The `ma_player_id` option is empty in the addon configuration.
+**Cause:** The `ma_player_id` option is empty in the app configuration.
 
-**Solution:** Set `ma_player_id` in the addon UI to the Music Assistant player entity ID (e.g. `media_player.sendspin_living_room`) and restart the addon.
+**Solution:** Set `ma_player_id` in the app UI to the Music Assistant player entity ID (e.g. `media_player.sendspin_living_room`) and restart the app.
 
 ### Issue: HA WebSocket state subscription keeps disconnecting
 
@@ -226,7 +226,7 @@ When updating version:
 
 **Solution:** The watcher reconnects with exponential backoff (2 s → 60 s). Check the logs for the rejection reason; if it's `subscribe_trigger rejected`, verify the entity exists via the HA developer tools.
 
-### Issue: Phone does not see the addon as a Cast / DIAL target
+### Issue: Phone does not see the app as a Cast / DIAL target
 
 **Cause:** Phase 2 / 3 receivers are not yet implemented (only the bridge is online as of Phase 1), or `host_network: true` is disabled.
 

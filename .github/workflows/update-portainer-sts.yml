@@ -27,7 +27,7 @@ jobs:
         id: check
         run: |
           cd portainer_ee_sts
-          result=$(ADDON_PATH=. VERSION_TYPE=sts CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-portainer.sh)
+          result=$(APP_PATH=. VERSION_TYPE=sts CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-portainer.sh)
           echo "Result: $result"
 
           update_available=$(echo "$result" | jq -r '.update_available')
@@ -59,7 +59,7 @@ jobs:
         id: update
         run: |
           cd portainer_ee_sts
-          ADDON_PATH=. VERSION_TYPE=sts CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-portainer.sh
+          APP_PATH=. VERSION_TYPE=sts CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-portainer.sh
 
       - name: Create Pull Request
         id: create-pr
@@ -118,6 +118,6 @@ jobs:
                 "pull_request_number": "${{ steps.create-pr.outputs.pull-request-number }}",
                 "head_sha": "${{ steps.create-pr.outputs.pull-request-head-sha }}",
                 "branch": "update-portainer-sts-${{ needs.check-update.outputs.latest_version }}",
-                "addon": "portainer_ee_sts"
+                "app": "portainer_ee_sts"
               }
             }'

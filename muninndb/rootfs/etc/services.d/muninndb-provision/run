@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: MuninnDB
+# Home Assistant App: MuninnDB
 # Post-startup provisioning: sets admin password and creates default vault.
 # Runs as an S6 service that exits after provisioning is complete.
 # ==============================================================================

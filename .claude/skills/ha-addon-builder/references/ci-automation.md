@@ -1,6 +1,6 @@
 # CI/CD Automation Reference
 
-This file contains templates for automated version update scripts and GitHub Actions workflows. These integrate the new addon into the repository's existing automation pipeline.
+This file contains templates for automated version update scripts and GitHub Actions workflows. These integrate the new app into the repository's existing automation pipeline.
 
 ## Table of Contents
 
@@ -13,7 +13,7 @@ This file contains templates for automated version update scripts and GitHub Act
 
 ## Update Script Template
 
-Save as `.github/scripts/update-<addon>.sh`. This script checks for upstream updates and modifies addon files when a new version is available.
+Save as `.github/scripts/update-<app>.sh`. This script checks for upstream updates and modifies app files when a new version is available.
 
 The script operates in two modes:
 - **Check mode** (`CHECK_ONLY=true`): Only checks if an update is available, outputs JSON
@@ -21,13 +21,13 @@ The script operates in two modes:
 
 ```bash
 #!/bin/bash
-# Update script for <Addon Name> addon
-# Usage: CHECK_ONLY=true JSON_OUTPUT=true bash update-<addon>.sh
+# Update script for <App Name> app
+# Usage: CHECK_ONLY=true JSON_OUTPUT=true bash update-<app>.sh
 
 set -e
 
 # Configuration
-ADDON_PATH="${ADDON_PATH:-.}"
+APP_PATH="${APP_PATH:-.}"
 CHECK_ONLY="${CHECK_ONLY:-false}"
 JSON_OUTPUT="${JSON_OUTPUT:-false}"
 SILENT="${SILENT:-false}"
@@ -52,12 +52,12 @@ log() {
 }
 
 # Get current version from config.yaml
-CURRENT_VERSION=$(grep "^version:" "${ADDON_PATH}/config.yaml" | cut -d'"' -f2)
+CURRENT_VERSION=$(grep "^version:" "${APP_PATH}/config.yaml" | cut -d'"' -f2)
 log "Current version: ${YELLOW}${CURRENT_VERSION}${NC}"
 
 # Fetch latest version from upstream
 # ===================================
-# CUSTOMIZE THIS SECTION for each addon's version source.
+# CUSTOMIZE THIS SECTION for each app's version source.
 # See "Version Source Patterns" section below for examples.
 # ===================================
 
@@ -67,7 +67,7 @@ MAX_RETRIES=3
 RETRY_DELAY=2
 
 for i in $(seq 1 $MAX_RETRIES); do
-    # --- REPLACE THIS BLOCK with addon-specific version detection ---
+    # --- REPLACE THIS BLOCK with app-specific version detection ---
     RESPONSE=$(curl -s -f "https://api.github.com/repos/<owner>/<repo>/releases/latest" 2>/dev/null) && break
     log "${YELLOW}Retry $i/$MAX_RETRIES...${NC}"
     sleep $RETRY_DELAY
@@ -81,7 +81,7 @@ if [ -z "$RESPONSE" ]; then
     exit 1
 fi
 
-# --- REPLACE with addon-specific version extraction ---
+# --- REPLACE with app-specific version extraction ---
 LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')
 CHANGELOG=$(echo "$RESPONSE" | jq -r '.body // "No changelog available"')
 
@@ -112,19 +112,19 @@ fi
 log "\n${YELLOW}Applying update...${NC}"
 
 # Update config.yaml - version field
-sed -i "s/^version: \".*\"/version: \"${LATEST_VERSION}\"/" "${ADDON_PATH}/config.yaml"
+sed -i "s/^version: \".*\"/version: \"${LATEST_VERSION}\"/" "${APP_PATH}/config.yaml"
 log "Updated config.yaml"
 
 # Update build.yaml - version arg
-sed -i "s/<ADDON_UPPER>_VERSION: .*/<ADDON_UPPER>_VERSION: ${LATEST_VERSION}/" "${ADDON_PATH}/build.yaml"
+sed -i "s/<APP_UPPER>_VERSION: .*/<APP_UPPER>_VERSION: ${LATEST_VERSION}/" "${APP_PATH}/build.yaml"
 log "Updated build.yaml"
 
 # Update Dockerfile - ARG default
-sed -i "s/ARG <ADDON_UPPER>_VERSION=.*/ARG <ADDON_UPPER>_VERSION=${LATEST_VERSION}/" "${ADDON_PATH}/Dockerfile"
+sed -i "s/ARG <APP_UPPER>_VERSION=.*/ARG <APP_UPPER>_VERSION=${LATEST_VERSION}/" "${APP_PATH}/Dockerfile"
 log "Updated Dockerfile"
 
 # Update README.md - version reference (conservative regex)
-sed -i "s/Currently running <Addon Name> [0-9][0-9.]*/Currently running <Addon Name> ${LATEST_VERSION}/" "${ADDON_PATH}/README.md"
+sed -i "s/Currently running <App Name> [0-9][0-9.]*/Currently running <App Name> ${LATEST_VERSION}/" "${APP_PATH}/README.md"
 log "Updated README.md"
 
 # Update DOCS.md (if it has version references)
@@ -148,14 +148,14 @@ ${CHANGELOG}
 # Insert after the first "# Changelog" line
 sed -i "/^# Changelog$/a\\
 \\
-${CHANGELOG_ENTRY}" "${ADDON_PATH}/CHANGELOG.md" 2>/dev/null || {
+${CHANGELOG_ENTRY}" "${APP_PATH}/CHANGELOG.md" 2>/dev/null || {
     # Fallback: prepend with temp file
     TEMP_FILE=$(mktemp)
     echo "# Changelog
 
 ${CHANGELOG_ENTRY}" > "$TEMP_FILE"
-    tail -n +2 "${ADDON_PATH}/CHANGELOG.md" >> "$TEMP_FILE"
-    mv "$TEMP_FILE" "${ADDON_PATH}/CHANGELOG.md"
+    tail -n +2 "${APP_PATH}/CHANGELOG.md" >> "$TEMP_FILE"
+    mv "$TEMP_FILE" "${APP_PATH}/CHANGELOG.md"
 }
 log "Updated CHANGELOG.md"
 
@@ -171,9 +171,9 @@ fi
 ### Customization Points
 
 Replace these placeholders:
-- `<addon>` - addon slug (lowercase, underscores)
-- `<Addon Name>` - human-readable name
-- `<ADDON_UPPER>` - uppercase version ARG name (e.g., `PORTAINER`, `ARCANE`)
+- `<app>` - app slug (lowercase, underscores)
+- `<App Name>` - human-readable name
+- `<APP_UPPER>` - uppercase version ARG name (e.g., `PORTAINER`, `ARCANE`)
 - `<owner>/<repo>` - upstream GitHub repository
 - The version detection block (see Version Source Patterns below)
 
@@ -181,10 +181,10 @@ Replace these placeholders:
 
 ## Update Workflow Template
 
-Save as `.github/workflows/update-<addon>.yml`.
+Save as `.github/workflows/update-<app>.yml`.
 
 ```yaml
-name: Update <Addon Name>
+name: Update <App Name>
 
 on:
   schedule:
@@ -212,8 +212,8 @@ jobs:
       - name: Check for updates
         id: check
         run: |
-          cd <addon_slug>
-          result=$(ADDON_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-<addon>.sh)
+          cd <app_slug>
+          result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-<app>.sh)
           echo "Result: $result"
 
           update_available=$(echo "$result" | jq -r '.update_available')
@@ -241,11 +241,11 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Update <Addon Name>
+      - name: Update <App Name>
         id: update
         run: |
-          cd <addon_slug>
-          ADDON_PATH=. CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-<addon>.sh
+          cd <app_slug>
+          APP_PATH=. CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-<app>.sh
 
       - name: Create Pull Request
         id: create-pr
@@ -254,16 +254,16 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           sign-commits: true
           commit-message: |
-            Update <Addon Name> to ${{ needs.check-update.outputs.latest_version }}
+            Update <App Name> to ${{ needs.check-update.outputs.latest_version }}
 
             Automated update from ${{ needs.check-update.outputs.current_version }} to ${{ needs.check-update.outputs.latest_version }}
-          branch: update-<addon>-${{ needs.check-update.outputs.latest_version }}
+          branch: update-<app>-${{ needs.check-update.outputs.latest_version }}
           delete-branch: true
-          title: "Update <Addon Name> to ${{ needs.check-update.outputs.latest_version }}"
+          title: "Update <App Name> to ${{ needs.check-update.outputs.latest_version }}"
           body: |
-            ## <Addon Name> Update
+            ## <App Name> Update
 
-            This automated PR updates <Addon Name> from `${{ needs.check-update.outputs.current_version }}` to `${{ needs.check-update.outputs.latest_version }}`.
+            This automated PR updates <App Name> from `${{ needs.check-update.outputs.current_version }}` to `${{ needs.check-update.outputs.latest_version }}`.
 
             ### Changelog
 
@@ -272,8 +272,8 @@ jobs:
             ### Changes
 
             - Updated `config.yaml` version
-            - Updated `build.yaml` <ADDON_UPPER>_VERSION
-            - Updated `Dockerfile` <ADDON_UPPER>_VERSION
+            - Updated `build.yaml` <APP_UPPER>_VERSION
+            - Updated `Dockerfile` <APP_UPPER>_VERSION
             - Updated documentation files
             - Updated CHANGELOG.md
 
@@ -283,10 +283,10 @@ jobs:
 
             ---
 
-            This PR was automatically generated by the Update <Addon Name> workflow
+            This PR was automatically generated by the Update <App Name> workflow
           labels: |
             automated
-            <addon_slug>
+            <app_slug>
             update
           draft: false
 
@@ -302,8 +302,8 @@ jobs:
               "client_payload": {
                 "pull_request_number": "${{ steps.create-pr.outputs.pull-request-number }}",
                 "head_sha": "${{ steps.create-pr.outputs.pull-request-head-sha }}",
-                "branch": "update-<addon>-${{ needs.check-update.outputs.latest_version }}",
-                "addon": "<addon_slug>"
+                "branch": "update-<app>-${{ needs.check-update.outputs.latest_version }}",
+                "app": "<app_slug>"
               }
             }'
 ```
@@ -319,19 +319,19 @@ jobs:
 
 ## Base Image Script Integration
 
-After creating the addon, add it to the existing base image update script at `.github/scripts/update-base-image.sh`.
+After creating the app, add it to the existing base image update script at `.github/scripts/update-base-image.sh`.
 
-Find the line that defines the list of addons to update (it looks like):
+Find the line that defines the list of apps to update (it looks like):
 ```bash
-ADDONS="arcane dockge dockhand huly portainer_ee_lts portainer_ee_sts"
+APP_DIRS="arcane dockge dockhand hay_cm5_fan huly muninndb portainer_ee_lts portainer_ee_sts sonuntius aegis_ha"
 ```
 
-Add the new addon slug to this list:
+Add the new app slug to this list:
 ```bash
-ADDONS="arcane dockge dockhand huly <addon_slug> portainer_ee_lts portainer_ee_sts"
+APP_DIRS="arcane dockge dockhand hay_cm5_fan huly muninndb portainer_ee_lts portainer_ee_sts sonuntius aegis_ha <app_slug>"
 ```
 
-This ensures base image updates are applied to the new addon automatically.
+This ensures base image updates are applied to the new app automatically.
 
 ---
 
@@ -386,5 +386,5 @@ CHANGELOG=$(echo "$RESPONSE" | jq -r '.[0] | .changes[]' | sed 's/^/- /')
 1. **GitHub Releases API** is the most common and reliable
 2. If the project has multiple release tracks, filter by release name or tag pattern
 3. If the project doesn't use GitHub Releases, check if they have a version file, changelog JSON, or Docker Hub tags
-4. Always strip the `v` prefix from version tags if present (addon versions use bare numbers)
+4. Always strip the `v` prefix from version tags if present (app versions use bare numbers)
 5. Always include retry logic (3 attempts, 2-second delay) for API calls

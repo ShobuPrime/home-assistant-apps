@@ -13,7 +13,7 @@ on:
     types: [automated-pr-created]
   workflow_dispatch:
     inputs:
-      addon:
+      app:
         description: 'App to build (or "all")'
         required: true
         type: string
@@ -23,9 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Initialize build
     outputs:
-      changed_addons: ${{ steps.changed_addons.outputs.addons }}
-      changed: ${{ steps.changed_addons.outputs.changed }}
-      all_addons: ${{ steps.all_addons.outputs.addons }}
+      changed_apps: ${{ steps.changed_apps.outputs.apps }}
+      changed: ${{ steps.changed_apps.outputs.changed }}
+      all_apps: ${{ steps.all_apps.outputs.apps }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -34,51 +34,51 @@ jobs:
           fetch-depth: 0
 
       - name: Discover all apps
-        id: all_addons
+        id: all_apps
         run: |
           # Dynamically find all app directories (those with config.yaml)
-          declare -a all_addons
+          declare -a all_apps
           for config in */config.yaml; do
-            addon_dir=$(dirname "$config")
+            app_dir=$(dirname "$config")
             # Skip hidden directories and non-app directories
-            if [[ ! "$addon_dir" =~ ^\. ]]; then
-              all_addons+=("$addon_dir")
-              echo "Found app: $addon_dir"
+            if [[ ! "$app_dir" =~ ^\. ]]; then
+              all_apps+=("$app_dir")
+              echo "Found app: $app_dir"
             fi
           done
 
           # Create JSON array of all apps
-          addons_json=$(printf '%s\n' "${all_addons[@]}" | jq -R . | jq -sc '.')
-          echo "addons=${addons_json}" >> "$GITHUB_OUTPUT"
-          echo "All apps: ${addons_json}"
+          apps_json=$(printf '%s\n' "${all_apps[@]}" | jq -R . | jq -sc '.')
+          echo "apps=${apps_json}" >> "$GITHUB_OUTPUT"
+          echo "All apps: ${apps_json}"
 
       - name: Find changed apps
-        id: changed_addons
+        id: changed_apps
         run: |
-          declare -a changed_addons
+          declare -a changed_apps
 
           # For manual dispatch or repository_dispatch, use the specified app
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            DISPATCH_ADDON="${{ github.event.inputs.addon }}"
-            echo "Triggered manually for app: ${DISPATCH_ADDON}"
+            DISPATCH_APP="${{ github.event.inputs.app }}"
+            echo "Triggered manually for app: ${DISPATCH_APP}"
           elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            DISPATCH_ADDON="${{ github.event.client_payload.addon }}"
-            echo "Triggered via repository_dispatch for app: ${DISPATCH_ADDON}"
+            DISPATCH_APP="${{ github.event.client_payload.app }}"
+            echo "Triggered via repository_dispatch for app: ${DISPATCH_APP}"
           fi
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "repository_dispatch" ]; then
 
-            if [ "${DISPATCH_ADDON}" = "all" ]; then
+            if [ "${DISPATCH_APP}" = "all" ]; then
               for config in */config.yaml; do
-                addon_dir=$(dirname "$config")
-                if [[ ! "$addon_dir" =~ ^\. ]]; then
-                  changed_addons+=("\"${addon_dir}\"")
-                  echo "Building app: $addon_dir"
+                app_dir=$(dirname "$config")
+                if [[ ! "$app_dir" =~ ^\. ]]; then
+                  changed_apps+=("\"${app_dir}\"")
+                  echo "Building app: $app_dir"
                 fi
               done
             else
-              changed_addons+=("\"${DISPATCH_ADDON}\"")
-              echo "Building app: ${DISPATCH_ADDON}"
+              changed_apps+=("\"${DISPATCH_APP}\"")
+              echo "Building app: ${DISPATCH_APP}"
             fi
 
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -90,11 +90,11 @@ jobs:
             echo "$CHANGED_FILES"
 
             for config in */config.yaml; do
-              addon_dir=$(dirname "$config")
-              if [[ ! "$addon_dir" =~ ^\. ]]; then
-                if echo "$CHANGED_FILES" | grep -q "^${addon_dir}/"; then
-                  changed_addons+=("\"${addon_dir}\"")
-                  echo "App changed: $addon_dir"
+              app_dir=$(dirname "$config")
+              if [[ ! "$app_dir" =~ ^\. ]]; then
+                if echo "$CHANGED_FILES" | grep -q "^${app_dir}/"; then
+                  changed_apps+=("\"${app_dir}\"")
+                  echo "App changed: $app_dir"
                 fi
               fi
             done
@@ -105,9 +105,9 @@ jobs:
             if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
               echo "Initial push, building all apps"
               for config in */config.yaml; do
-                addon_dir=$(dirname "$config")
-                if [[ ! "$addon_dir" =~ ^\. ]]; then
-                  changed_addons+=("\"${addon_dir}\"")
+                app_dir=$(dirname "$config")
+                if [[ ! "$app_dir" =~ ^\. ]]; then
+                  changed_apps+=("\"${app_dir}\"")
                 fi
               done
             else
@@ -116,11 +116,11 @@ jobs:
               echo "$CHANGED_FILES"
 
               for config in */config.yaml; do
-                addon_dir=$(dirname "$config")
-                if [[ ! "$addon_dir" =~ ^\. ]]; then
-                  if echo "$CHANGED_FILES" | grep -q "^${addon_dir}/"; then
-                    changed_addons+=("\"${addon_dir}\"")
-                    echo "App changed: $addon_dir"
+                app_dir=$(dirname "$config")
+                if [[ ! "$app_dir" =~ ^\. ]]; then
+                  if echo "$CHANGED_FILES" | grep -q "^${app_dir}/"; then
+                    changed_apps+=("\"${app_dir}\"")
+                    echo "App changed: $app_dir"
                   fi
                 fi
               done
@@ -128,26 +128,26 @@ jobs:
           fi
 
           # Fallback: if no app-specific changes detected, skip building
-          if [[ ${#changed_addons[@]} -eq 0 ]]; then
+          if [[ ${#changed_apps[@]} -eq 0 ]]; then
             echo "No app-specific changes detected, skipping builds"
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo 'addons=[]' >> "$GITHUB_OUTPUT"
+            echo 'apps=[]' >> "$GITHUB_OUTPUT"
           else
-            changed=$(echo ${changed_addons[@]} | jq -sc '.')
-            echo "addons=${changed}" >> "$GITHUB_OUTPUT"
+            changed=$(echo ${changed_apps[@]} | jq -sc '.')
+            echo "apps=${changed}" >> "$GITHUB_OUTPUT"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "Changed apps: $(echo ${changed_addons[@]} | jq -sc '.')"
+          echo "Changed apps: $(echo ${changed_apps[@]} | jq -sc '.')"
 
   build:
     needs: init
     runs-on: ubuntu-latest
     if: needs.init.outputs.changed == 'true'
-    name: Build ${{ matrix.addon }} app
+    name: Build ${{ matrix.app }} app
     strategy:
       matrix:
-        addon: ${{ fromJson(needs.init.outputs.changed_addons) }}
+        app: ${{ fromJson(needs.init.outputs.changed_apps) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -157,18 +157,18 @@ jobs:
       - name: Get build config
         id: config
         run: |
-          ADDON="${{ matrix.addon }}"
-          VERSION=$(grep "^version:" "${ADDON}/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+          APP="${{ matrix.app }}"
+          VERSION=$(grep "^version:" "${APP}/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
 
           # Read architectures from config.yaml
-          ARCHS=$(grep -A10 "^arch:" "${ADDON}/config.yaml" | grep "^\s*-" | sed 's/.*- //' | tr '\n' ' ')
+          ARCHS=$(grep -A10 "^arch:" "${APP}/config.yaml" | grep "^\s*-" | sed 's/.*- //' | tr '\n' ' ')
           echo "Architectures: ${ARCHS}"
 
           # Try amd64 first (native on CI runner), fall back to aarch64
-          BASE_IMAGE=$(grep "amd64:" "${ADDON}/build.yaml" | head -1 | awk '{print $2}')
+          BASE_IMAGE=$(grep "amd64:" "${APP}/build.yaml" | head -1 | awk '{print $2}')
           BUILD_ARCH="amd64"
           if [ -z "${BASE_IMAGE}" ]; then
-            BASE_IMAGE=$(grep "aarch64:" "${ADDON}/build.yaml" | head -1 | awk '{print $2}')
+            BASE_IMAGE=$(grep "aarch64:" "${APP}/build.yaml" | head -1 | awk '{print $2}')
             BUILD_ARCH="aarch64"
           fi
 
@@ -183,19 +183,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build ${{ matrix.addon }} (test mode)
+      - name: Build ${{ matrix.app }} (test mode)
         run: |
-          ADDON="${{ matrix.addon }}"
+          APP="${{ matrix.app }}"
 
           # Extract version ARG from build.yaml (e.g., DOCKHAND_VERSION, ARCANE_VERSION)
-          VERSION_ARG=$(grep -E '_VERSION:' "${ADDON}/build.yaml" | head -1 | awk -F: '{print $1}' | xargs)
-          VERSION_VAL=$(grep -E '_VERSION:' "${ADDON}/build.yaml" | head -1 | awk -F: '{print $2}' | xargs)
+          VERSION_ARG=$(grep -E '_VERSION:' "${APP}/build.yaml" | head -1 | awk -F: '{print $1}' | xargs)
+          VERSION_VAL=$(grep -E '_VERSION:' "${APP}/build.yaml" | head -1 | awk -F: '{print $2}' | xargs)
 
           BUILD_ARGS=(
             --build-arg "BUILD_FROM=${{ steps.config.outputs.base_image }}"
             --build-arg "BUILD_ARCH=${{ steps.config.outputs.build_arch }}"
             --build-arg "BUILD_VERSION=${{ steps.config.outputs.version }}"
-            --build-arg "BUILD_NAME=${ADDON}"
+            --build-arg "BUILD_NAME=${APP}"
             --build-arg "BUILD_DESCRIPTION=Test build"
             --build-arg "BUILD_REF=$(git rev-parse --short HEAD)"
             --build-arg "BUILD_REPOSITORY=${{ github.repository }}"
@@ -211,25 +211,25 @@ jobs:
             PLATFORM_ARGS=(--platform "linux/arm64")
           fi
 
-          echo "Building ${ADDON} (${{ steps.config.outputs.build_arch }})..."
+          echo "Building ${APP} (${{ steps.config.outputs.build_arch }})..."
           docker buildx build \
             "${PLATFORM_ARGS[@]}" \
             "${BUILD_ARGS[@]}" \
             --load \
-            -t "test/${ADDON}:${{ steps.config.outputs.version }}" \
-            "./${ADDON}"
+            -t "test/${APP}:${{ steps.config.outputs.version }}" \
+            "./${APP}"
 
-          echo "Build successful: test/${ADDON}:${{ steps.config.outputs.version }}"
+          echo "Build successful: test/${APP}:${{ steps.config.outputs.version }}"
 
   smoke-test:
     needs: [init, build]
     runs-on: ubuntu-latest
     if: needs.init.outputs.changed == 'true'
-    name: Smoke test ${{ matrix.addon }}
+    name: Smoke test ${{ matrix.app }}
     strategy:
       fail-fast: false
       matrix:
-        addon: ${{ fromJson(needs.init.outputs.changed_addons) }}
+        app: ${{ fromJson(needs.init.outputs.changed_apps) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -239,21 +239,21 @@ jobs:
       - name: Get build config
         id: config
         run: |
-          ADDON="${{ matrix.addon }}"
-          VERSION=$(grep "^version:" "${ADDON}/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+          APP="${{ matrix.app }}"
+          VERSION=$(grep "^version:" "${APP}/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
 
           # Try amd64 first (native on CI runner), fall back to aarch64
-          BASE_IMAGE=$(grep "amd64:" "${ADDON}/build.yaml" | head -1 | awk '{print $2}')
+          BASE_IMAGE=$(grep "amd64:" "${APP}/build.yaml" | head -1 | awk '{print $2}')
           BUILD_ARCH="amd64"
           PLATFORM="linux/amd64"
           if [ -z "${BASE_IMAGE}" ]; then
-            BASE_IMAGE=$(grep "aarch64:" "${ADDON}/build.yaml" | head -1 | awk '{print $2}')
+            BASE_IMAGE=$(grep "aarch64:" "${APP}/build.yaml" | head -1 | awk '{print $2}')
             BUILD_ARCH="aarch64"
             PLATFORM="linux/arm64"
             echo "No amd64 base image found, using aarch64 with QEMU"
           fi
 
-          IMAGE_TAG="smoke-test/${ADDON}:${VERSION}"
+          IMAGE_TAG="smoke-test/${APP}:${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "base_image=${BASE_IMAGE}" >> $GITHUB_OUTPUT
           echo "build_arch=${BUILD_ARCH}" >> $GITHUB_OUTPUT
@@ -270,17 +270,17 @@ jobs:
 
       - name: Build image for smoke test
         run: |
-          ADDON="${{ matrix.addon }}"
+          APP="${{ matrix.app }}"
 
           # Extract the version ARG name from build.yaml (e.g., MUNINNDB_VERSION, ARCANE_VERSION)
-          VERSION_ARG=$(grep -E '_VERSION:' "${ADDON}/build.yaml" | head -1 | awk -F: '{print $1}' | xargs)
-          VERSION_VAL=$(grep -E '_VERSION:' "${ADDON}/build.yaml" | head -1 | awk -F: '{print $2}' | xargs)
+          VERSION_ARG=$(grep -E '_VERSION:' "${APP}/build.yaml" | head -1 | awk -F: '{print $1}' | xargs)
+          VERSION_VAL=$(grep -E '_VERSION:' "${APP}/build.yaml" | head -1 | awk -F: '{print $2}' | xargs)
 
           BUILD_ARGS=(
             --build-arg "BUILD_FROM=${{ steps.config.outputs.base_image }}"
             --build-arg "BUILD_ARCH=${{ steps.config.outputs.build_arch }}"
             --build-arg "BUILD_VERSION=${{ steps.config.outputs.version }}"
-            --build-arg "BUILD_NAME=${ADDON}"
+            --build-arg "BUILD_NAME=${APP}"
             --build-arg "BUILD_DESCRIPTION=Smoke test"
             --build-arg "BUILD_REF=$(git rev-parse --short HEAD)"
             --build-arg "BUILD_REPOSITORY=local"
@@ -298,16 +298,16 @@ jobs:
             PLATFORM_ARGS=(--platform "${{ steps.config.outputs.platform }}" --load)
           fi
 
-          echo "Building ${ADDON} for smoke test (${{ steps.config.outputs.build_arch }})..."
+          echo "Building ${APP} for smoke test (${{ steps.config.outputs.build_arch }})..."
           docker buildx build \
             "${PLATFORM_ARGS[@]}" \
             "${BUILD_ARGS[@]}" \
             -t "${{ steps.config.outputs.image_tag }}" \
-            "./${ADDON}"
+            "./${APP}"
 
       - name: Run smoke test
         run: |
           IMAGE_NAME="${{ steps.config.outputs.image_tag }}" \
             bash .github/scripts/smoke-test.sh \
-            "${{ matrix.addon }}" \
+            "${{ matrix.app }}" \
             "${{ steps.config.outputs.image_tag }}"

@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: AegisHA
+# Home Assistant App: AegisHA
 # S6 finish handler. A clean SIGTERM shutdown exits 0; the S6 supervisor
 # reports signal exits as 256. Anything else is an unexpected crash.
 # ==============================================================================
