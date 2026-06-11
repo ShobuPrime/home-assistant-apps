@@ -1,6 +1,6 @@
 build_from:
-  aarch64: ghcr.io/hassio-addons/base:20.2.0
-  amd64: ghcr.io/hassio-addons/base:20.2.0
+  aarch64: ghcr.io/hassio-addons/base:21.0.0
+  amd64: ghcr.io/hassio-addons/base:21.0.0
 labels:
   org.opencontainers.image.title: AegisHA
   org.opencontainers.image.description: Dynamic alarm system for Home Assistant with UniFi Protect integration
