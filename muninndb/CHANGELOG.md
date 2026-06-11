@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.2
+
+_2026-06-11_
+
+## What's Changed
+* fix(cli): auto-detect TLS in muninn status/start (#442) by `johanneshauer` in https://github.com/scrypster/muninndb/pull/444
+* style: gofmt-align literals in repl_client_test.go by `johanneshauer` in https://github.com/scrypster/muninndb/pull/445
+* chore: polish isLoopbackURL and isTLSCertError by `scrypster` in https://github.com/scrypster/muninndb/pull/446
+* chore(consolidation): surface dedup metadata-update errors in report by `scrypster` in https://github.com/scrypster/muninndb/pull/451
+* Add Gemini 2.5 Flash enrichment option by `dpearson2699` in https://github.com/scrypster/muninndb/pull/450
+* chore(ui): promote gemini-2.5-flash as default Google enrichment model by `scrypster` in https://github.com/scrypster/muninndb/pull/452
+* consolidation: phase-2 dedup absorbs AccessCount of merged duplicates into the representative by `schurabot` in https://github.com/scrypster/muninndb/pull/447
+* fix(cluster): defer OnLobeJoined callback until JoinResponse + Snapshot complete
+
+---
+
+
 > _Maintenance (2026-06-10):_ added hassio_role: manager so bashio can read the app config + Supervisor API on base 20.2.0 (fixes "Unable to access the API, forbidden"); migrated bashio::addon.* to bashio::app.*. Rebuild the app to apply the new role.
 
 ## 0.6.1
