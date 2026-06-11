@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for Dockhand addon
+# Build script for Dockhand app
 
 set -e
 
@@ -10,19 +10,19 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== Dockhand Addon Builder ===${NC}"
+echo -e "${BLUE}=== Dockhand App Builder ===${NC}"
 
 # Check if we're in the right directory
 if [ ! -f "config.yaml" ] || [ ! -f "build.yaml" ] || [ ! -f "Dockerfile" ]; then
-    echo -e "${RED}Error: This script must be run from the addon directory!${NC}"
+    echo -e "${RED}Error: This script must be run from the app directory!${NC}"
     exit 1
 fi
 
-# Get addon slug and version
-ADDON_SLUG=$(grep "^slug:" config.yaml | cut -d'"' -f2 | tr -d ' ')
-ADDON_VERSION=$(grep "^version:" config.yaml | cut -d'"' -f2)
+# Get app slug and version
+APP_SLUG=$(grep "^slug:" config.yaml | cut -d'"' -f2 | tr -d ' ')
+APP_VERSION=$(grep "^version:" config.yaml | cut -d'"' -f2)
 
-echo -e "Building ${GREEN}${ADDON_SLUG}${NC} version ${YELLOW}${ADDON_VERSION}${NC}"
+echo -e "Building ${GREEN}${APP_SLUG}${NC} version ${YELLOW}${APP_VERSION}${NC}"
 
 # Detect architecture
 ARCH=$(uname -m)
@@ -56,9 +56,9 @@ DOCKHAND_VERSION=$(grep "DOCKHAND_VERSION:" build.yaml | cut -d':' -f2 | tr -d '
 echo -e "Dockhand version: ${YELLOW}${DOCKHAND_VERSION}${NC}"
 
 # Build image name - use local naming convention to avoid Docker Hub pulls
-# For local addons, use local/ prefix
-IMAGE_NAME="local/${BUILD_ARCH}-addon-local_${ADDON_SLUG}"
-IMAGE_TAG="${ADDON_VERSION}"
+# For local apps, use local/ prefix
+IMAGE_NAME="local/${BUILD_ARCH}-addon-local_${APP_SLUG}"
+IMAGE_TAG="${APP_VERSION}"
 FULL_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 
 echo ""
@@ -72,10 +72,10 @@ docker build \
     --build-arg BUILD_ARCH="${BUILD_ARCH}" \
     --build-arg BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     --build-arg BUILD_DESCRIPTION="Dockhand for Home Assistant" \
-    --build-arg BUILD_NAME="${ADDON_SLUG}" \
+    --build-arg BUILD_NAME="${APP_SLUG}" \
     --build-arg BUILD_REF="$(git rev-parse --short HEAD 2>/dev/null || echo 'local')" \
     --build-arg BUILD_REPOSITORY="local" \
-    --build-arg BUILD_VERSION="${ADDON_VERSION}" \
+    --build-arg BUILD_VERSION="${APP_VERSION}" \
     --build-arg DOCKHAND_VERSION="${DOCKHAND_VERSION}" \
     -t "${FULL_IMAGE}" \
     .
@@ -89,9 +89,9 @@ if [ $? -eq 0 ]; then
     echo -e "  ${YELLOW}docker run --rm -it -p 3000:3000 -v /var/run/docker.sock:/var/run/docker.sock ${FULL_IMAGE}${NC}"
     echo ""
     echo "To push to Home Assistant:"
-    echo -e "  1. Ensure the addon folder is in ${YELLOW}/addons/${ADDON_SLUG}${NC}"
-    echo -e "  2. Go to Supervisor -> Add-on Store -> Check for updates"
-    echo -e "  3. Install/Update the addon"
+    echo -e "  1. Ensure the app folder is in ${YELLOW}/addons/${APP_SLUG}${NC}"
+    echo -e "  2. Go to Supervisor -> App Store -> Check for updates"
+    echo -e "  3. Install/Update the app"
     echo ""
     echo "Note: Image is tagged as: ${YELLOW}${FULL_IMAGE}${NC}"
 else

@@ -76,7 +76,7 @@ LABEL \
     arcane.version="${ARCANE_VERSION}" \
     org.opencontainers.image.title="${BUILD_NAME}" \
     org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
-    org.opencontainers.image.vendor="Home Assistant Add-ons" \
+    org.opencontainers.image.vendor="Home Assistant Apps" \
     org.opencontainers.image.authors="Arcane for Home Assistant" \
     org.opencontainers.image.licenses="BSD-3-Clause" \
     org.opencontainers.image.url="https://getarcane.app" \

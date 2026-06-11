@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Huly
+# Home Assistant App: Huly
 # Initializes Huly configuration and data directories
 # ==============================================================================
 bashio::require.unprotected
@@ -135,16 +135,16 @@ elif [[ -S /run/docker.sock ]]; then
     bashio::log.debug "Docker socket permissions: $(ls -la /run/docker.sock)"
 else
     bashio::log.error "Docker socket not found! Huly requires Docker access."
-    bashio::log.error "Please ensure the addon has the proper permissions."
+    bashio::log.error "Please ensure the app has the proper permissions."
 fi
 
 # Resolve the host-side path for /data.
-# Inside the addon container /data is a bind mount from the host. Sub-containers
+# Inside the app container /data is a bind mount from the host. Sub-containers
 # spawned via Docker Compose are created by the HOST Docker daemon, so their
 # bind-mount paths must reference the real host path, not the container path.
 #
-# In HAOS, docker inspect returns a path like /mnt/data/supervisor/addons/data/<slug>
-# which IS the real host path. In some setups it may return /supervisor/addons/data/<slug>
+# In HAOS, docker inspect returns a path like /mnt/data/supervisor/apps/data/<slug>
+# which IS the real host path. In some setups it may return /supervisor/apps/data/<slug>
 # which needs a /mnt/data prefix.
 #
 # Strategy: get the inspect path, check if it already starts with DockerRootDir's
@@ -157,13 +157,13 @@ MOUNT_SOURCE=""
 
 # Step 1: Get the /data mount source from container inspect.
 # Try multiple container identification methods since the ID format varies.
-# HAOS names addon containers addon_<hash>_<slug> but hostname is <hash>-<slug>.
+# HAOS names app containers app_<hash>_<slug> but hostname is <hash>-<slug>.
 CONTAINER_HOSTNAME="$(hostname)"
 bashio::log.info "Resolving host data path (hostname: ${CONTAINER_HOSTNAME})..."
 
 # Build candidate container IDs:
 #   1. Full container ID from /proc/self/mountinfo (most reliable)
-#   2. HAOS addon naming: addon_<hash>_<slug> (hostname with - replaced by _)
+#   2. HAOS app naming: app_<hash>_<slug> (hostname with - replaced by _)
 #   3. Plain hostname (fallback)
 PROC_CID=$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -1) || true
 HAOS_CID="addon_$(echo "${CONTAINER_HOSTNAME}" | sed 's/-/_/g')"
@@ -309,7 +309,7 @@ else
         bashio::log.info "Auto-detected host address: ${HOST_ADDRESS}"
     else
         HOST_ADDRESS="localhost:4859"
-        bashio::log.warning "Could not auto-detect host IP. Set host_address in addon config."
+        bashio::log.warning "Could not auto-detect host IP. Set host_address in app config."
         bashio::log.warning "Using fallback: ${HOST_ADDRESS} (browser access may not work)"
     fi
 fi

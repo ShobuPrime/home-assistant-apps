@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Huly
+# Home Assistant App: Huly
 # Stops the Huly stack cleanly on shutdown or crash
 #
 # Strategy: send parallel stop signals to ALL containers via Docker API first,
@@ -41,12 +41,12 @@ else
     bashio::log.debug "No running Huly containers found"
 fi
 
-# Disconnect addon from compose network before teardown
-ADDON_CID=$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -1) || true
-if [[ -n "${ADDON_CID}" ]]; then
+# Disconnect app from compose network before teardown
+APP_CID=$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -1) || true
+if [[ -n "${APP_CID}" ]]; then
     curl -sf --unix-socket "${DOCKER_SOCK}" \
         -X POST -H "Content-Type: application/json" \
-        -d "{\"Container\": \"${ADDON_CID}\", \"Force\": true}" \
+        -d "{\"Container\": \"${APP_CID}\", \"Force\": true}" \
         "http://localhost/networks/huly_ha_huly_net/disconnect" 2>/dev/null || true
 fi
 

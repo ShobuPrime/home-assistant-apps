@@ -78,7 +78,7 @@ LABEL \
     maintainer="Sonuntius for Home Assistant" \
     org.opencontainers.image.title="${BUILD_NAME}" \
     org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
-    org.opencontainers.image.vendor="Home Assistant Add-ons" \
+    org.opencontainers.image.vendor="Home Assistant Apps" \
     org.opencontainers.image.authors="ShobuPrime" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.url="https://github.com/ShobuPrime/home-assistant-apps" \

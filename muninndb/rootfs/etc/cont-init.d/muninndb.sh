@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: MuninnDB
+# Home Assistant App: MuninnDB
 # Runs initialization for MuninnDB
 # ==============================================================================
 

@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Dockhand
+# Home Assistant App: Dockhand
 # Runs initialization for Dockhand
 # ==============================================================================
 bashio::require.unprotected
@@ -30,8 +30,8 @@ elif [[ -S /run/docker.sock ]]; then
     bashio::log.info "Docker socket found at /run/docker.sock"
 else
     bashio::log.error "Docker socket not found! Dockhand will not be able to connect to Docker."
-    bashio::log.error "This addon requires access to the Docker socket to function."
-    bashio::log.error "Please ensure the addon has the proper permissions."
+    bashio::log.error "This app requires access to the Docker socket to function."
+    bashio::log.error "Please ensure the app has the proper permissions."
 fi
 
 # Link data directory for persistence

@@ -1,6 +1,6 @@
 ---
 name: ha-ci-pipeline
-description: Diagnose and fix GitHub Actions CI/CD pipeline issues for the ShobuPrime/home-assistant-apps repository. Use this skill when PRs are not auto-merging after validation passes, when CI checks are running unnecessarily for unrelated addons, when GitHub Actions workflows need to be scoped to specific addon paths, when the user reports issues with validation-passed labels not triggering merges, or when debugging any workflow interaction between pr-validate.yml, builder.yml, and the update workflows. Also use when adding new workflows or modifying existing CI/CD behavior.
+description: Diagnose and fix GitHub Actions CI/CD pipeline issues for the ShobuPrime/home-assistant-apps repository. Use this skill when PRs are not auto-merging after validation passes, when CI checks are running unnecessarily for unrelated apps, when GitHub Actions workflows need to be scoped to specific app paths, when the user reports issues with validation-passed labels not triggering merges, or when debugging any workflow interaction between pr-validate.yml, builder.yml, and the update workflows. Also use when adding new workflows or modifying existing CI/CD behavior.
 ---
 
 # Home Assistant CI Pipeline Skill
@@ -39,37 +39,37 @@ Update workflow (e.g., update-arcane.yml)
 | File | Purpose | Triggers |
 |------|---------|----------|
 | `.github/workflows/pr-validate.yml` | Structure, changelog, YAML validation + primary auto-merge | `pull_request`, `repository_dispatch` |
-| `.github/workflows/builder.yml` | Test-build changed addons | `push`, `pull_request`, `repository_dispatch` |
+| `.github/workflows/builder.yml` | Test-build changed apps | `push`, `pull_request`, `repository_dispatch` |
 | `.github/workflows/update-*.yml` | Check for upstream updates, create PRs | Schedule (daily), manual |
 
 ## How Validation Scoping Works
 
-All validation jobs in `pr-validate.yml` are scoped to only check addons/files that changed in the PR. This prevents unrelated addon issues from blocking PRs.
+All validation jobs in `pr-validate.yml` are scoped to only check apps/files that changed in the PR. This prevents unrelated app issues from blocking PRs.
 
 ### Current Implementation
 
 | Validation | How it's scoped | Key detail |
 |-----------|----------------|------------|
-| Structure validation | `git diff` detects changed addon dirs, only validates those | Requires `fetch-depth: 0` for diff |
-| Changelog validation | `git diff` detects changed addon dirs, checks their CHANGELOGs | Already had `fetch-depth: 0` |
+| Structure validation | `git diff` detects changed app dirs, only validates those | Requires `fetch-depth: 0` for diff |
+| Changelog validation | `git diff` detects changed app dirs, checks their CHANGELOGs | Already had `fetch-depth: 0` |
 | YAML lint | `git diff` detects changed `.yaml`/`.yml` files, only lints those | Skips Python/yamllint install if no YAML changed |
-| Builder | `tj-actions/changed-files` detects changed addons, matrix builds only those | Auto-discovers addons from `*/config.yaml` |
+| Builder | `tj-actions/changed-files` detects changed apps, matrix builds only those | Auto-discovers apps from `*/config.yaml` |
 
-### If a validation fails for an unrelated addon
+### If a validation fails for an unrelated app
 
 This shouldn't happen with scoped validation. If it does, check:
 
-1. Is the failing addon actually modified in the PR? (`git diff` against base branch)
+1. Is the failing app actually modified in the PR? (`git diff` against base branch)
 2. Did the `fetch-depth: 0` get removed from the checkout step? (shallow clones can't diff)
-3. Is the `changed_addons` output empty? (workflow-only changes correctly skip addon validation)
+3. Is the `changed_apps` output empty? (workflow-only changes correctly skip app validation)
 
-### Workflow-only changes (no addon files)
+### Workflow-only changes (no app files)
 
-When a PR only modifies `.github/` files (workflows, scripts) and no addon directories, all scoped validations skip gracefully with messages like "No addon-specific changes detected" and "No YAML files changed." This is correct behavior — the checks show as passed (not failed or skipped), so auto-merge still works.
+When a PR only modifies `.github/` files (workflows, scripts) and no app directories, all scoped validations skip gracefully with messages like "No app-specific changes detected" and "No YAML files changed." This is correct behavior — the checks show as passed (not failed or skipped), so auto-merge still works.
 
-### New addon's first PR
+### New app's first PR
 
-When adding a brand new addon, all of its files appear as "new" in the diff. The scoping logic correctly detects the new addon directory as changed and validates only that addon. Existing addons are not affected.
+When adding a brand new app, all of its files appear as "new" in the diff. The scoping logic correctly detects the new app directory as changed and validates only that app. Existing apps are not affected.
 
 ## How Auto-Merge Works
 
@@ -143,7 +143,7 @@ gh pr merge <PR-NUMBER> --squash
 
 ## Adding a New Update Workflow
 
-When creating update workflows for new addons:
+When creating update workflows for new apps:
 
 ### Cron Schedule (avoid conflicts)
 
@@ -153,7 +153,7 @@ Existing schedule:
 - 3:00 AM UTC - Arcane + Dockhand
 - 3:30 AM UTC - Huly
 
-New addons should use unoccupied slots: 4:00, 4:30, 5:00 AM UTC, etc.
+New apps should use unoccupied slots: 4:00, 4:30, 5:00 AM UTC, etc.
 
 ### Required conventions
 
@@ -173,8 +173,8 @@ New addons should use unoccupied slots: 4:00, 4:30, 5:00 AM UTC, etc.
         "client_payload": {
           "pull_request_number": "${{ steps.create-pr.outputs.pull-request-number }}",
           "head_sha": "${{ steps.create-pr.outputs.pull-request-head-sha }}",
-          "branch": "update-<addon>-${{ version }}",
-          "addon": "<addon-slug>"
+          "branch": "update-<app>-${{ version }}",
+          "app": "<app-slug>"
         }
       }'
 ```
@@ -186,7 +186,7 @@ When a PR isn't merging or validations are failing unexpectedly:
 1. **Check PR labels**: Has `automated`? Has `validation-passed`? Any blocking labels?
 2. **Check workflow runs**: Did `pr-validate.yml` and `builder.yml` both complete and succeed?
 3. **Check auto-merge logs**: The `Auto-merge if eligible` job in pr-validate.yml
-4. **Check scoping**: Is validation failing for an unrelated addon? Check if `fetch-depth: 0` is present and `git diff` is detecting changed addons correctly
+4. **Check scoping**: Is validation failing for an unrelated app? Check if `fetch-depth: 0` is present and `git diff` is detecting changed apps correctly
 5. **Check run names**: Do they match the filter patterns in the auto-merge code?
 6. **Manual intervention**: `gh pr merge <number> --squash`
 

@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-ADDON_PATH="${ADDON_PATH:-.}"
+APP_PATH="${APP_PATH:-.}"
 VERSION_TYPE="${VERSION_TYPE:-lts}" # lts or sts
 CHECK_ONLY="${CHECK_ONLY:-false}"
 JSON_OUTPUT="${JSON_OUTPUT:-false}"
@@ -95,51 +95,51 @@ get_changelog() {
 
 # Function to get current version from config.yaml
 get_current_version() {
-    if [ ! -f "$ADDON_PATH/config.yaml" ]; then
-        log "${RED}Error: config.yaml not found at $ADDON_PATH!${NC}" >&2
+    if [ ! -f "$APP_PATH/config.yaml" ]; then
+        log "${RED}Error: config.yaml not found at $APP_PATH!${NC}" >&2
         exit 1
     fi
-    grep "^version:" "$ADDON_PATH/config.yaml" | sed 's/version: *"\(.*\)"/\1/'
+    grep "^version:" "$APP_PATH/config.yaml" | sed 's/version: *"\(.*\)"/\1/'
 }
 
 # Function to update files
 update_files() {
     local new_version="$1"
-    local addon_path="$2"
+    local app_path="$2"
 
     # Update config.yaml
-    sed -i "s/version: \".*\"/version: \"$new_version\"/" "$addon_path/config.yaml"
+    sed -i "s/version: \".*\"/version: \"$new_version\"/" "$app_path/config.yaml"
     log "${GREEN}✓${NC} Updated config.yaml"
 
     # Update build.yaml
-    if [ -f "$addon_path/build.yaml" ]; then
-        sed -i "s/PORTAINER_VERSION: .*/PORTAINER_VERSION: $new_version/" "$addon_path/build.yaml"
+    if [ -f "$app_path/build.yaml" ]; then
+        sed -i "s/PORTAINER_VERSION: .*/PORTAINER_VERSION: $new_version/" "$app_path/build.yaml"
         log "${GREEN}✓${NC} Updated build.yaml"
     fi
 
     # Update Dockerfile
-    if [ -f "$addon_path/Dockerfile" ]; then
-        sed -i "s/ARG PORTAINER_VERSION=.*/ARG PORTAINER_VERSION=$new_version/" "$addon_path/Dockerfile"
+    if [ -f "$app_path/Dockerfile" ]; then
+        sed -i "s/ARG PORTAINER_VERSION=.*/ARG PORTAINER_VERSION=$new_version/" "$app_path/Dockerfile"
         log "${GREEN}✓${NC} Updated Dockerfile"
     fi
 
     # Update README.md - only update specific version references, not all occurrences
-    if [ -f "$addon_path/README.md" ]; then
+    if [ -f "$app_path/README.md" ]; then
         # Update "Currently running Portainer X.X.X" type statements
-        sed -i "s/Currently running Portainer [0-9.]*/Currently running Portainer $new_version/g" "$addon_path/README.md"
+        sed -i "s/Currently running Portainer [0-9.]*/Currently running Portainer $new_version/g" "$app_path/README.md"
         # Update "running version X.X.X" type statements
-        sed -i "s/running version [0-9.]*/running version $new_version/g" "$addon_path/README.md"
+        sed -i "s/running version [0-9.]*/running version $new_version/g" "$app_path/README.md"
         # Update version badges/shields if present
-        sed -i "s/version-[0-9.]*-/version-$new_version-/g" "$addon_path/README.md"
+        sed -i "s/version-[0-9.]*-/version-$new_version-/g" "$app_path/README.md"
         log "${GREEN}✓${NC} Updated README.md"
     fi
 
     # Update DOCS.md - only update specific version references, not section headers
-    if [ -f "$addon_path/DOCS.md" ]; then
+    if [ -f "$app_path/DOCS.md" ]; then
         # Update "running version X.X.X" type statements
-        sed -i "s/running version [0-9.]*/running version $new_version/g" "$addon_path/DOCS.md"
+        sed -i "s/running version [0-9.]*/running version $new_version/g" "$app_path/DOCS.md"
         # Update "Currently running Portainer X.X.X" type statements
-        sed -i "s/Currently running Portainer [0-9.]*/Currently running Portainer $new_version/g" "$addon_path/DOCS.md"
+        sed -i "s/Currently running Portainer [0-9.]*/Currently running Portainer $new_version/g" "$app_path/DOCS.md"
         log "${GREEN}✓${NC} Updated DOCS.md"
     fi
 }
@@ -147,10 +147,10 @@ update_files() {
 # Function to update changelog
 update_changelog() {
     local new_version="$1"
-    local addon_path="$2"
+    local app_path="$2"
     local changelog_content="$3"
 
-    if [ -f "$addon_path/CHANGELOG.md" ]; then
+    if [ -f "$app_path/CHANGELOG.md" ]; then
         # Prepend new version to existing changelog
         local temp_file=$(mktemp)
         cat > "$temp_file" << EOF
@@ -164,12 +164,12 @@ $changelog_content
 
 ---
 
-$(tail -n +2 "$addon_path/CHANGELOG.md")
+$(tail -n +2 "$app_path/CHANGELOG.md")
 EOF
-        mv "$temp_file" "$addon_path/CHANGELOG.md"
+        mv "$temp_file" "$app_path/CHANGELOG.md"
     else
         # Create new changelog
-        cat > "$addon_path/CHANGELOG.md" << EOF
+        cat > "$app_path/CHANGELOG.md" << EOF
 # Changelog
 
 ## $new_version
@@ -191,8 +191,8 @@ main() {
     log "=== Portainer ${VERSION_TYPE^^} Version Updater ==="
 
     # Check if we're in the right directory
-    if [ ! -f "$ADDON_PATH/config.yaml" ]; then
-        log "${RED}Error: config.yaml not found at $ADDON_PATH!${NC}" >&2
+    if [ ! -f "$APP_PATH/config.yaml" ]; then
+        log "${RED}Error: config.yaml not found at $APP_PATH!${NC}" >&2
         exit 1
     fi
 
@@ -249,8 +249,8 @@ main() {
     log "${YELLOW}Updating from $CURRENT_VERSION to $LATEST_VERSION...${NC}"
     log ""
 
-    update_files "$LATEST_VERSION" "$ADDON_PATH"
-    update_changelog "$LATEST_VERSION" "$ADDON_PATH" "$CHANGELOG"
+    update_files "$LATEST_VERSION" "$APP_PATH"
+    update_changelog "$LATEST_VERSION" "$APP_PATH" "$CHANGELOG"
 
     if [ "$JSON_OUTPUT" = "true" ]; then
         echo "{\"success\": true, \"old_version\": \"$CURRENT_VERSION\", \"new_version\": \"$LATEST_VERSION\"}"

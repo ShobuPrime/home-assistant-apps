@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Portainer EE
+# Home Assistant App: Portainer EE
 # Runs Portainer
 # ==============================================================================
 declare -a options

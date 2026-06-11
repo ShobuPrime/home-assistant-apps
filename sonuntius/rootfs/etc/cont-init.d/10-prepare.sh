@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Sonuntius
+# Home Assistant App: Sonuntius
 # Prepares the runtime environment for the cast-receiver, yt-cast, and
 # ma-bridge services. The Go binaries read /data/options.json directly
 # (with a Supervisor REST fallback), so no env wiring is needed.

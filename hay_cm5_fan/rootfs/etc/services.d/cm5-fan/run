@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: HAY CM5 Fan Controller
+# Home Assistant App: HAY CM5 Fan Controller
 # Thermal monitoring daemon with hysteresis-based fan control
 # Uses libgpiod (/dev/gpiochip0) + MQTT discovery for proper HA entities
 # ==============================================================================
@@ -17,8 +17,8 @@ TEMP_ON=$(bashio::config 'temp_on')
 TEMP_OFF=$(bashio::config 'temp_off')
 FAN_MODE=$(bashio::config 'fan_mode')
 TEMP_SENSOR=$(bashio::config 'temp_sensor_path')
-ADDON_HOSTNAME=$(hostname)
-ADDON_VERSION=$(bashio::app.version)
+APP_HOSTNAME=$(hostname)
+APP_VERSION=$(bashio::app.version)
 
 # State tracking
 FAN_STATE=""
@@ -92,7 +92,7 @@ mqtt_pub() {
 # ==============================================================================
 # MQTT Discovery — register entities with HA (unique_id, device grouping)
 # ==============================================================================
-DEVICE_JSON="{\"identifiers\":[\"hay_cm5_fan_${ADDON_HOSTNAME}\"],\"name\":\"HAY CM5 Fan Controller\",\"model\":\"Raspberry Pi CM5 on HA Yellow\",\"manufacturer\":\"ShobuPrime\",\"sw_version\":\"${ADDON_VERSION}\"}"
+DEVICE_JSON="{\"identifiers\":[\"hay_cm5_fan_${APP_HOSTNAME}\"],\"name\":\"HAY CM5 Fan Controller\",\"model\":\"Raspberry Pi CM5 on HA Yellow\",\"manufacturer\":\"ShobuPrime\",\"sw_version\":\"${APP_VERSION}\"}"
 
 publish_sensor_discovery() {
     local object_id=$1
@@ -754,7 +754,7 @@ bashio::log.info "Configuration:"
 bashio::log.info "  GPIO: ${GPIO_CHIP} line ${GPIO_LINE}"
 bashio::log.info "  Poll: ${POLL_INTERVAL}s | Thresholds: ON=${TEMP_ON}C OFF=${TEMP_OFF}C"
 bashio::log.info "  Fan mode: ${FAN_MODE} | Leave on at shutdown: $(bashio::config 'leave_on_at_shutdown')"
-bashio::log.info "  MQTT: ${MQTT_AVAILABLE} | Hostname: ${ADDON_HOSTNAME}"
+bashio::log.info "  MQTT: ${MQTT_AVAILABLE} | Hostname: ${APP_HOSTNAME}"
 
 # Initialize temperature variables (needed by status report before main loop)
 TEMP_C=0

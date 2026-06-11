@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Minimal mock of the Home Assistant Supervisor API.
-Responds to the endpoints bashio/S6 base scripts call during addon startup.
-Run with: python3 mock-supervisor.py <addon-dir> [port]
+Responds to the endpoints bashio/S6 base scripts call during app startup.
+Run with: python3 mock-supervisor.py <app-dir> [port]
 """
 
 import json
@@ -10,19 +10,19 @@ import sys
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-ADDON_DIR = sys.argv[1] if len(sys.argv) > 1 else "."
+APP_DIR = sys.argv[1] if len(sys.argv) > 1 else "."
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 80
 
-# Load addon config
-with open(os.path.join(ADDON_DIR, "config.yaml")) as f:
+# Load app config
+with open(os.path.join(APP_DIR, "config.yaml")) as f:
     import re
     content = f.read()
     name = re.search(r'^name:\s*"(.+)"', content, re.M)
     version = re.search(r'^version:\s*"(.+)"', content, re.M)
     slug = re.search(r'^slug:\s*"(.+)"', content, re.M)
-    addon_name = name.group(1) if name else "Test Addon"
-    addon_version = version.group(1) if version else "0.0.0"
-    addon_slug = slug.group(1) if slug else "test"
+    app_name = name.group(1) if name else "Test App"
+    app_version = version.group(1) if version else "0.0.0"
+    app_slug = slug.group(1) if slug else "test"
 
 # Load options (defaults from config.yaml)
 options = {}
@@ -56,21 +56,21 @@ except Exception:
     pass
 
 # API responses
-ADDON_INFO = {
+APP_INFO = {
     "result": "ok",
     "data": {
-        "name": addon_name,
-        "slug": addon_slug,
-        "hostname": addon_slug,
+        "name": app_name,
+        "slug": app_slug,
+        "hostname": app_slug,
         "state": "started",
-        "version": addon_version,
-        "version_latest": addon_version,
+        "version": app_version,
+        "version_latest": app_version,
         "boot": "auto",
         "options": options,
         "arch": ["aarch64", "amd64"],
         "ingress": True,
         "ingress_port": 8099,
-        "ingress_entry": f"/api/hassio_ingress/{addon_slug}",
+        "ingress_entry": f"/api/hassio_ingress/{app_slug}",
         "ip_address": "172.30.33.1",
         "watchdog": True,
     },
@@ -114,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.rstrip("/")
 
         routes = {
-            "/addons/self/info": ADDON_INFO,
+            "/addons/self/info": APP_INFO,
             "/addons/self/options/config": OPTIONS_CONFIG,
             "/addons/self/options": {"result": "ok", "data": {"options": options}},
             "/supervisor/info": SUPERVISOR_INFO,
@@ -124,17 +124,17 @@ class Handler(BaseHTTPRequestHandler):
             "/info": SUPERVISOR_INFO,
             # hassio-addons base >= 20.2.0 queries the store during startup
             # (banner version check / bashio init); a 404 here is now fatal to
-            # cont-init, so serve a valid (empty) store + this addon's entry.
+            # cont-init, so serve a valid (empty) store + this app's entry.
             "/store": {"result": "ok", "data": {"addons": [], "repositories": []}},
             "/store/addons": {
                 "result": "ok",
                 "data": [
                     {
-                        "slug": addon_slug,
-                        "name": addon_name,
-                        "version": addon_version,
-                        "version_latest": addon_version,
-                        "installed": addon_version,
+                        "slug": app_slug,
+                        "name": app_name,
+                        "version": app_version,
+                        "version_latest": app_version,
+                        "installed": app_version,
                         "update_available": False,
                     }
                 ],
@@ -165,5 +165,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"Mock Supervisor listening on :{PORT} for addon '{addon_slug}'", flush=True)
+    print(f"Mock Supervisor listening on :{PORT} for app '{app_slug}'", flush=True)
     server.serve_forever()

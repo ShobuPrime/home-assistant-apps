@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Sonuntius
+# Home Assistant App: Sonuntius
 # Phase 5 — iFi Tidal Connect binary service (opt-in).
 #
 # When tidal_fallback.enabled is true and cont-init.d/20-tidal-fallback.sh

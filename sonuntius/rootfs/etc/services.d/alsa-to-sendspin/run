@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Sonuntius
+# Home Assistant App: Sonuntius
 # Phase 5 — ALSA loopback → Sendspin forwarder (opt-in).
 #
 # Reads PCM from the ALSA loopback capture side (where the iFi binary

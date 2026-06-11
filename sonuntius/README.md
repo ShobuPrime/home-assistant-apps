@@ -9,7 +9,7 @@ Cast/DIAL → Music Assistant bridge for Sendspin playback.
 
 Sonuntius makes a Music Assistant–controlled Sendspin player visible to
 the Android YouTube, YouTube Music, and Tidal apps as a Cast / DIAL
-target. The addon does **not** decode or relay audio; it extracts the
+target. The app does **not** decode or relay audio; it extracts the
 intent (track ID, transport command) from the sender's protocol and hands
 that off to Music Assistant's REST/WebSocket API, which streams the
 actual audio to the Sendspin speaker through its native provider
@@ -52,9 +52,9 @@ supervises five services, three are active by default, two are opt-in:
 
 ## Installation
 
-1. Add this repository to Home Assistant (Settings → Add-ons → Add-on
+1. Add this repository to Home Assistant (Settings → Apps → App
    Store → ⋮ → Repositories → `https://github.com/shobuprime/home-assistant-apps`).
-2. Install the **Sonuntius** addon.
+2. Install the **Sonuntius** app.
 3. Configure `ma_player_id` with the Music Assistant player ID of the
    Sendspin speaker.
 4. (Phase 3+) Drop the AirReceiver cert at
@@ -67,7 +67,7 @@ supervises five services, three are active by default, two are opt-in:
 
 - Home Assistant OS / Supervised, with Music Assistant installed and at
   least one Sendspin player configured.
-- `host_network: true` is required so the addon can announce itself on
+- `host_network: true` is required so the app can announce itself on
   mDNS (`_googlecast._tcp`) and SSDP (DIAL).
 - Architecture: `aarch64` or `amd64` (the hassio-addons base image
   dropped armhf/armv7/i386 in v19.0.0).

@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Dockhand
+# Home Assistant App: Dockhand
 # Runs Dockhand
 # ==============================================================================
 

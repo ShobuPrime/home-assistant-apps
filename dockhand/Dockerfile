@@ -76,7 +76,7 @@ LABEL \
     dockhand.version="${DOCKHAND_VERSION}" \
     org.opencontainers.image.title="${BUILD_NAME}" \
     org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
-    org.opencontainers.image.vendor="Home Assistant Add-ons" \
+    org.opencontainers.image.vendor="Home Assistant Apps" \
     org.opencontainers.image.authors="Dockhand for Home Assistant" \
     org.opencontainers.image.licenses="BSL-1.1" \
     org.opencontainers.image.url="https://dockhand.pro" \

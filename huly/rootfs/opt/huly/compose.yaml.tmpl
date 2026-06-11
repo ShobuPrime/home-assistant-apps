@@ -2,7 +2,7 @@ name: ${DOCKER_NAME}
 services:
   nginx:
     image: "nginx:1.21.3"
-    # No host port binding — the addon container bridges HA ingress (port 4859)
+    # No host port binding — the app container bridges HA ingress (port 4859)
     # to this nginx via the compose network using socat.
     volumes:
       - ${NGINX_CONF_PATH}:/etc/nginx/conf.d/default.conf:ro

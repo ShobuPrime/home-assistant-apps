@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Dockge
+# Home Assistant App: Dockge
 # Runs Dockge
 # ==============================================================================
 declare -a docker_labels

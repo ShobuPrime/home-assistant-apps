@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Home Assistant Add-on: Arcane Docker Manager
+# Home Assistant App: Arcane Docker Manager
 # Runs initialization for Arcane
 # ==============================================================================
 bashio::require.unprotected
@@ -54,8 +54,8 @@ elif [[ -S /run/docker.sock ]]; then
     bashio::log.info "Docker socket found at /run/docker.sock"
 else
     bashio::log.error "Docker socket not found! Arcane will not be able to connect to Docker."
-    bashio::log.error "This addon requires access to the Docker socket to function."
-    bashio::log.error "Please ensure the addon has the proper permissions."
+    bashio::log.error "This app requires access to the Docker socket to function."
+    bashio::log.error "Please ensure the app has the proper permissions."
 fi
 
 # Generate secrets if not already generated
