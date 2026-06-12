@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.3
+
+_2026-06-12_
+
+## What's Changed
+* fix(activation): mean-pool multi-phrase query embedding (#498) by `scrypster` in https://github.com/scrypster/muninndb/pull/504
+* fix(entity): prevent merge_entity case-variant data loss (#503) by `scrypster` in https://github.com/scrypster/muninndb/pull/505
+* fix(mcp): normalize+coerce entity types on all user-facing write paths (#501) by `scrypster` in https://github.com/scrypster/muninndb/pull/510
+* fix(hnsw): don't cache failed loads; log load outcomes; scope iterator to vault (#499) by `scrypster` in https://github.com/scrypster/muninndb/pull/506
+* fix(sse): deliver trigger push events to SDK clients (#437) by `scrypster` in https://github.com/scrypster/muninndb/pull/507
+* fix(plugins): correct local embedder label to bge-small + surface enrich init errors (#455, #453) by `scrypster` in https://github.com/scrypster/muninndb/pull/508
+* fix(engine,mcp): set inline-enrichment digest flags + clean recall serialization (#500, #502) by `scrypster` in https://github.com/scry
+
+---
+
+
 ## 0.6.2
 
 _2026-06-11_
