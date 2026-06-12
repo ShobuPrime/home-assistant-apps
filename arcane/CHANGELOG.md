@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.0.3
+
+_2026-06-12_
+
+
+### Bug fixes
+
+* self updater not restarting container properly ([#2897](https://github.com/getarcaneapp/arcane/pull/2897) by `kmendell`)
+* dashboard env counts not displaying in a timley manner ([#2901](https://github.com/getarcaneapp/arcane/pull/2901) by `kmendell`)
+* user based api keys are capped at users permissions check ([#2918](https://github.com/getarcaneapp/arcane/pull/2918) by `kmendell`)
+* serve webhooks from the manager and close edge command allowlist gaps ([#2922](https://github.com/getarcaneapp/arcane/pull/2922) by `kmendell`)
+* compose updater not correctly falling back to standalone container update ([#2923](https://github.com/getarcaneapp/arcane/pull/2923) by `kmendell`)
+* dont check image updates on locally built images ([#2924](https://github.com/getarcaneapp/arcane/pull/2924) by `kmendell`)
+
+### Dependencies
+
+* bump github.com/nicholas-fedor/shoutrrr from 0.15.1 to 0.16.0 in /backend ([#2867](https://github.com/getarcaneapp/arcane/pull/2867) by `dependabot`[bot])
+* bump
+
+---
+
+
 > _Maintenance (2026-06-10):_ hassio-addons base 20.2.0 compatibility — migrated the Traefik helper scripts from the deprecated bashio::addon.* functions to bashio::app.*.
 
 ## 2.0.2
