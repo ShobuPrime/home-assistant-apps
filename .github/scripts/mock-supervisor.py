@@ -13,6 +13,16 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 APP_DIR = sys.argv[1] if len(sys.argv) > 1 else "."
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 80
 
+# When the smoke test runs a real MQTT broker on the network it passes the
+# broker's coordinates here, so the app's MQTT auto-detection
+# (GET /services/mqtt) succeeds and the real discovery/publish path is
+# exercised. Unset (the default) -> /services/mqtt 404s, exactly as before,
+# and the app falls back to the REST API.
+MQTT_HOST = os.environ.get("MOCK_MQTT_HOST")
+MQTT_PORT = int(os.environ.get("MOCK_MQTT_PORT", "1883"))
+MQTT_USER = os.environ.get("MOCK_MQTT_USER", "")
+MQTT_PASS = os.environ.get("MOCK_MQTT_PASS", "")
+
 # Load app config
 with open(os.path.join(APP_DIR, "config.yaml")) as f:
     import re
@@ -140,6 +150,23 @@ class Handler(BaseHTTPRequestHandler):
                 ],
             },
         }
+
+        # Only advertise the MQTT service when the smoke test actually started
+        # a broker (MOCK_MQTT_HOST set); otherwise a 404 here makes the app use
+        # its REST fallback, preserving the original behavior for non-MQTT apps.
+        if MQTT_HOST:
+            routes["/services/mqtt"] = {
+                "result": "ok",
+                "data": {
+                    "addon": "core_mosquitto",
+                    "host": MQTT_HOST,
+                    "port": MQTT_PORT,
+                    "ssl": False,
+                    "protocol": "3.1.1",
+                    "username": MQTT_USER,
+                    "password": MQTT_PASS,
+                },
+            }
 
         if path in routes:
             self._respond(200, routes[path])
