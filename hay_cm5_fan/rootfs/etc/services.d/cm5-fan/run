@@ -98,8 +98,17 @@ publish_sensor_discovery() {
     local object_id=$1
     local name=$2
     local icon=${3:-"mdi:thermometer"}
-    local unit=${4:-"\u00b0C"}
-    local device_class=${5:-"temperature"}
+    # Default unit is the degree-Celsius symbol (U+00B0 then 'C'), built with
+    # printf octal escapes so the real UTF-8 bytes (C2 B0 43) reach jq. Do NOT
+    # write a literal backslash-u-00b0-C here: bash does not expand \u in
+    # string literals, so jq would serialize it verbatim and HA would see the
+    # 7-char string instead of the degree sign, rejecting the entity.
+    local degc; degc=$(printf '\302\260C')
+    local unit=${4:-$degc}
+    # device_class defaults to "temperature"; pass "" to omit it entirely
+    # (a generic % gauge has no valid device class). HA rejects any
+    # unit_of_measurement that does not match its device_class.
+    local device_class=${5-"temperature"}
 
     local payload
     payload=$(jq -cn \
@@ -119,11 +128,11 @@ publish_sensor_discovery() {
             state_topic: $st,
             json_attributes_topic: $at,
             unit_of_measurement: $unit,
-            device_class: $dc,
             state_class: "measurement",
             icon: $icon,
             device: $dev
-        }')
+        }
+        + (if $dc == "" then {} else {device_class: $dc} end)')
 
     mqtt_pub "homeassistant/sensor/hay_cm5_fan/${object_id}/config" "$payload" retain
 }
@@ -723,8 +732,10 @@ setup_mqtt
 if [ "${MQTT_AVAILABLE}" = "true" ]; then
     bashio::log.info "Publishing MQTT discovery configs..."
     publish_binary_sensor_discovery "fan" "CM5 Fan" "mdi:fan"
-    publish_sensor_discovery "cpu_clock_speed" "CM5 CPU Clock Speed" "mdi:speedometer" "MHz"
-    publish_sensor_discovery "cpu_utilization" "CM5 CPU Utilization" "mdi:cpu-64-bit" "%"
+    # cpu_clock_speed: device_class "frequency" (accepts Hz/kHz/MHz/GHz)
+    publish_sensor_discovery "cpu_clock_speed" "CM5 CPU Clock Speed" "mdi:speedometer" "MHz" "frequency"
+    # cpu_utilization: generic percentage — no device_class is valid for "%"
+    publish_sensor_discovery "cpu_utilization" "CM5 CPU Utilization" "mdi:cpu-64-bit" "%" ""
     publish_binary_sensor_discovery "cpu_throttled" "CM5 CPU Throttled" "mdi:alert-octagon" "problem"
     publish_binary_sensor_discovery "undervoltage" "CM5 Undervoltage" "mdi:flash-alert" "problem"
     publish_text_sensor_discovery "cpu_governor" "CM5 CPU Governor" "mdi:tune"
