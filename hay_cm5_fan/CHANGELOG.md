@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.2
+
+_2026-06-13_
+
+### Fixes (MQTT discovery — sensors silently rejected on HA 2026.6.x)
+
+Home Assistant tightened MQTT discovery validation: an invalid `unit_of_measurement` ↔ `device_class` pairing is now a hard error (the entity is skipped), where older versions only warned. Two bugs in the discovery configs caused five sensors — `cpu_clock_speed`, `cpu_utilization`, `processor_temperature`, `nvme_temperature`, `io_controller_temperature` — to vanish.
+
+- **Wrong `device_class` on non-temperature sensors.** `device_class: "temperature"` was applied as the default to every sensor. Fixed: `cpu_clock_speed` now uses `frequency` (valid with `MHz`), and `cpu_utilization` drops `device_class` entirely (no device class is valid for a generic `%`; `state_class: measurement` is retained).
+- **Double-escaped degree sign.** The default unit was the source literal `\u00b0C`, but bash does not expand `\u` escapes in string literals — so jq serialized those 7 characters verbatim and the retained config carried `"\\u00b0C"`, which HA decodes to the literal 7-char string `\u00b0C` rather than the degree sign. This made even the real temperature sensors fail validation. The default unit is now built with `printf` octal escapes so the real UTF-8 bytes (`C2 B0 43`, the degree-Celsius symbol) reach the wire.
+
+Bumping the version triggers HA to re-publish (and overwrite) the retained discovery configs, so the corrected entities appear after updating.
+
 ## 1.0.1
 
 _2026-06-10_
