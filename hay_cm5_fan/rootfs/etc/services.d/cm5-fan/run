@@ -15,10 +15,39 @@ GPIO_LINE=$(bashio::config 'gpio_line')
 POLL_INTERVAL=$(bashio::config 'poll_interval')
 TEMP_ON=$(bashio::config 'temp_on')
 TEMP_OFF=$(bashio::config 'temp_off')
+TEMP_UNIT=$(bashio::config 'temperature_unit')
 FAN_MODE=$(bashio::config 'fan_mode')
 TEMP_SENSOR=$(bashio::config 'temp_sensor_path')
 APP_HOSTNAME=$(hostname)
 APP_VERSION=$(bashio::app.version)
+
+# ── Temperature unit handling ──────────────────────────────────────────────
+# Internal fan control and hwmon readings are ALWAYS Celsius (the kernel hwmon
+# ABI reports millidegrees C). `temperature_unit` only changes how the user's
+# thresholds are interpreted and how THIS add-on's own logs/tables read. Home
+# Assistant entities are always published in native °C; HA converts the
+# displayed unit per its own Unit System (Settings -> System -> General).
+if [ "${TEMP_UNIT}" = "fahrenheit" ]; then
+    TEMP_LABEL="F"
+    TEMP_ON_C=$(( (TEMP_ON - 32) * 5 / 9 ))
+    TEMP_OFF_C=$(( (TEMP_OFF - 32) * 5 / 9 ))
+else
+    TEMP_LABEL="C"
+    TEMP_ON_C="${TEMP_ON}"
+    TEMP_OFF_C="${TEMP_OFF}"
+fi
+
+# Format a hwmon millidegree-Celsius reading into the configured display unit,
+# one decimal place, with a plain C/F suffix (no degree glyph, so the byte-width
+# math of the ASCII status tables stays correct).
+fmt_temp() {
+    local mc=$1                 # millidegrees Celsius
+    local deci=$(( mc / 100 ))  # tenths of a degree C
+    [ "${TEMP_UNIT}" = "fahrenheit" ] && deci=$(( deci * 9 / 5 + 320 ))
+    local sign=""
+    if [ "${deci}" -lt 0 ]; then sign="-"; deci=$(( -deci )); fi
+    printf '%s%d.%d%s' "${sign}" "$(( deci / 10 ))" "$(( deci % 10 ))" "${TEMP_LABEL}"
+}
 
 # State tracking
 FAN_STATE=""
@@ -435,8 +464,7 @@ print_status_report() {
             local raw
             raw=$(cat "${tf}" 2>/dev/null || true)
             [ -z "${raw}" ] && continue
-            local tc=$(( raw / 1000 )) tf2=$(( (raw % 1000) / 100 ))
-            local tval="${tc}.${tf2}"
+            local tval; tval="$(fmt_temp "${raw}")"
             case "${hname}" in
                 cpu_thermal) cpu_temp="${tval}" ;;
                 nvme)        nvme_temp="${tval}" ;;
@@ -448,7 +476,7 @@ print_status_report() {
     # ── System status table ──
     local fan_str="OFF"
     [ "${FAN_STATE}" = "1" ] && fan_str="ON"
-    local fan_detail="${fan_str} (${FAN_MODE}, on>=${TEMP_ON}C off<=${TEMP_OFF}C)"
+    local fan_detail="${fan_str} (${FAN_MODE}, on>=${TEMP_ON}${TEMP_LABEL} off<=${TEMP_OFF}${TEMP_LABEL})"
 
     # Read CPU stats for the report
     local rpt_freq="" rpt_max="" rpt_gov="" rpt_throttle="No" rpt_undervolt="OK" rpt_util="${CPU_UTIL_PCT}%"
@@ -476,7 +504,7 @@ print_status_report() {
     [ -n "${rpt_max}" ] && freq_display="${rpt_freq} / ${rpt_max}"
 
     local T_WN=$(max_len "Metric" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "CM5 Fan" "CPU Clock Speed" "CPU Utilization" "CPU Governor" "CPU Throttled" "Undervoltage" "Firmware Flags")
-    local T_WV=$(max_len "Value" "${cpu_temp}C" "${rp1_temp}C" "${nvme_temp}C" "${fan_detail}" "${freq_display}" "${rpt_util}" "${rpt_gov}" "${rpt_throttle}" "${rpt_undervolt}" "${rpt_flags}")
+    local T_WV=$(max_len "Value" "${cpu_temp}" "${rp1_temp}" "${nvme_temp}" "${fan_detail}" "${freq_display}" "${rpt_util}" "${rpt_gov}" "${rpt_throttle}" "${rpt_undervolt}" "${rpt_flags}")
 
     bashio::log.info ""
     bashio::log.info "  System Status"
@@ -484,9 +512,9 @@ print_status_report() {
     bashio::log.info "$(tbl_border $T_WN $T_WV)"
     bashio::log.info "$(tbl_row "Metric" $T_WN "Value" $T_WV)"
     bashio::log.info "$(tbl_border $T_WN $T_WV)"
-    [ -n "${cpu_temp}" ]  && bashio::log.info "$(tbl_row "CM5 Processor" $T_WN "${cpu_temp}C" $T_WV)"
-    [ -n "${rp1_temp}" ]  && bashio::log.info "$(tbl_row "CM5 I/O Controller (RP1)" $T_WN "${rp1_temp}C" $T_WV)"
-    [ -n "${nvme_temp}" ] && bashio::log.info "$(tbl_row "NVMe SSD" $T_WN "${nvme_temp}C" $T_WV)"
+    [ -n "${cpu_temp}" ]  && bashio::log.info "$(tbl_row "CM5 Processor" $T_WN "${cpu_temp}" $T_WV)"
+    [ -n "${rp1_temp}" ]  && bashio::log.info "$(tbl_row "CM5 I/O Controller (RP1)" $T_WN "${rp1_temp}" $T_WV)"
+    [ -n "${nvme_temp}" ] && bashio::log.info "$(tbl_row "NVMe SSD" $T_WN "${nvme_temp}" $T_WV)"
     bashio::log.info "$(tbl_border $T_WN $T_WV)"
     bashio::log.info "$(tbl_row "CPU Clock Speed" $T_WN "${freq_display}" $T_WV)"
     bashio::log.info "$(tbl_row "CPU Utilization" $T_WN "${rpt_util}" $T_WV)"
@@ -673,7 +701,7 @@ update_primary_entities() {
         local fan_attrs
         fan_attrs=$(jq -cn \
             --arg chip "${GPIO_CHIP}" --argjson line "${GPIO_LINE}" \
-            --arg mode "${FAN_MODE}" --argjson temp_on "${TEMP_ON}" --argjson temp_off "${TEMP_OFF}" \
+            --arg mode "${FAN_MODE}" --argjson temp_on "${TEMP_ON_C}" --argjson temp_off "${TEMP_OFF_C}" \
             --arg temp "${temp_display}" \
             '{icon: "mdi:fan", temperature: $temp, gpio_chip: $chip, gpio_line: $line, mode: $mode, temp_on_threshold: $temp_on, temp_off_threshold: $temp_off}')
         publish_state "binary_sensor" "fan" "${fan_state_str}" "CM5 Fan" "${fan_attrs}"
@@ -723,12 +751,21 @@ update_discovered_sensors() {
 # ==============================================================================
 if [ "${TEMP_OFF}" -ge "${TEMP_ON}" ]; then
     if [ "${FAN_MODE}" = "auto" ]; then
-        bashio::log.error "temp_off (${TEMP_OFF}) must be less than temp_on (${TEMP_ON})!"
+        bashio::log.error "temp_off (${TEMP_OFF}${TEMP_LABEL}) must be less than temp_on (${TEMP_ON}${TEMP_LABEL})!"
         exit 1
     else
-        bashio::log.warning "temp_off (${TEMP_OFF}) >= temp_on (${TEMP_ON}) — ignored (fan_mode=${FAN_MODE})"
+        bashio::log.warning "temp_off (${TEMP_OFF}${TEMP_LABEL}) >= temp_on (${TEMP_ON}${TEMP_LABEL}) — ignored (fan_mode=${FAN_MODE})"
     fi
 fi
+
+# Soft sanity check: the config schema range is widened to accept both °C and °F
+# scales, so confirm the entered thresholds actually suit the selected unit.
+if [ "${TEMP_UNIT}" = "fahrenheit" ]; then RANGE_LO=77; RANGE_HI=200; else RANGE_LO=25; RANGE_HI=95; fi
+for _thr in "${TEMP_ON}" "${TEMP_OFF}"; do
+    if [ "${_thr}" -lt "${RANGE_LO}" ] || [ "${_thr}" -gt "${RANGE_HI}" ]; then
+        bashio::log.warning "Threshold ${_thr}${TEMP_LABEL} is outside the typical ${RANGE_LO}-${RANGE_HI}${TEMP_LABEL} range for ${TEMP_UNIT}"
+    fi
+done
 
 # Setup MQTT (optional)
 setup_mqtt
@@ -768,18 +805,20 @@ fi
 # Log configuration
 bashio::log.info "Configuration:"
 bashio::log.info "  GPIO: ${GPIO_CHIP} line ${GPIO_LINE}"
-bashio::log.info "  Poll: ${POLL_INTERVAL}s | Thresholds: ON=${TEMP_ON}C OFF=${TEMP_OFF}C"
+bashio::log.info "  Poll: ${POLL_INTERVAL}s | Thresholds: ON=${TEMP_ON}${TEMP_LABEL} OFF=${TEMP_OFF}${TEMP_LABEL}"
 bashio::log.info "  Fan mode: ${FAN_MODE} | Leave on at shutdown: $(bashio::config 'leave_on_at_shutdown')"
 bashio::log.info "  MQTT: ${MQTT_AVAILABLE} | Hostname: ${APP_HOSTNAME}"
 
 # Initialize temperature variables (needed by status report before main loop)
 TEMP_C=0
 TEMP_DISPLAY="0.0"
+TEMP_DISP="0.0${TEMP_LABEL}"
 if [ -f "${TEMP_SENSOR}" ]; then
     TEMP_RAW=$(cat "${TEMP_SENSOR}")
     TEMP_C=$((TEMP_RAW / 1000))
     TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
     TEMP_DISPLAY="${TEMP_C}.${TEMP_FRAC}"
+    TEMP_DISP="$(fmt_temp "${TEMP_RAW}")"
 fi
 
 # Turn fan ON as initial safe state (before first report so GPIO14 shows active)
@@ -809,6 +848,7 @@ while true; do
         TEMP_C=$((TEMP_RAW / 1000))
         TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
         TEMP_DISPLAY="${TEMP_C}.${TEMP_FRAC}"
+        TEMP_DISP="$(fmt_temp "${TEMP_RAW}")"
     else
         bashio::log.warning "CPU temp sensor not found: ${TEMP_SENSOR}"
         set_fan 1
@@ -821,9 +861,9 @@ while true; do
         on)  set_fan 1 ;;
         off) set_fan 0 ;;
         auto)
-            if [ "${TEMP_C}" -ge "${TEMP_ON}" ]; then
+            if [ "${TEMP_C}" -ge "${TEMP_ON_C}" ]; then
                 set_fan 1
-            elif [ "${TEMP_C}" -le "${TEMP_OFF}" ]; then
+            elif [ "${TEMP_C}" -le "${TEMP_OFF_C}" ]; then
                 set_fan 0
             fi
             ;;
@@ -914,9 +954,9 @@ while true; do
     # Log throttle state changes
     if [ "${CPU_THROTTLED}" != "${LAST_REPORTED_THROTTLE}" ]; then
         if [ "${CPU_THROTTLED}" = "ON" ]; then
-            bashio::log.warning "CPU THROTTLED [${THROTTLE_FLAGS}]: ${THROTTLE_REASONS}| ${CUR_FREQ_MHZ} MHz, ${CPU_UTIL_PCT}% util, ${TEMP_DISPLAY}C"
+            bashio::log.warning "CPU THROTTLED [${THROTTLE_FLAGS}]: ${THROTTLE_REASONS}| ${CUR_FREQ_MHZ} MHz, ${CPU_UTIL_PCT}% util, ${TEMP_DISP}"
         elif [ "${LAST_REPORTED_THROTTLE}" = "ON" ]; then
-            bashio::log.info "CPU throttle cleared [${THROTTLE_FLAGS}]: ${CUR_FREQ_MHZ} MHz, ${TEMP_DISPLAY}C"
+            bashio::log.info "CPU throttle cleared [${THROTTLE_FLAGS}]: ${CUR_FREQ_MHZ} MHz, ${TEMP_DISP}"
         fi
     fi
     if [ "${CPU_UNDERVOLT}" != "${LAST_REPORTED_UNDERVOLT}" ]; then

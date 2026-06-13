@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0
+
+_2026-06-13_
+
+### Added
+
+- **`temperature_unit` option (`celsius` (default) / `fahrenheit`).** Controls the unit for the `temp_on`/`temp_off` thresholds and the add-on's own logs/status table. Thresholds are converted to Celsius internally for fan control (hwmon is always Celsius), and the schema ranges were widened to accept either scale (a soft warning flags out-of-range values for the chosen unit).
+
+### Notes
+
+- The Home Assistant **entities are unchanged** — temperature sensors are still published in native °C. HA already converts the *displayed* unit per its Unit System (Settings → System → General), so if your dashboard reads °F that's HA's conversion, not the add-on. Set `temperature_unit: fahrenheit` only to enter thresholds and read the add-on log in °F. Defaults preserve existing behavior (Celsius).
+
 ## 1.0.3
 
 _2026-06-13_

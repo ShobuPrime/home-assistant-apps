@@ -42,7 +42,11 @@ fi
 if [[ -f "${TEMP_SENSOR}" ]]; then
     TEMP_RAW=$(cat "${TEMP_SENSOR}")
     TEMP_C=$((TEMP_RAW / 1000))
-    bashio::log.info "CPU temperature sensor found: ${TEMP_C}C"
+    if [ "$(bashio::config 'temperature_unit')" = "fahrenheit" ]; then
+        bashio::log.info "CPU temperature sensor found: $(( TEMP_C * 9 / 5 + 32 ))F"
+    else
+        bashio::log.info "CPU temperature sensor found: ${TEMP_C}C"
+    fi
 else
     bashio::log.warning "Temperature sensor not found at ${TEMP_SENSOR}"
     bashio::log.warning "Fan will remain ON as a safety measure until sensor is available"
