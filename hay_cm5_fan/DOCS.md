@@ -65,7 +65,7 @@ Lower values provide faster response but slightly more CPU overhead. 5 seconds i
 
 The unit used for the `temp_on`/`temp_off` thresholds and for the add-on's own logs/status table: `celsius` (default) or `fahrenheit`. Default: `celsius`
 
-This does **not** change the Home Assistant entities — the temperature sensors are always published in native °C, and Home Assistant converts them to your dashboard's unit automatically based on **Settings → System → General → Unit System** (you can also override the unit per-entity). So if your dashboard already shows °F, that's HA converting the °C value; set this option to `fahrenheit` only if you want to *enter the thresholds* and read the add-on log in °F.
+This does **not** change the Home Assistant entities — the temperature sensors are always published in native °C, and Home Assistant converts them to your dashboard's unit automatically based on your HA unit settings (the **Home Information** page, `/config/general`). You can also override the displayed unit per-entity in that entity's settings. So if your dashboard already shows °F, that's HA converting the °C value; set this option to `fahrenheit` only if you want to *enter the thresholds* and read the add-on log in °F.
 
 ### Option: `temp_on`
 
@@ -109,6 +109,8 @@ All entities are created with `state_class: measurement` and proper `device_clas
 - **Long-term statistics (LTS)**: HA computes hourly min/mean/max statistics, retained indefinitely
 - **Statistics cards**: Use the Statistics Graph card to visualize trends over days, weeks, or months
 - **Energy/Analytics**: Temperature data integrates with HA's analytics system
+
+Entity states are published **retained**, so values appear immediately when Home Assistant subscribes (including after an HA restart) — even for entities that rarely change, such as the fan and the throttle/undervoltage binary sensors. Every entity also has an **availability** topic tied to the add-on, so when the add-on is stopped its entities show **Unavailable** rather than a stale value.
 
 ### Primary Entities
 

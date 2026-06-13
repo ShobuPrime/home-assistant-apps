@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.1
+
+_2026-06-13_
+
+### Fixes (entities stuck "Unknown" — CM5 Fan, CM5 Undervoltage, CM5 CPU Throttled)
+
+State topics were published **only on change** and **not retained**. Entities whose value rarely changes (the fan and the throttle/undervoltage binary sensors) published their state once at startup — before Home Assistant finished processing discovery and subscribed — and never again, so HA never received a value and showed them `Unknown`. Frequently-updated sensors (temperature, clock speed, utilization) were unaffected because they republish every cycle.
+
+- **Retain state + attribute publishes**, so HA gets the last known value the instant it subscribes (including after an HA restart).
+- **Add an availability topic** to every entity (`availability_topic: hay_cm5_fan/status`). Combined with the retained `online`/`offline` status, entities now show **Unavailable** when the add-on is stopped instead of a stale retained value.
+- **Publish `status: online` (retained) at startup**, clearing the stale retained `offline` a previous shutdown left behind (which is why `status` read `offline` while the add-on was running).
+
 ## 1.1.0
 
 _2026-06-13_
@@ -10,7 +22,7 @@ _2026-06-13_
 
 ### Notes
 
-- The Home Assistant **entities are unchanged** — temperature sensors are still published in native °C. HA already converts the *displayed* unit per its Unit System (Settings → System → General), so if your dashboard reads °F that's HA's conversion, not the add-on. Set `temperature_unit: fahrenheit` only to enter thresholds and read the add-on log in °F. Defaults preserve existing behavior (Celsius).
+- The Home Assistant **entities are unchanged** — temperature sensors are still published in native °C. HA already converts the *displayed* unit per your HA unit settings (the "Home Information" page, `/config/general`), so if your dashboard reads °F that's HA's conversion, not the add-on. Set `temperature_unit: fahrenheit` only to enter thresholds and read the add-on log in °F. Defaults preserve existing behavior (Celsius).
 
 ## 1.0.3
 
