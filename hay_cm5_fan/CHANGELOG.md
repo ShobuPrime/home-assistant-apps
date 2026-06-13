@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.3
+
+_2026-06-13_
+
+### Fixes (daemon crash-loop under bashio strict mode — all sensors stuck "Unknown")
+
+The base image now runs service scripts through a bashio that enables `set -o nounset`/`errexit`/`pipefail`. Under this, the daemon aborted on its first **state** publish and S6 respawned it in a tight loop — it published the (retained) MQTT discovery configs, so the entities appeared in HA, but it crashed before the main loop ever sent a value, leaving every sensor reading `Unknown` (and gauge cards reporting "Entity is non-numeric").
+
+- **`mqtt_pub` referenced `$3` unconditionally** (`[ "${3}" = "retain" ]`). State/attribute publishes call it with only 2 args, so under `set -u` the bare `$3` was an unbound variable and aborted the whole daemon. Now uses `${3:-}`.
+- **Made publishing non-fatal** (`mosquitto_pub ... || true`). Under `set -e` a transient broker error would otherwise kill the thermal-control daemon; fan safety must not depend on telemetry succeeding.
+
 ## 1.0.2
 
 _2026-06-13_
