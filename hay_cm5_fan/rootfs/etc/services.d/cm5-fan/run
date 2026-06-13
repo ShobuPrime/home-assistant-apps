@@ -165,6 +165,9 @@ publish_sensor_discovery() {
             unit_of_measurement: $unit,
             state_class: "measurement",
             icon: $icon,
+            availability_topic: "hay_cm5_fan/status",
+            payload_available: "online",
+            payload_not_available: "offline",
             device: $dev
         }
         + (if $dc == "" then {} else {device_class: $dc} end)')
@@ -198,6 +201,9 @@ publish_binary_sensor_discovery() {
             payload_on: "ON",
             payload_off: "OFF",
             icon: $icon,
+            availability_topic: "hay_cm5_fan/status",
+            payload_available: "online",
+            payload_not_available: "offline",
             device: $dev
         }')
 
@@ -225,6 +231,9 @@ publish_text_sensor_discovery() {
             state_topic: $st,
             json_attributes_topic: $at,
             icon: $icon,
+            availability_topic: "hay_cm5_fan/status",
+            payload_available: "online",
+            payload_not_available: "offline",
             device: $dev
         }')
 
@@ -242,9 +251,14 @@ publish_state() {
     local attrs_json=$5    # JSON string of attributes
 
     if [ "${MQTT_AVAILABLE}" = "true" ]; then
-        mqtt_pub "hay_cm5_fan/${object_id}/state" "${state}"
+        # Retain state + attributes so Home Assistant gets the last known value
+        # the instant it subscribes (after an HA restart, or once it finishes
+        # processing discovery). Without retain, entities that only publish on
+        # change — the fan and the throttle/undervoltage binary sensors — stay
+        # "Unknown" because their single publish happened before HA subscribed.
+        mqtt_pub "hay_cm5_fan/${object_id}/state" "${state}" retain
         [ -n "${attrs_json}" ] && \
-            mqtt_pub "hay_cm5_fan/${object_id}/attributes" "${attrs_json}"
+            mqtt_pub "hay_cm5_fan/${object_id}/attributes" "${attrs_json}" retain
     else
         # REST API fallback — must include all attributes in every POST
         local full_attrs
@@ -774,6 +788,11 @@ setup_mqtt
 # Register MQTT discovery entities
 if [ "${MQTT_AVAILABLE}" = "true" ]; then
     bashio::log.info "Publishing MQTT discovery configs..."
+    # Retained availability signal — the discovery configs reference this topic,
+    # so it must read "online" (retained) while we run, overriding any stale
+    # "offline" left retained by a previous shutdown. cleanup() sets it back to
+    # "offline" (retained) on SIGTERM so entities show unavailable when stopped.
+    mqtt_pub "hay_cm5_fan/status" "online" retain
     publish_binary_sensor_discovery "fan" "CM5 Fan" "mdi:fan"
     # cpu_clock_speed: device_class "frequency" (accepts Hz/kHz/MHz/GHz)
     publish_sensor_discovery "cpu_clock_speed" "CM5 CPU Clock Speed" "mdi:speedometer" "MHz" "frequency"

@@ -110,6 +110,8 @@ All entities are created with `state_class: measurement` and proper `device_clas
 - **Statistics cards**: Use the Statistics Graph card to visualize trends over days, weeks, or months
 - **Energy/Analytics**: Temperature data integrates with HA's analytics system
 
+Entity states are published **retained**, so values appear immediately when Home Assistant subscribes (including after an HA restart) — even for entities that rarely change, such as the fan and the throttle/undervoltage binary sensors. Every entity also has an **availability** topic tied to the add-on, so when the add-on is stopped its entities show **Unavailable** rather than a stale value.
+
 ### Primary Entities
 
 #### `sensor.hay_cpu_temperature`
