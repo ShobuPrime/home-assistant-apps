@@ -1,6 +1,6 @@
 name: "HAY CM5 Fan Controller"
 description: "GPIO-based fan control with thermal management for Home Assistant Yellow with CM5"
-version: "1.0.2"
+version: "1.0.3"
 slug: "hay_cm5_fan"
 url: "https://github.com/ShobuPrime/home-assistant-apps"
 init: false

@@ -82,11 +82,16 @@ setup_mqtt() {
 mqtt_pub() {
     local topic=$1
     local payload=$2
+    # ${3:-} (not ${3}) because bashio runs under `set -u`: state/attribute
+    # publishes call this with only 2 args, so a bare $3 is an unbound
+    # variable and aborts the whole daemon.
     local retain_flag=""
-    [ "${3}" = "retain" ] && retain_flag="-r"
+    [ "${3:-}" = "retain" ] && retain_flag="-r"
+    # `|| true`: bashio also runs under `set -e`; a transient broker error must
+    # not kill the thermal-control daemon (fan safety > telemetry).
     mosquitto_pub -h "${MQTT_HOST}" -p "${MQTT_PORT}" \
         -u "${MQTT_USER}" -P "${MQTT_PASS}" \
-        -t "${topic}" -m "${payload}" ${retain_flag} 2>/dev/null
+        -t "${topic}" -m "${payload}" ${retain_flag} 2>/dev/null || true
 }
 
 # ==============================================================================
