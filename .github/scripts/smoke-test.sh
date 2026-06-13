@@ -11,6 +11,7 @@ APP_DIR="${1:?Usage: smoke-test.sh <app-dir> <image-name>}"
 IMAGE_NAME="${2:?Usage: smoke-test.sh <app-dir> <image-name>}"
 NETWORK_NAME="smoke-test-net"
 SUPERVISOR_NAME="smoke-test-supervisor"
+MQTT_NAME="smoke-test-mqtt"
 CONTAINER_NAME="smoke-test-$(basename "${APP_DIR}")"
 MAX_WAIT=120
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,6 +35,7 @@ cleanup() {
     fi
     docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm -f "${SUPERVISOR_NAME}" 2>/dev/null || true
+    docker rm -f "${MQTT_NAME}" 2>/dev/null || true
     docker network rm "${NETWORK_NAME}" 2>/dev/null || true
     # Clean up host-side data directory for Docker-in-Docker apps
     [ -n "${SMOKE_DATA_DIR}" ] && rm -rf "${SMOKE_DATA_DIR}" 2>/dev/null || true
@@ -51,6 +53,9 @@ fi
 
 SLUG=$(grep "^slug:" "${CONFIG}" | sed 's/slug: *"\(.*\)"/\1/')
 NEEDS_DOCKER=$(grep -q "^docker_api: true" "${CONFIG}" && echo "true" || echo "false")
+# Apps that declare an mqtt service (`- mqtt:want` / `- mqtt:need`) get a real
+# broker so their MQTT discovery/publish path is exercised, not just REST.
+NEEDS_MQTT=$(grep -qE '^[[:space:]]*-[[:space:]]*mqtt:(want|need)' "${CONFIG}" && echo "true" || echo "false")
 
 # Extract health check port from watchdog config
 WATCHDOG=$(grep "^watchdog:" "${CONFIG}" | sed 's/watchdog: *//')
@@ -70,13 +75,42 @@ echo ""
 # ---------------------------------------------------------------------------
 # Create network and start mock Supervisor
 # ---------------------------------------------------------------------------
-echo "==> Starting mock HA Supervisor..."
 docker network create "${NETWORK_NAME}" > /dev/null 2>&1
 
+# Start a real MQTT broker for apps that declare an mqtt service, then tell the
+# mock Supervisor to advertise it via /services/mqtt. Without this the app's
+# MQTT auto-detection fails and it silently uses the REST fallback, leaving the
+# entire discovery/publish path untested (how two hay_cm5_fan regressions
+# shipped green in Jun 2026).
+SUPERVISOR_ENV=()
+if [ "${NEEDS_MQTT}" = "true" ]; then
+    echo "==> Starting MQTT broker (app declares an mqtt service)..."
+    docker run -d \
+        --name "${MQTT_NAME}" \
+        --network "${NETWORK_NAME}" \
+        --network-alias mqtt \
+        eclipse-mosquitto:2 \
+        sh -c 'printf "listener 1883\nallow_anonymous true\n" > /mosquitto/config/mosquitto.conf && exec mosquitto -c /mosquitto/config/mosquitto.conf' \
+        > /dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        docker exec "${MQTT_NAME}" mosquitto_pub -h localhost -t smoke/ping -m up 2>/dev/null && break
+        sleep 1
+    done
+    if docker exec "${MQTT_NAME}" mosquitto_pub -h localhost -t smoke/ping -m up 2>/dev/null; then
+        pass "MQTT broker running"
+    else
+        docker logs "${MQTT_NAME}" 2>&1 | tail -10
+        fail "MQTT broker did not start"
+    fi
+    SUPERVISOR_ENV=(-e "MOCK_MQTT_HOST=mqtt" -e "MOCK_MQTT_PORT=1883")
+fi
+
+echo "==> Starting mock HA Supervisor..."
 docker run -d \
     --name "${SUPERVISOR_NAME}" \
     --network "${NETWORK_NAME}" \
     --network-alias supervisor \
+    "${SUPERVISOR_ENV[@]}" \
     -v "${SCRIPT_DIR}/mock-supervisor.py:/mock-supervisor.py:ro" \
     -v "$(pwd)/${APP_DIR}:/app:ro" \
     python:3-slim \
@@ -474,6 +508,71 @@ case "${SLUG}" in
         else
             info "vcgencmd not testable without /dev/vcio"
         fi
+
+        # --- MQTT path assertions (app declares mqtt:want) ---
+        # The mock Supervisor advertises a broker, so the daemon MUST take the
+        # MQTT discovery path. Both Jun-2026 regressions (discovery
+        # device_class/unit, and the set -u crash in mqtt_pub) lived here and
+        # were invisible to CI until this path was actually exercised.
+        # Poll (don't single-shot grep): "MQTT connected" is logged a beat after
+        # the daemon banner, and a timeout here correctly flags a real
+        # REST-fallback regression (e.g. the Supervisor stopped advertising MQTT).
+        wait_for_log "MQTT connected" "MQTT discovery path exercised (not REST fallback)" 45
+
+        # Crash-loop detection. Under bashio strict mode a bad publish aborts the
+        # daemon and S6 silently respawns it; the container stays 'Running', so a
+        # liveness check can't see it. We poll for S6's crash banner (and any 2nd
+        # daemon start) and fail the instant either appears. The window must
+        # exceed one full emulated start->crash cycle (~20s under QEMU, since the
+        # daemon enumerates every hwmon sensor before the crashing publish).
+        echo "==> Watching for crash-loop (up to 50s)..."
+        CRASH_LOGS=""
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            CRASH_LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
+            STARTS=$(echo "${CRASH_LOGS}" | grep -c "Starting HAY CM5 Fan Controller daemon" || true)
+            if echo "${CRASH_LOGS}" | grep -q "crashed with exit code" || [ "${STARTS}" -gt 1 ]; then
+                echo "${CRASH_LOGS}" | sed 's/\x1b\[[0-9;]*m//g' | grep -E "unbound variable|crashed with exit|Starting HAY" | tail -8
+                fail "Daemon crash-loop detected (S6 respawn) — it aborted before reaching steady state"
+            fi
+            sleep 5
+        done
+        pass "Daemon stable for 50s (single start, no respawn)"
+
+        # Validate the retained MQTT discovery configs the daemon published:
+        # every unit_of_measurement must be valid for its device_class, and the
+        # degree sign must be real UTF-8 (catches the '°C' double-escape).
+        echo "==> Validating retained MQTT discovery configs..."
+        CONFIGS=$(docker exec "${MQTT_NAME}" mosquitto_sub -h localhost \
+            -t "homeassistant/+/${SLUG}/+/config" -v -W 4 2>/dev/null || true)
+        if [ -z "${CONFIGS}" ]; then
+            fail "No retained discovery configs found on broker"
+        fi
+        CONFIG_COUNT=0
+        while IFS= read -r line; do
+            [ -z "${line}" ] && continue
+            topic="${line%% *}"; payload="${line#* }"
+            echo "${payload}" | jq -e . > /dev/null 2>&1 || fail "Invalid JSON config on ${topic}"
+            dc=$(echo "${payload}" | jq -r '.device_class // ""')
+            unit=$(echo "${payload}" | jq -r '.unit_of_measurement // ""')
+            # device_class <-> unit consistency, the pairing HA now hard-enforces.
+            # Accepted temperature units are built with printf so the real UTF-8
+            # degree bytes (C2 B0) are what gets compared; a double-escaped unit
+            # (the 7-char backslash-u-00b0-C string) fails here instead of
+            # silently passing the way it did before this check existed.
+            case "${dc}" in
+                temperature)
+                    if [ "${unit}" != "$(printf '\302\260C')" ] \
+                    && [ "${unit}" != "$(printf '\302\260F')" ] \
+                    && [ "${unit}" != "K" ]; then
+                        fail "${topic}: device_class=temperature with invalid unit '${unit}'"
+                    fi ;;
+                frequency)
+                    case "${unit}" in Hz|kHz|MHz|GHz) ;; *) fail "${topic}: device_class=frequency with invalid unit '${unit}'" ;; esac ;;
+            esac
+            CONFIG_COUNT=$((CONFIG_COUNT + 1))
+        done <<< "${CONFIGS}"
+        pass "All ${CONFIG_COUNT} discovery configs valid (unit/device_class + UTF-8 degree sign)"
+
         if docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
             pass "Container running (daemon stable without hardware)"
         else
