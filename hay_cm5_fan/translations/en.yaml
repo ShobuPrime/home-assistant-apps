@@ -25,19 +25,27 @@ configuration:
       How often the CPU temperature is checked, in seconds (1-60). Default is 5.
       Lower values respond faster but use slightly more CPU; temperature changes
       slowly, so 5 is a good balance.
+  temperature_unit:
+    name: Temperature unit
+    description: >-
+      The unit used for the fan-on/fan-off thresholds below and for this
+      add-on's own logs: "celsius" (default) or "fahrenheit". This does NOT
+      change the Home Assistant sensors — those are always published in Celsius,
+      and Home Assistant converts them to your dashboard's unit automatically
+      (Settings -> System -> General -> Unit System).
   temp_on:
-    name: Fan-on temperature (C)
+    name: Fan-on temperature
     description: >-
       In "auto" mode, the fan turns ON when the CPU reaches or exceeds this
-      temperature in Celsius (30-90). Default is 50. Must be higher than the
-      fan-off threshold.
+      temperature, in the unit selected above (30-90 C / 86-194 F). Default is
+      50. Must be higher than the fan-off threshold.
   temp_off:
-    name: Fan-off temperature (C)
+    name: Fan-off temperature
     description: >-
       In "auto" mode, the fan turns OFF when the CPU drops to or below this
-      temperature in Celsius (25-85). Default is 33. Must be lower than the
-      fan-on threshold — the gap between the two creates hysteresis that
-      prevents rapid on/off cycling.
+      temperature, in the unit selected above (25-85 C / 77-185 F). Default is
+      33. Must be lower than the fan-on threshold — the gap between the two
+      creates hysteresis that prevents rapid on/off cycling.
   fan_mode:
     name: Fan mode
     description: >-

@@ -61,15 +61,21 @@ How often to check CPU temperature, in seconds (1-60). Default: `5`
 
 Lower values provide faster response but slightly more CPU overhead. 5 seconds is a good balance — temperature changes slowly.
 
+### Option: `temperature_unit`
+
+The unit used for the `temp_on`/`temp_off` thresholds and for the add-on's own logs/status table: `celsius` (default) or `fahrenheit`. Default: `celsius`
+
+This does **not** change the Home Assistant entities — the temperature sensors are always published in native °C, and Home Assistant converts them to your dashboard's unit automatically based on **Settings → System → General → Unit System** (you can also override the unit per-entity). So if your dashboard already shows °F, that's HA converting the °C value; set this option to `fahrenheit` only if you want to *enter the thresholds* and read the add-on log in °F.
+
 ### Option: `temp_on`
 
-Temperature threshold in Celsius to turn the fan ON (30-90). Default: `55`
+Temperature threshold to turn the fan ON, in the unit set by `temperature_unit` (30-90 °C / 86-194 °F). Default: `50`
 
 When CPU temperature reaches or exceeds this value, the fan turns on.
 
 ### Option: `temp_off`
 
-Temperature threshold in Celsius to turn the fan OFF (25-85). Default: `45`
+Temperature threshold to turn the fan OFF, in the unit set by `temperature_unit` (25-85 °C / 77-185 °F). Default: `33`
 
 When CPU temperature drops to or below this value, the fan turns off. Must be lower than `temp_on` to create hysteresis.
 
