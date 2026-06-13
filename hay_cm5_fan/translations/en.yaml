@@ -32,7 +32,7 @@ configuration:
       add-on's own logs: "celsius" (default) or "fahrenheit". This does NOT
       change the Home Assistant sensors — those are always published in Celsius,
       and Home Assistant converts them to your dashboard's unit automatically
-      (Settings -> System -> General -> Unit System).
+      per your HA unit settings (the "Home Information" page, /config/general).
   temp_on:
     name: Fan-on temperature
     description: >-
