@@ -26,7 +26,8 @@ APP_VERSION=$(bashio::app.version)
 # ABI reports millidegrees C). `temperature_unit` only changes how the user's
 # thresholds are interpreted and how THIS add-on's own logs/tables read. Home
 # Assistant entities are always published in native °C; HA converts the
-# displayed unit per its own Unit System (Settings -> System -> General).
+# displayed unit per your HA unit settings (the "Home Information" page,
+# /config/general) or a per-entity unit override.
 if [ "${TEMP_UNIT}" = "fahrenheit" ]; then
     TEMP_LABEL="F"
     TEMP_ON_C=$(( (TEMP_ON - 32) * 5 / 9 ))

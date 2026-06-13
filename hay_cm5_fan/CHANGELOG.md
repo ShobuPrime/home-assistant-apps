@@ -10,7 +10,7 @@ _2026-06-13_
 
 ### Notes
 
-- The Home Assistant **entities are unchanged** — temperature sensors are still published in native °C. HA already converts the *displayed* unit per its Unit System (Settings → System → General), so if your dashboard reads °F that's HA's conversion, not the add-on. Set `temperature_unit: fahrenheit` only to enter thresholds and read the add-on log in °F. Defaults preserve existing behavior (Celsius).
+- The Home Assistant **entities are unchanged** — temperature sensors are still published in native °C. HA already converts the *displayed* unit per your HA unit settings (the "Home Information" page, `/config/general`), so if your dashboard reads °F that's HA's conversion, not the add-on. Set `temperature_unit: fahrenheit` only to enter thresholds and read the add-on log in °F. Defaults preserve existing behavior (Celsius).
 
 ## 1.0.3
 
