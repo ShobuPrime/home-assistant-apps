@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.7.0
+
+_2026-06-13_
+
+## What's Changed
+
+### Cluster overhaul — HA is now production-ready
+
+The Cortex/Lobe replication layer existed in previous releases but was not reliably functional in real multi-node deployments. Every known correctness issue has been addressed and Docker-validated end-to-end.
+
+**Automatic failover** — when the Cortex goes down, Lobes detect SDOWN via gossip, accumulate votes, and the first node with quorum wins a jittered Raft-style election (#532)
+
+**Returning-primary deference** — a restarted former Cortex probes the cluster before asserting leadership; if a failover leader is in place it defers, receives a snapshot, and follows — no split-brain, no data loss (#537)
+
+**PeerHello discovery mesh** — nodes with no join relationship dial configured seeds and exchange authenticated frames, feeding MSP liveness and elections (#530)
+
+**Equal-epoch tie-break** — two primaries discovering each other at the same epoch converge to a single leader via node-id ordering (#530)
+
+**Per
+
+---
+
+
 ## 0.6.3
 
 _2026-06-12_
