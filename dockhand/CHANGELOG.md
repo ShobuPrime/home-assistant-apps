@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.0.33
+
+_2026-06-16_
+
+### Changed
+- Updated Dockhand to version 1.0.33
+
+Released: 2026-06-15
+
+## What's new in v1.0.33
+
+- ✨ in-place container property updates without restart — restart policy, CPU/memory limits (#1153)
+- ✨ clickable stack badge in container and volume inspect modals (#1121)
+- ✨ clickable stack badge in volumes list row (#1122)
+- ✨ volumes list shows driver_opts type (NFS, CIFS, etc.) with sort and filter (#1123)
+- ✨ Bark iOS notifications (#1095, PR#1097, @undirectlookable)
+- ✨ Signal notifications via signal-cli-rest-api (#1099)
+- ✨ Apprise passthrough — forward to a self-hosted caronc/apprise-api server (#1099)
+- 🐛 env editor flagged Docker/Compose built-ins as MISSING (#141)
+- 🐛 YAML editor indentation was inconsistent when pressing Enter (#1156)
+- ✨ `dockhand.update=false`, `dockhand.hidden=true` and `localhost/*` images skip registry polling (#1083)
+- 🐛 registry authentication for image pulls (#1105)
+- ✨ native HTTPS listener, off by default (#1102)
+- 🐛 environments stuck "Failed" after VPN/Tailscale tunnel drops until agent restart (#1160)
+- 🐛 health_status events flooding container_events table (#1165)
+- 🐛 git stack sync removes files deleted from the repo (hash-verified) (#966, #1162)
+- ✨ upload TLS/mTLS certificate files in environment editor (#125)
+- ✨ syntax highlighting for shell, Dockerfile, TOML, INI/conf and .env files in the file browser viewer (#1055)
+- ✨ Animated icons now configurable (#1169)
+- 🐛 stack deploys ignored the env's configured socket path (#1172)
+- 🐛 environment names with characters that break path resolution (e.g. `*`) are now rejected (#1179)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.33
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 > _Maintenance (2026-06-10):_ hassio-addons base 20.2.0 compatibility — migrated the Traefik helper scripts from the deprecated bashio::addon.* functions to bashio::app.*.
 
 ## 1.0.32
