@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.0.34
+
+_2026-06-18_
+
+### Changed
+- Updated Dockhand to version 1.0.34
+
+Released: 2026-06-17
+
+## What's new in v1.0.34
+
+> [!Important]  
+> This release closes [GHSA-f6q3-chhc-4hxm](https://github.com/Finsys/dockhand/security/advisories/GHSA-f6q3-chhc-4hxm)
+
+
+
+- ✨ raw file download — no tar wrapping (#1180)
+- 🐛 update modal stuck after closing mid-pull (#1094)
+- 🐛 vulnerability scans on Podman hosts (direct TCP and Hawser) (#1076)
+- 🐛 crash-looping containers now appear in the logs page list (#227)
+- ✨ filter containers by "Update available" (#1063)
+- ✨ show hostname / IP of the selected environment in the top header (#962)
+- ✨ internal auth and validation hardening and dependency bumps
+- ✨ Traefik and Pangolin integration — surface proxy URLs on container and stack panels (#2)
+- ✨ release-notes link next to images with updates available (#538)
+- ✨ lifecycle action buttons in the container details modal (#461)
+- ✨ template library — browse and deploy compose templates from configurable sources (#48)
+- 🐛 file browser fails on containers with ls in /usr/sbin (#1185)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.34
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.33
 
 _2026-06-16_
