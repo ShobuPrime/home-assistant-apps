@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.1.0
+
+_2026-06-19_
+
+
+### New features
+
+* add project file tree management ([#2893](https://github.com/getarcaneapp/arcane/pull/2893) by `NeurekaSoftware`)
+* upgrade all environments button ([#2941](https://github.com/getarcaneapp/arcane/pull/2941) by `kmendell`)
+* add support for riscv64 ([#2949](https://github.com/getarcaneapp/arcane/pull/2949) by `kmendell`)
+
+### CLI - New features
+
+* add registries create command ([#2874](https://github.com/getarcaneapp/arcane/pull/2874) by `manawenuz`)
+
+### Bug fixes
+
+* fix tables rows not flex redering to use the full table width ([#2928](https://github.com/getarcaneapp/arcane/pull/2928) by `kmendell`)
+* add missing healthcheck cli command ([#2929](https://github.com/getarcaneapp/arcane/pull/2929) by `kmendell`)
+* allow setting the data directroy for non docker installs ([#2931](https://github.com/getarcaneapp/arcane/pull/2931) by `kmendell`)
+* fix dind path mappings for projects and swarm ([#2939](https://github.com/getarcaneapp/arcane/pull/2939) by `kmendell`)
+* projects d
+
+---
+
+
 ## 2.0.3
 
 _2026-06-12_
