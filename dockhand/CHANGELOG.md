@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.0.35
+
+_2026-06-20_
+
+### Changed
+- Updated Dockhand to version 1.0.35
+
+Released: 2026-06-19
+
+## What's new in v1.0.35
+
+- ✨ image prune skips Dockhand's scanner images (grype, trivy), configurable (#625)
+- 🐛 "No archive" download format selection not persisted (#1180)
+- 🐛 regression: vulnerability scans on direct-TCP envs (#1195)
+- 🐛 Pangolin labels — recognise the real `public-resources` / `private-resources` namespaces (#2)
+- 🐛 healthcheck uses HTTPS probe when HTTPS_MODE=on (#1191)
+- 🐛 shell detection improved for containers with non-standard PATH or shell locations (#1189)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.35
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.34
 
 _2026-06-18_
