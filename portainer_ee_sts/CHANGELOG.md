@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.43.0
+
+_2026-06-25_
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+### New and improved features
+
+- GitOps Sources: new Source Creation wizard, Source Detail screen and Source editing, with reuse of existing sources when adding Docker repository stacks and Kubernetes Helm-from-git installs
+- Display cached container images per node on Kubernetes
+- In-product installation flow for KubeSolo-based single-node edge deployments
+- Kubernetes application list and pod logs now default to expanded
+- Environment Group Detail View updated with a new sortable-list-based group list UI
+
+### Security improvements
+
+- Added a one-time setup token, prin
+
+---
+
+
 > _Maintenance (2026-06-10):_ hassio-addons base 20.2.0 compatibility — migrated the Traefik helper scripts from the deprecated bashio::addon.* functions to bashio::app.*.
 
 ## 2.42.0
