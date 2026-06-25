@@ -2,4 +2,4 @@ build_from:
   aarch64: ghcr.io/hassio-addons/base:21.0.0
   amd64: ghcr.io/hassio-addons/base:21.0.0
 args:
-  PORTAINER_VERSION: 2.39.3
+  PORTAINER_VERSION: 2.39.4
