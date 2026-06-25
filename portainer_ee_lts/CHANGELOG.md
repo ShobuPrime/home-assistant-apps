@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.39.4
+
+_2026-06-25_
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+- kubectl port-forward fails with Portainer kubeconfig in some configurations
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+- Added an API endpoint to refresh Team/Group membership for a user
+- Fixed an issue where users with no environment access are able to enumerate Kubernetes resources
+- Fixed ecr token pre-validation error with warning log
+- Fixed the way a standard user could not redeploy team stack or delete registry image
+- Fixed the restore endpoint allowing admin takeover for uninitialised Portainer instances
+- Fixed link on timed out page
+- Replaced docker binary with libstack
+- Fixed the volume label drop
+
+---
+
+
 > _Maintenance (2026-06-10):_ hassio-addons base 20.2.0 compatibility — migrated the Traefik helper scripts from the deprecated bashio::addon.* functions to bashio::app.*.
 
 ## 2.39.3
