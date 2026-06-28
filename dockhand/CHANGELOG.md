@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.0.36
+
+_2026-06-28_
+
+### Changed
+- Updated Dockhand to version 1.0.36
+
+Released: 2026-06-27
+
+## What's new in v1.0.36
+
+- ✨ sidebar shows an amber update indicator when a newer Dockhand image is available (#1146)
+- 🐛 Tag image modal too narrow for images identified only by SHA (#1205)
+- 🐛 self-hosted ntfy: accept raw `tk_...` access tokens in `?auth=` (#1209)
+- 🐛 dashboard: a single failed DB stats query no longer poisons the whole environment tile (#1210)
+- 🐛 UI dates and times now honor the configured default timezone instead of the browser's timezone (#1183)
+- 🐛 add missing `reset-mfa.sh` emergency script referenced by the manual (#1214)
+- 🐛 registry browser: copy between registries no longer duplicates the host (#1220)
+- ⚡ published image carries standard OCI annotations (source, url, title, description, vendor, licenses) (#1217)
+- ✨ scanner: configurable network mode and DNS servers for vulnerability scans (#1219)
+- ✨ template tiles now show a `Project` link that opens the upstream project page (#1211)
+- ⚡ cron picker: hour shows just `HH` (was `HH:00`), minute granularity bumped from 15 to 5 (#1198)
+- ✨ grid buttons: configurable size and optional semantic colors (#1072)
+- 🐛 copy buttons (git deploy logs, API tokens) now work over plain HTTP (#1222)
+- 🐛 Podman pod-infra containers no longer trigger update-check warnings (#1221)
+- 🐛 terminal exec works even when the browser sends a cookie with stray `%` characters (#1224)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.36
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.35
 
 _2026-06-20_
