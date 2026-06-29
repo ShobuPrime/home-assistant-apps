@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.2.0
+
+_2026-06-29_
+
+
+### New features
+
+* system mode for light/dark mode ([#2994](https://github.com/getarcaneapp/arcane/pull/2994) by `kmendell`)
+* allow use of remote trivy server, and only show fixable cves ([#2999](https://github.com/getarcaneapp/arcane/pull/2999) by `kmendell`)
+* preserve managed volumes on project rename ([#2919](https://github.com/getarcaneapp/arcane/pull/2919) by `NeurekaSoftware`)
+* show attestations panel for images when supported ([#3036](https://github.com/getarcaneapp/arcane/pull/3036) by `kmendell`)
+* add missing kill/pause container actions ([#3037](https://github.com/getarcaneapp/arcane/pull/3037) by `kmendell`)
+* add image history, tagging, registry search and local comitting ([#3039](https://github.com/getarcaneapp/arcane/pull/3039) by `kmendell`)
+* allow custom profile pictures ([#3023](https://github.com/getarcaneapp/arcane/pull/3023) by `OlziYT`)
+* add pre-deploy hook for GitOps project syncs ([#3022](https://github.com/getarcaneapp/arcane/pull/3022) by `peitschie`)
+
+### Bug 
+
+---
+
+
 ## 2.1.0
 
 _2026-06-19_
