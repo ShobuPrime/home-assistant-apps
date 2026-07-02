@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.3.0
+
+_2026-07-02_
+
+
+### New features
+
+* add appearance toggles for blur and interface animations ([#3091](https://github.com/getarcaneapp/arcane/pull/3091) by `othyn`)
+
+### Bug fixes
+
+* edge tunnel go routine leak ([#3073](https://github.com/getarcaneapp/arcane/pull/3073) by `kmendell`)
+* users with env only scopes unable to access the UI ([#3081](https://github.com/getarcaneapp/arcane/pull/3081) by `kmendell`)
+* use correct disabletlsverification parameter for ntfy ([#3084](https://github.com/getarcaneapp/arcane/pull/3084) by `kmendell`)
+* dont create trivy cache in server/client mode ([#3087](https://github.com/getarcaneapp/arcane/pull/3087) by `kmendell`)
+* stop phantom and duplicate projects from broken syncs ([#3088](https://github.com/getarcaneapp/arcane/pull/3088) by `kmendell`)
+* image polling notifications context being canceled early or not registered at all ([#3089](https://github.com/getarcaneapp/arcane/pull/3089) by `kmendell`)
+
+### Dependencies
+
+* bump svelte from 5.56.3 to 5.56.4 ([#3067](https:/
+
+---
+
+
 ## 2.2.0
 
 _2026-06-29_
