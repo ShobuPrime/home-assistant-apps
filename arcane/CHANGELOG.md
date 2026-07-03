@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.3.1
+
+_2026-07-03_
+
+
+### Bug fixes
+
+* discard env_file when loading projects to match compose CLI config-hash ([#3100](https://github.com/getarcaneapp/arcane/pull/3100) by `pkoutsovasilis`)
+* set explicit gorm LRU cache TTL to avoid constantly rising heap memory ([#3102](https://github.com/getarcaneapp/arcane/pull/3102) by `kmendell`)
+* only display memory usage thats non-reclaimable ([#3105](https://github.com/getarcaneapp/arcane/pull/3105) by `kmendell`)
+
+### Dependencies
+
+* bump prettier from 3.9.0 to 3.9.3 ([#3116](https://github.com/getarcaneapp/arcane/pull/3116) by `dependabot`[bot])
+* bump `tanstack`/svelte-query from 6.1.35 to 6.1.36 ([#3115](https://github.com/getarcaneapp/arcane/pull/3115) by `dependabot`[bot])
+* bump golangci/golangci-lint-action from 9.2.1 to 9.3.0 ([#3106](https://github.com/getarcaneapp/arcane/pull/3106) by `dependabot`[bot])
+* bump the tanstack-table group across 1 directory with 2 updates ([#3126](https://github.com/getarcaneapp/arcane/pull/3126) by `dependabot`[bot])
+* bump githu
+
+---
+
+
 ## 2.3.0
 
 _2026-07-02_
