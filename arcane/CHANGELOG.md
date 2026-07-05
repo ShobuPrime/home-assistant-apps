@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.3.2
+
+_2026-07-05_
+
+
+### Bug fixes
+
+* dialog now owning there own close states, cause mutiple to show at one time([d253fc5](https://github.com/getarcaneapp/arcane/commit/d253fc5d7c081ca43c1385d13da2e127d8bc9e3e) by `kmendell`)
+* hide phantom projects from showing in the frontend when deleted ([#3136](https://github.com/getarcaneapp/arcane/pull/3136) by `kmendell`)
+* keep modals and menus opaque in dark mode when Glass & Blur is off ([#3139](https://github.com/getarcaneapp/arcane/pull/3139) by `othyn`)
+* nested compose files discovery permission issues ([#3096](https://github.com/getarcaneapp/arcane/pull/3096) by `kmendell`)
+* ntfy tls regression, image update notifcation flag not be recognized ([#3143](https://github.com/getarcaneapp/arcane/pull/3143) by `kmendell`)
+* notification sending rework for reliability ([#3144](https://github.com/getarcaneapp/arcane/pull/3144) by `kmendell`)
+* use explicit context for notifications([6987b5e](https://github.com/getarcaneapp/arcane/commit/6987b5e046c3a00c54c88ee54219dc8f
+
+---
+
+
 ## 2.3.1
 
 _2026-07-03_
