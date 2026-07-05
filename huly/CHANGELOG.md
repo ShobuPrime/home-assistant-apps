@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.426
+
+_2026-07-05_
+
+Updated to Huly version 0.7.426
+
+---
+
+
 > _Maintenance (2026-06-10):_ hassio-addons base 20.2.0 compatibility — migrated the Traefik helper scripts from the deprecated bashio::addon.* functions to bashio::app.*.
 
 ## 0.7.423
