@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.0
+
+_2026-07-10_
+
+## What's Changed
+* Release v0.5.1 by `scrypster` in https://github.com/scrypster/muninndb/pull/434
+* Release v0.6.0 by `scrypster` in https://github.com/scrypster/muninndb/pull/441
+* chore: merge develop into main for v0.6.2 release by `scrypster` in https://github.com/scrypster/muninndb/pull/497
+* chore: merge develop into main for v0.6.3 release by `scrypster` in https://github.com/scrypster/muninndb/pull/513
+* fix(hnsw): rebuild graph from vectors when the restored structure is disconnected by `johanneshauer` in https://github.com/scrypster/muninndb/pull/545
+* fix(storage): dedup entity scan by normalized identity, not raw casing by `johanneshauer` in https://github.com/scrypster/muninndb/pull/550
+* feat(cli): add `vault plasticity` command to get/set per-vault plasticity (#551) by `timharsch` in https://github.com/scrypster/muninndb/pull/552
+* feat(grpc): ListVaults RPC by `scrypster` in https://github.com/scrypster/muninndb/pull/562
+* feat(grpc): BatchForget RPC by `scrypster` in https://
+
+---
+
+
 ## 0.7.0
 
 _2026-06-13_
