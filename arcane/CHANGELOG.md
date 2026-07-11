@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.4.0
+
+_2026-07-11_
+
+
+### New features
+
+* restart dependent services on project-level service restart ([#3103](https://github.com/getarcaneapp/arcane/pull/3103) by `pkoutsovasilis`)
+* support for docker override files ([#3104](https://github.com/getarcaneapp/arcane/pull/3104) by `kmendell`)
+* increase max session timeout limit to 1 year ([#3222](https://github.com/getarcaneapp/arcane/pull/3222) by `OlziYT`)
+* localized timezone based on current locale ([#3238](https://github.com/getarcaneapp/arcane/pull/3238) by `kmendell`)
+
+### Bug fixes
+
+* scope project update backup to changed files and lazy-load file tree ([#3158](https://github.com/getarcaneapp/arcane/pull/3158) by `kmendell`)
+* workspace editor showing stale file content after save ([#3188](https://github.com/getarcaneapp/arcane/pull/3188) by `kmendell`)
+* don't overwrite good image update records on registry rate-limit errors ([#3190](https://github.com/getarcaneapp/arcane/pull/3190) by `kmendell`)
+* skip SMTP auth without full credentials and add none aut
+
+---
+
+
 ## 2.3.2
 
 _2026-07-05_
