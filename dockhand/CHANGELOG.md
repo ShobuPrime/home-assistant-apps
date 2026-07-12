@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.0.37
+
+_2026-07-12_
+
+### Changed
+- Updated Dockhand to version 1.0.37
+
+Released: 2026-07-11
+
+## What's new in v1.0.37
+
+- ✨ Prometheus metrics at /metrics for env state and internals, gated by EXPORT_METRICS (#339)
+- ✨ export scan results as SARIF 2.1.0, manual export and API for DefectDojo/Dependency-Track/GitHub (#415)
+- ✨ bump bundled docker-compose to 5.2.0-r0 to clear known CVEs
+- ✨ Vulnerabilities dashboard: aggregated CVE findings (#1038)
+- ✨ update container images directly from the Stack view (#1073)
+- ✨ stacks list shows an update indicator for stacks with image updates (#504)
+- 🐛 copying an image to another registry keeps its tag instead of defaulting to latest (#1243)
+- 🐛 `more-than-current image` re-scans the current image so a stale cached scan doesn't block (#1022)
+- ✨ application logs now include the log level (INFO/WARN/ERROR) in the prefix (#1166)
+- ✨ option to suppress the "What's New" popup (#1235)
+- 🐛 ntfy notifications now forward the `email` query parameter so ntfy can send email (#1231)
+- ✨ default scanner images bumped to grype v0.115.0 and trivy 0.71.2 (#1241)
+- 🐛 the "Latest" update-check result now stays visible and doesn't revert (#1019)
+- ✨ a stack with container label `dockhand.adopt=false` excluded from adoption (#998)
+- 🐛 dashboard daemon info shows the real host hostname, not Dockhand's container id (#1265)
+- ✨ file editor prompts to save/discard unsaved changes before closing (#1264)
+- 🐛 `GET /api/containers/check-updates` now lists pending updates (POST still triggers a check) (#1266)
+- ✨ sidebar menu customizable (order and visibility of items) (#1252)
+- 🐛 activity and audit date filters respect the configured timezone instead of UTC (#1269)
+- ✨ git deploy progress shows the changed files before the deploy starts (#1260)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.37
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.36
 
 _2026-06-28_
