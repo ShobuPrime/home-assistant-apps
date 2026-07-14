@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.39.5
+
+_2026-07-14_
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+- Fixed a 2.39.4 regression where a relative `env_file:` in a Git stack whose compose file lives in a repository sub-directory was resolved against the project root instead of the compose file's own directory, deploying stacks with an empty environment or failing outright
+- Improved Edge tunnel reliability over high-latency links (satellite/VSAT): the server no longer tears down a half-established tunnel on timeout, keep-alive and unlimited background retries were added on the agent, and the ping timeout was raised from 3s to 8s
+- Fixed standard users not seeing all of their te
+
+---
+
+
 ## 2.39.4
 
 _2026-06-25_
