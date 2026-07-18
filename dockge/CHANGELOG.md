@@ -1,5 +1,7 @@
 # Changelog
 
+> _Maintenance (2026-07-18):_ AppArmor — allow the Docker socket at its resolved path (`/{,var/}run/docker.sock rw,`). The child profile only allowed `/var/run/docker.sock`, but the Supervisor mounts the socket at `/run/docker.sock` (`/var/run` is a symlink) and AppArmor matches resolved paths; HAOS 18.1+ enforces this and would deny all Docker API access (the same failure that broke the Huly add-on).
+
 > _Maintenance (2026-06-10):_ hassio-addons base 20.2.0 compatibility — migrated the Traefik helper scripts from the deprecated bashio::addon.* functions to bashio::app.*.
 
 ## 1.5.0

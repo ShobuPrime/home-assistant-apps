@@ -6,6 +6,8 @@ _2026-07-05_
 
 Updated to Huly version 0.7.426
 
+> _Maintenance (2026-07-18):_ **Fix the entire stack failing to start on HAOS 18.1+** (`permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`, crash-looping every second with the watchdog restarting the add-on every 3 minutes). The AppArmor child profile that confines `docker-compose` only allowed the socket at `/var/run/docker.sock` — but the Supervisor mounts it at `/run/docker.sock` (`/var/run` is a symlink to `/run`), and AppArmor matches the **resolved** path, so the rule never applied. HAOS 18.1 (kernel 6.18) began enforcing this. The rule is now `/{,var/}run/docker.sock rw,`, matching the repo's Portainer/Arcane/Dockhand profiles, which were unaffected. Rebuild/reinstall the add-on to pick up the corrected profile.
+
 ---
 
 
