@@ -38,63 +38,25 @@ profile huly flags=(attach_disconnected,mediate_deleted) {
   # Access to options.json and other files within your addon
   /data/** rw,
 
-  # Docker CLI access for compose operations
-  /usr/bin/docker cx -> docker,
+  # Docker CLI + Compose — run in THIS profile, not a nested child. HAOS 18.1's
+  # kernel (6.18) denies AF_UNIX socket connects from processes confined by
+  # nested child profiles regardless of the rules they contain (verified with
+  # parser 3.1.7 and 4.1.7: the identical ruleset works flat, fails nested).
+  # Flat matches the portainer/arcane/dockhand profiles, which were unaffected.
+  /usr/bin/docker ix,
+  /usr/libexec/docker/** ix,
 
   # Standalone Docker Compose binary (bypasses plugin loader segfault on aarch64)
-  /usr/local/bin/docker-compose cx -> docker,
+  /usr/local/bin/docker-compose ix,
+  /usr/lib/docker/cli-plugins/** ix,
+  /usr/libexec/docker/cli-plugins/** ix,
 
-  profile docker {
-    #include <abstractions/base>
+  # Access to Docker socket — the Supervisor mounts it at /run/docker.sock and
+  # /var/run is a symlink to /run; AppArmor matches the resolved path, so the
+  # rule must cover /run/docker.sock (HAOS 18.1+ enforces this)
+  /run/docker.sock rw,
+  /var/run/docker.sock rw,
 
-    # Receive signals from S6-Overlay
-    signal receive,
-    signal peer=*_huly,
-
-    # Docker CLI binary
-    /usr/bin/docker r,
-    /usr/libexec/docker/** rix,
-
-    # Docker Compose (standalone binary + legacy plugin paths)
-    /usr/local/bin/docker-compose rix,
-    /usr/lib/docker/cli-plugins/** rix,
-    /usr/libexec/docker/cli-plugins/** rix,
-
-    # Access to Docker socket — the Supervisor mounts it at /run/docker.sock and
-    # /var/run is a symlink to /run; AppArmor matches the resolved path, so the
-    # rule must cover /run/docker.sock (HAOS 18.1+ enforces this)
-    /{,var/}run/docker.sock rw,
-
-    # Network access
-    network tcp,
-    network udp,
-
-    # Data directories
-    /data/** rw,
-    /data/huly/** rw,
-
-    # System access
-    /proc/sys/net/core/somaxconn r,
-    /etc/hosts r,
-    /etc/resolv.conf r,
-    /etc/nsswitch.conf r,
-    /etc/passwd r,
-    /etc/group r,
-    /etc/localtime r,
-    /usr/share/zoneinfo/** r,
-
-    # Tmp files
-    /tmp/** rw,
-    /var/tmp/** rw,
-
-    # Required for Docker operations
-    /sys/fs/cgroup/** r,
-    /proc/** r,
-    /dev/null rw,
-    /dev/urandom r,
-    /dev/random r,
-
-    # SSL certificates
-    /ssl/** r,
-  }
+  # Network access (all families — AF_UNIX is required for the Docker socket)
+  network,
 }

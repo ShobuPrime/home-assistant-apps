@@ -6,6 +6,8 @@ _2026-07-05_
 
 Updated to Huly version 0.7.426
 
+> _Maintenance (2026-07-19):_ **Fix the stack still failing to start on HAOS 18.1 — AppArmor profile flattened.** The 2026-07-18 socket-path fix below was necessary but not sufficient: HAOS 18.1's kernel (6.18) denies AF_UNIX socket connects from processes confined by **nested child profiles** regardless of the rules they contain. Verified empirically on-device — the identical ruleset connects fine as a flat profile and is denied as a child profile, with both AppArmor parser 3.1.7 (HAOS) and 4.1.7. The `docker` child profile (and its `cx ->` transitions) is therefore folded into the main profile, matching the flat Portainer/Arcane/Dockhand profiles, which were unaffected. Rebuild/reinstall the add-on to pick up the corrected profile.
+
 > _Maintenance (2026-07-18):_ **Fix the entire stack failing to start on HAOS 18.1+** (`permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`, crash-looping every second with the watchdog restarting the add-on every 3 minutes). The AppArmor child profile that confines `docker-compose` only allowed the socket at `/var/run/docker.sock` — but the Supervisor mounts it at `/run/docker.sock` (`/var/run` is a symlink to `/run`), and AppArmor matches the **resolved** path, so the rule never applied. HAOS 18.1 (kernel 6.18) began enforcing this. The rule is now `/{,var/}run/docker.sock rw,`, matching the repo's Portainer/Arcane/Dockhand profiles, which were unaffected. Rebuild/reinstall the add-on to pick up the corrected profile.
 
 ---

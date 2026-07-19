@@ -43,67 +43,20 @@ profile dockge flags=(attach_disconnected,mediate_deleted) {
   # Access to options.json and other files within your addon
   /data/** rw,
 
-  # Start new profile for service
-  /usr/bin/node cx -> node,
+  # Node service + Docker CLI — run in THIS profile, not a nested child. HAOS
+  # 18.1's kernel (6.18) denies AF_UNIX socket connects from processes confined
+  # by nested child profiles regardless of the rules they contain (verified with
+  # parser 3.1.7 and 4.1.7: the identical ruleset works flat, fails nested).
+  # Flat matches the portainer/arcane/dockhand profiles, which were unaffected.
+  /usr/bin/node ix,
+  /usr/bin/docker ix,
 
-  profile node {
-    #include <abstractions/base>
+  # Access to Docker socket — the Supervisor mounts it at /run/docker.sock and
+  # /var/run is a symlink to /run; AppArmor matches the resolved path, so the
+  # rule must cover /run/docker.sock (HAOS 18.1+ enforces this)
+  /run/docker.sock rw,
+  /var/run/docker.sock rw,
 
-    # Receive signals from S6-Overlay
-    signal receive,
-    signal peer=*_dockge,
-
-    # Access to Node.js and app files
-    /usr/bin/node r,
-    /app/** r,
-    /app/data/** rw,
-    /data/** rw,
-
-    # Access to Docker socket — the Supervisor mounts it at /run/docker.sock and
-    # /var/run is a symlink to /run; AppArmor matches the resolved path, so the
-    # rule must cover /run/docker.sock (HAOS 18.1+ enforces this)
-    /{,var/}run/docker.sock rw,
-
-    # Network access
-    network tcp,
-    network udp,
-
-    # System access
-    /proc/sys/net/core/somaxconn r,
-    /etc/hosts r,
-    /etc/resolv.conf r,
-    /etc/nsswitch.conf r,
-    /etc/passwd r,
-    /etc/group r,
-    /etc/localtime r,
-    /usr/share/zoneinfo/** r,
-
-    # Tmp files
-    /tmp/** rw,
-    /var/tmp/** rw,
-
-    # Docker client access
-    /usr/bin/docker rix,
-    
-    # Required for Docker operations
-    /sys/fs/cgroup/** r,
-    /proc/** r,
-    /dev/null rw,
-    /dev/urandom r,
-    /dev/random r,
-    
-    # Node modules
-    owner /app/node_modules/** r,
-    
-    # Dockge specific paths
-    /data/stacks/** rw,
-    /opt/stacks/** rw,
-    /share/** rw,
-    /backup/** rw,
-    /media/** rw,
-    /addons/** rw,
-    
-    # SSL certificates
-    /ssl/** r,
-  }
+  # Network access (all families — AF_UNIX is required for the Docker socket)
+  network,
 }
