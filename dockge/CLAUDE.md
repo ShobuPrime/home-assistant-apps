@@ -23,7 +23,8 @@ This is a Home Assistant App for Dockge, a self-hosted Docker Compose stack mana
 - Must set `docker_api: true` in config.yaml
 - Protection mode MUST be disabled by users
 - Always check socket existence in init scripts before starting services
-- AppArmor profile must include `/{,var/}run/docker.sock rw,` — the Supervisor mounts the socket at `/run/docker.sock` and `/var/run` is a symlink to `/run`; AppArmor matches the resolved path, so a `/var/run/docker.sock`-only rule never applies (HAOS 18.1+ enforces this and denies all Docker API access)
+- AppArmor profile must include `/run/docker.sock rw,` (plus `/var/run/docker.sock rw,`) — the Supervisor mounts the socket at `/run/docker.sock` and `/var/run` is a symlink to `/run`; AppArmor matches the resolved path, so a `/var/run/docker.sock`-only rule never applies (HAOS 18.1+ enforces this and denies all Docker API access)
+- Do NOT use nested child profiles (`profile foo { ... }` inside the main profile with `cx ->` transitions) — HAOS 18.1's kernel (6.18) denies AF_UNIX socket connects from processes confined by child profiles regardless of the rules they contain (verified with parser 3.1.7 and 4.1.7). Keep the profile flat, like the Portainer/Arcane/Dockhand profiles
 
 ### S6-Overlay Best Practices
 - All scripts must use `#!/usr/bin/with-contenv bashio` shebang
