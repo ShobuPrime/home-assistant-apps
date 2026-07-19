@@ -221,6 +221,41 @@ jobs:
               });
             }
 
+  validate-apparmor:
+    name: Validate AppArmor Profiles
+    runs-on: ubuntu-latest
+    needs: resolve-context
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-context.outputs.head_sha }}
+
+      - name: Ensure apparmor_parser is available
+        run: |
+          if ! command -v apparmor_parser > /dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq apparmor
+          fi
+
+      - name: Validate AppArmor profiles
+        id: validate
+        run: ./.github/scripts/validate-apparmor.sh
+
+      - name: Comment validation results
+        if: failure()
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const errors = `${{ steps.validate.outputs.ERRORS }}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.resolve-context.outputs.pr_number }},
+              body: `## ❌ AppArmor Profile Validation Failed\n\n${errors}\n\nSee the "AppArmor Profile Rules" section in CLAUDE.md — flat profiles only, resolved-path docker.sock rules, bare \`network,\` for docker-socket apps.`
+            });
+
   lint-yaml:
     name: Lint YAML Files
     runs-on: ubuntu-latest
@@ -286,7 +321,7 @@ jobs:
   summary:
     name: Validation Summary
     runs-on: ubuntu-latest
-    needs: [resolve-context, validate-structure, validate-changelog, lint-yaml]
+    needs: [resolve-context, validate-structure, validate-changelog, validate-apparmor, lint-yaml]
     if: always()
     steps:
       - name: Check validation results
@@ -300,6 +335,10 @@ jobs:
           fi
           if [ "${{ needs.validate-changelog.result }}" != "success" ]; then
             echo "❌ Changelog validation failed"
+            FAILED=true
+          fi
+          if [ "${{ needs.validate-apparmor.result }}" != "success" ]; then
+            echo "❌ AppArmor profile validation failed"
             FAILED=true
           fi
           if [ "${{ needs.lint-yaml.result }}" != "success" ]; then
@@ -367,11 +406,12 @@ jobs:
   auto-merge:
     name: Auto-merge if eligible
     runs-on: ubuntu-latest
-    needs: [resolve-context, validate-structure, validate-changelog, lint-yaml, summary]
+    needs: [resolve-context, validate-structure, validate-changelog, validate-apparmor, lint-yaml, summary]
     if: |
       always() &&
       needs.validate-structure.result == 'success' &&
       needs.validate-changelog.result == 'success' &&
+      needs.validate-apparmor.result == 'success' &&
       needs.lint-yaml.result == 'success' &&
       needs.summary.result == 'success'
     steps:

@@ -41,6 +41,11 @@ This repository uses GitHub Actions to automate app updates, validation, and mer
 - Ensures CHANGELOG.md is updated when app files are modified
 - Verifies CHANGELOG.md contains an entry for the current version
 
+#### AppArmor Profile Validation
+- Runs [`validate-apparmor.sh`](scripts/validate-apparmor.sh) over every app's `apparmor.txt`
+- Profiles must compile (`apparmor_parser -QK`) and be **flat** — nested child profiles / `cx ->` transitions are rejected (HAOS 18.1's kernel denies AF_UNIX socket connects under child profiles; see the AppArmor Profile Rules section in the root `CLAUDE.md`)
+- Docker-socket profiles must allow the resolved path `/run/docker.sock` and carry a bare `network,` rule
+
 #### YAML Linting
 - Runs yamllint on all `.yaml` and `.yml` files
 - Enforces consistent formatting
@@ -85,6 +90,14 @@ Fires repository_dispatch 'automated-pr-created' with PR details
 `GITHUB_TOKEN`, and GitHub suppresses downstream `pull_request` workflow triggers from
 `GITHUB_TOKEN` events. The `repository_dispatch` event is explicitly exempted from this
 restriction, so it reliably triggers both PR Validation and Builder workflows.
+
+### HAOS Release Watch
+
+**File:** [`.github/workflows/haos-release-watch.yml`](workflows/haos-release-watch.yml)
+
+**Trigger:** Daily at 4:15 AM UTC (or manual via workflow_dispatch)
+
+**What it does:** Checks the latest `home-assistant/operating-system` release and opens a per-release tracking issue (label `haos-update`) with an on-device verification checklist. CI runners do not run the HAOS kernel, so kernel/AppArmor/Docker behavior changes can only be caught on the device — HAOS 18.1 broke the Huly add-on's Docker socket access while all CI was green. Deduped by issue title, so each release gets exactly one issue.
 
 ## Preventing Auto-merge
 
