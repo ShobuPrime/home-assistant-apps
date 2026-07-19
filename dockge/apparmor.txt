@@ -59,8 +59,10 @@ profile dockge flags=(attach_disconnected,mediate_deleted) {
     /app/data/** rw,
     /data/** rw,
 
-    # Access to Docker socket
-    /var/run/docker.sock rw,
+    # Access to Docker socket — the Supervisor mounts it at /run/docker.sock and
+    # /var/run is a symlink to /run; AppArmor matches the resolved path, so the
+    # rule must cover /run/docker.sock (HAOS 18.1+ enforces this)
+    /{,var/}run/docker.sock rw,
 
     # Network access
     network tcp,
