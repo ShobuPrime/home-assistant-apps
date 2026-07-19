@@ -84,6 +84,7 @@ Huly version tracking is based on the `.template.huly.conf` file in the [huly-se
 4. **Docker socket**: Must have `docker_api: true` in config.yaml and protection mode disabled
 5. **Host address**: The `host_address` config option is critical — without it, internal service URLs will be misconfigured
 6. **First startup time**: Can take 3-5 minutes for all databases to initialize. Do not restart during this window
+7. **AppArmor**: `apparmor.txt` must stay a FLAT profile — nested child profiles (`profile docker { ... }` + `cx ->`) break all Docker socket access on HAOS 18.1+ (kernel denies AF_UNIX connects under child profiles regardless of rules), which took the whole stack down in July 2026. Keep explicit `/run/docker.sock rw,` + `/var/run/docker.sock rw,` (resolved-path matching) and a bare `network,` rule. See the AppArmor Profile Rules section in the repo root `CLAUDE.md`; after changing the profile, the add-on must be rebuilt on-device for the Supervisor to reload it
 
 ## Resource Requirements
 

@@ -26,6 +26,8 @@ pass() { echo -e "  ${GREEN}PASS${NC}: $1"; }
 fail() { echo -e "  ${RED}FAIL${NC}: $1"; echo "--- Container logs ---"; docker logs "${CONTAINER_NAME}" 2>&1 | tail -30; exit 1; }
 info() { echo -e "  ${YELLOW}INFO${NC}: $1"; }
 
+APPARMOR_PROFILE=""
+
 cleanup() {
     # Clean up compose containers if this is a compose-based app
     if [ "${NEEDS_DOCKER}" = "true" ]; then
@@ -39,6 +41,10 @@ cleanup() {
     docker network rm "${NETWORK_NAME}" 2>/dev/null || true
     # Clean up host-side data directory for Docker-in-Docker apps
     [ -n "${SMOKE_DATA_DIR}" ] && rm -rf "${SMOKE_DATA_DIR}" 2>/dev/null || true
+    # Unload the app's AppArmor profile if we loaded it
+    if [ -n "${APPARMOR_PROFILE}" ]; then
+        sudo apparmor_parser -R "${APP_DIR}/apparmor.txt" 2>/dev/null || true
+    fi
 }
 trap cleanup EXIT
 
@@ -143,6 +149,28 @@ DOCKER_ARGS=(
     "--network" "${NETWORK_NAME}"
     "-e" "SUPERVISOR_TOKEN=smoke-test-token"
 )
+
+# Run the app CONFINED by its real AppArmor profile when the runner supports
+# it. On HAOS the Supervisor always applies apparmor.txt, so an unconfined
+# smoke test can ship a profile that blocks the app in production (how the
+# Jul 2026 Huly docker.sock outage stayed invisible to CI). The runner kernel
+# is not HAOS's kernel, so this can't catch every kernel-specific behavior
+# (validate-apparmor.sh's static rules cover the known ones) — but it does
+# catch missing file/network rules for anything the app touches during boot.
+if [ -f "${APP_DIR}/apparmor.txt" ] \
+    && [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = "Y" ] \
+    && command -v sudo > /dev/null 2>&1; then
+    APPARMOR_PROFILE=$(grep -m1 -E '^[[:space:]]*profile[[:space:]]' "${APP_DIR}/apparmor.txt" | awk '{print $2}')
+    if sudo apparmor_parser -r "${APP_DIR}/apparmor.txt" 2>/dev/null; then
+        pass "AppArmor profile '${APPARMOR_PROFILE}' loaded — app will run confined"
+        DOCKER_ARGS+=("--security-opt" "apparmor=${APPARMOR_PROFILE}")
+    else
+        info "AppArmor profile failed to load on this runner — running unconfined"
+        APPARMOR_PROFILE=""
+    fi
+else
+    info "AppArmor unavailable on runner (or no apparmor.txt) — running unconfined"
+fi
 
 if [ "${NEEDS_DOCKER}" = "true" ]; then
     # Create a host-side data directory for Docker-in-Docker bind mounts
