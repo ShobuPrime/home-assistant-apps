@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.5.0
+
+_2026-07-21_
+
+
+### New features
+
+* unify swarm node agent deployment and easy join swarm agent/nodes ([#3279](https://github.com/getarcaneapp/arcane/pull/3279) by `kmendell`)
+* replace scheduled image polling with Docker event-driven update checks ([#3290](https://github.com/getarcaneapp/arcane/pull/3290) by `kmendell`)
+* redesigned events view to remove bulky dialog ([#3301](https://github.com/getarcaneapp/arcane/pull/3301) by `kmendell`)
+* redesigned templates browser and view ([#3304](https://github.com/getarcaneapp/arcane/pull/3304) by `kmendell`)
+* redesign global variables with environment scoping and secrets ([#3311](https://github.com/getarcaneapp/arcane/pull/3311) by `kmendell`)
+* rework activity center ui/ux and backend lifecycle ([#3313](https://github.com/getarcaneapp/arcane/pull/3313) by `kmendell`)
+
+### Bug fixes
+
+* preserve tag when saving update records for tag`digest-pinned` images ([#3242](https://github.com/getarcaneapp/arcane/pull/3242) by `pkoutsovasilis`)
+* tab routing for all pages ca
+
+---
+
+
 ## 2.4.0
 
 _2026-07-11_
