@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.0
+
+_2026-07-21_
+
+## What's Changed
+* feat(auth): add working plasticity preset (RFC #597) by `madeinoz67` in https://github.com/scrypster/muninndb/pull/599
+* ci: rename stale 'minilm-v2' embed-asset cache keys to bge-small-en-v1.5 (#601) by `johanneshauer` in https://github.com/scrypster/muninndb/pull/603
+* fix(storage): serialize DeleteEngram with CompareAndSet's stripe lock by `ad-astra-bot` in https://github.com/scrypster/muninndb/pull/594
+* fix(activation): preserve explicit search threshold under RRF + expose Search Scoring setting by `gitssie` in https://github.com/scrypster/muninndb/pull/590
+* feat(mcp): capability tokens + muninn_create_workflow_vault (RFC #597) by `madeinoz67` in https://github.com/scrypster/muninndb/pull/612
+* feat(mcp): toolset profiles for tools/list — env default + per-connection header override (#588) by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/604
+* docs: AI-agent working guide, internals reference, and code-review agent by `scrypster` in https://github.co
+
+---
+
+
 ## 0.8.0
 
 _2026-07-10_
