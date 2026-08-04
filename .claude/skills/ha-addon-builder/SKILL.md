@@ -1,0 +1,548 @@
+---
+name: ha-addon-builder
+description: Build new Home Assistant apps for the ShobuPrime/home-assistant-apps repository. Use this skill whenever the user wants to create a new HA app, scaffold an app, add a new service to their Home Assistant setup, or integrate a new Docker-based application as a Home Assistant app. Also use when the user asks about app structure, CI/CD automation for apps, or how their existing apps work. This skill covers the full lifecycle - scaffolding all required files, setting up automated version updates, and integrating with the repository's CI/CD pipeline.
+---
+
+# Home Assistant App Builder
+
+This skill guides you through creating production-ready Home Assistant apps for the `ShobuPrime/home-assistant-apps` repository. It covers the full lifecycle: scaffolding, S6-overlay integration, CI/CD automation, and documentation.
+
+## Before You Start
+
+Read `references/templates.md` for exact file templates and `references/ci-automation.md` for GitHub Actions and update script patterns. For multi-service or Docker Compose-based apps, also read `references/multi-service.md`.
+
+## When to Use This Skill
+
+- User wants to add a new service/application as a Home Assistant app
+- User asks to scaffold or create a new app
+- User wants to integrate an existing Docker image or binary into HA
+- User asks about the app structure or conventions in this repo
+
+## Phase 1: Gather Requirements
+
+Before writing any files, determine:
+
+1. **What software?** Name, source repo, how it's distributed (binary download, Docker image, npm package, etc.)
+2. **Version source**: Where to find the latest version (GitHub releases, Docker Hub tags, changelog endpoint)
+3. **Architecture**: What CPU architectures does the upstream software support? This repo only supports `aarch64` and `amd64`.
+4. **Ports**: What ports does the service expose? Which is the main web UI port (for ingress)?
+5. **Data persistence**: What directories need persistent storage? (mapped to `/data/<app-name>/`)
+6. **Configuration options**: What should be user-configurable? (credentials, URLs, feature toggles)
+7. **Docker API needed?** Does it need access to the Docker socket?
+8. **Single-service or multi-service?** Does it need multiple processes (e.g., app + database + reverse proxy)?
+9. **Health check**: What endpoint or port can be used for the watchdog?
+
+If the user doesn't know all of these, research the upstream project to fill in the gaps. Check GitHub releases, Docker Hub, and documentation.
+
+## Phase 2: Choose the Pattern
+
+### Single-Binary / Single-Process Apps
+Best for: Applications distributed as a single binary or that run as a single process.
+Examples in this repo: `portainer_ee_sts`, `portainer_ee_lts`, `arcane`
+
+Pattern:
+- Download binary in Dockerfile from GitHub releases
+- Single S6 service definition
+- Direct `exec` into the binary
+
+### Official Docker Image (Multi-Stage Extract)
+Best for: Applications that publish an official multi-arch Docker image and don't need deep HA integration.
+Examples in this repo: `dockge`, `dockhand`
+
+Pattern:
+- Use the upstream Docker image as a build stage: `FROM upstream/image:version AS source`
+- Copy the application files into the hassio-addons base: `COPY --from=source /app /opt/<app>`
+- Add S6 scripts for service management
+- Simpler than building from source, and ensures you get the exact upstream build
+
+```dockerfile
+ARG BUILD_FROM
+FROM mirror.gcr.io/louislam/dockge:1.5.0 AS dockge-source
+
+FROM $BUILD_FROM
+
+COPY --from=dockge-source /app /opt/dockge
+```
+
+Trade-off: You can't customize the upstream build, but you get exact parity with what the project ships. Updates are version-bumps to the `FROM` tag.
+
+### Multi-Service / Compose-Based Apps
+Best for: Applications that require multiple cooperating processes (app server + database + cache + reverse proxy, etc.)
+
+Pattern:
+- Install Docker Compose or individual services in Dockerfile
+- Multiple S6 service definitions (one per process), OR use a process manager
+- Init scripts handle inter-service dependencies
+- See `references/multi-service.md` for detailed patterns
+
+### Hardware-Specific / Shell-Script Apps
+Best for: Custom daemon scripts that interact with host hardware (GPIO, sensors, firmware). No upstream binary to download.
+Example in this repo: `hay_cm5_fan`
+
+Pattern:
+- No binary download — the app IS shell scripts in rootfs
+- May support only `aarch64` (hardware-specific)
+- `build.yaml` may only list one architecture
+- No `ARG <APP>_VERSION=` in Dockerfile (no upstream version to track)
+- No update script or workflow needed
+- Requires `full_access: true` for `/dev/` and `/sys/` access
+- Smoke test needs a dedicated case since hardware isn't available on CI runners
+- Init script should **warn** (not `exit 1`) on missing hardware so the container stays up for diagnostics
+- Packages like `libgpiod` (GPIO), `raspberrypi-utils-vcgencmd` (firmware), `mosquitto-clients` (MQTT) available in Alpine
+
+Key gotchas discovered building `hay_cm5_fan`:
+- **`local` only inside functions**: bashio uses `set -e`; `local` in a `while` loop body (outside a function) crashes the script
+- **Pipe SIGPIPE**: Piping commands through `grep -q` under bashio's `pipefail` causes SIGPIPE. Write to a temp file first, then grep
+- **MQTT discovery**: REST API entities (`POST /api/states/`) don't get `unique_id`. Add `services: ["mqtt:want"]` to config.yaml and use MQTT discovery with `mosquitto_pub` for proper entity registration with unique_id and device grouping
+- **`vcgencmd`**: Available inside app containers via `raspberrypi-utils-vcgencmd` when `/dev/vcio` is accessible (`full_access: true`, Protection Mode off)
+
+### Docker API Apps (Socket Shim Required)
+Best for: any app with `docker_api: true` that drives containers from a browser UI behind ingress.
+Examples in this repo: `portainer_ee_lts`, `portainer_ee_sts`
+
+dockerd rejects `POST /containers/{id}/start` whose body length is unknown, with *"starting container with non-empty request body was deprecated since API v1.22 and removed in v1.24"*. `ingress_stream: true` puts a Go reverse proxy in front of the app and those requests arrive `Transfer-Encoding: chunked`, so every container start from the UI fails. HAOS's dockerd is not configurable — the app layer is the only place this can be fixed.
+
+Pattern (copy `portainer_ee_lts/rootfs/etc/nginx/docker-shim.conf` and `rootfs/etc/services.d/docker-shim/`):
+- `apk add nginx`, and run a second S6 service that does `exec nginx -c /etc/nginx/docker-shim.conf` — **never** Alpine's `/etc/nginx/nginx.conf`, which already defines `$connection_upgrade` (a second `map` for it is a fatal duplicate) and caps bodies at 1m, which 413s image builds
+- Strip the request body **only** on `/containers/{id}/(start|stop|restart|kill|pause|unpause|wait)`. `/exec/{id}/start` takes a real JSON body and `…/attach` needs the upgrade tunnel; stripping either breaks the console with no error anywhere
+- `user root;` — the socket is `root:docker` 0660 and the `nginx` user gets EACCES, which surfaces as every request 502ing
+- Put the unix listen socket in a 0700 directory; nginx chmods listen sockets 0666 unconditionally
+- The run script **must** `rm -f` the listen socket before `exec`. nginx unlinks it only on a clean shutdown and never unlinks a pre-existing one, so any SIGKILL, OOM-kill or unclean stop leaves it and every respawn dies `bind() ... (98: Address in use)` forever — silently, because the app keeps serving its own port and both the `HEALTHCHECK` and the `watchdog:` stay green
+- Redirect the address the app **already** uses rather than reconfiguring it: cont-init replaces the `/var/run -> /run` symlink with a real directory holding `docker.sock -> <shim socket>`, which fixes existing installs too. Safe only because s6-overlay's `preinit` restores the symlink before stage0 each boot and `base-addon-log-level` is ordered ahead of `legacy-cont-init`. The base sets `S6_BEHAVIOUR_IF_STAGE2_FAILS=2`, so **do not add another cont-init script or service to such an app that writes under `/var/run/`** — it would stop the container booting
+- The AppArmor profile needs `/run/docker-shim/docker.sock rw,` alongside the resolved `/run/docker.sock rw,`, and `/usr/sbin/** ix,` for nginx
+
+Full rationale, the reproducer and the upstream issue links: "Docker socket shim" in the root `CLAUDE.md`.
+
+## Phase 3: Create the App Directory
+
+The app slug should be lowercase, using underscores for word separation. Create all files in `<repo-root>/<app-slug>/`.
+
+### Required Files (create in this order)
+
+Read `references/templates.md` for the exact content templates. Customize each template for the specific app.
+
+1. **`config.yaml`** - App metadata, ports, options schema
+2. **`build.yaml`** - Base image and build args per architecture
+3. **`translations/en.yaml`** - Plain-English option names + descriptions for the HA Configuration tab (mirrors `config.yaml`'s options). See "translations/en.yaml Format" below.
+4. **`Dockerfile`** - Container build with binary download or service installation
+5. **`apparmor.txt`** - Security profile (start from the standard template, add app-specific paths)
+6. **`rootfs/etc/cont-init.d/<name>.sh`** - S6 initialization script
+7. **`rootfs/etc/services.d/<name>/run`** - S6 service runner
+8. **`rootfs/etc/services.d/<name>/finish`** - S6 finish handler
+9. **`build.sh`** - Local build script
+10. **`icon.png`** - PNG icon, minimum 256x256 (required by HA and CI validation). Source from upstream project logo/favicon.
+11. **`CHANGELOG.md`** - Initial version entry
+12. **`README.md`** - User-facing overview and installation guide
+13. **`DOCS.md`** - Detailed configuration documentation
+14. **`CLAUDE.md`** - AI assistant guidance for future maintenance
+15. **`UPDATE_GUIDE.md`** - How to update the app
+
+### Critical Conventions (Non-Negotiable)
+
+These patterns exist because they solve real problems encountered in this repo:
+
+- **`ARG BUILD_FROM` with no default** in the Dockerfile — the base image version comes from `build.yaml` at build time. Do not add inline defaults as they drift out of sync with `build.yaml`.
+- **`apk upgrade --no-cache` before `apk add`** to resolve base image package version conflicts (libcrypto3/libssl3 vs openssl)
+- **Architecture: only `aarch64` and `amd64`** - the hassio-addons base image v19+ dropped armhf/armv7/i386
+- **`bashio::require.unprotected`** as the first line in cont-init.d scripts when Docker API access is needed
+- **`exec`** the main process in the run script so it gets PID 1 and receives signals properly
+- **`#!/usr/bin/with-contenv bashio`** shebang for all S6 scripts
+- **`chmod a+x`** on all scripts in the Dockerfile
+- **Version must appear in three places**: `config.yaml` version field, `build.yaml` args, and `Dockerfile` `ARG <APP>_VERSION=` default — all must match. The update scripts maintain all three automatically.
+- **`CHANGELOG.md` version header must be bare `## X.Y.Z`** (no `Version ` prefix, no trailing date in parens, no `[brackets]`). Put the date on its own line below as `_YYYY-MM-DD_`. Core's update entity uses the regex `^#* {version}\n` to extract release notes — any other format makes the HA UI dump the entire changelog every release. See `references/templates.md`.
+- **Dockerfile `HEALTHCHECK`** — define one whenever the app exposes a TCP/HTTP endpoint. Supervisor reads it and gates the `STARTUP → STARTED` state transition (yellow → green dot in the HA UI) on the healthcheck going healthy; without it, the dot turns green the moment the container is running, even if the app inside isn't responsive yet. Reuse the same endpoint that `watchdog:` points to.
+- **Signed commits** - never add Claude Code attribution lines
+
+### config.yaml Conventions
+
+```yaml
+name: "Human-Readable Name"
+description: "One-line description"
+version: "X.Y.Z"
+slug: "app_slug"
+init: false
+ingress: true
+ingress_port: <main-web-port>
+ingress_stream: true
+panel_icon: mdi:<icon-name>
+panel_title: <Short Title>
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+watchdog: tcp://[HOST]:[PORT:<main-port>]/<health-endpoint>
+ports:
+  <port>/tcp: <port>
+ports_description:
+  <port>/tcp: "Description"
+host_network: false
+apparmor: true
+hassio_api: true
+docker_api: true         # Only if Docker socket access needed
+hassio_role: admin        # Only if Docker socket access needed
+map:
+  - ssl:ro
+  - data:rw
+  - media:rw
+  - share:rw
+options:
+  log_level: info
+  # app-specific defaults...
+schema:
+  log_level: list(trace|debug|info|warning|error|fatal)?
+  # app-specific schema...
+```
+
+#### Folder mappings (`map:`)
+
+Valid names come from Supervisor's `MappingType` enum (`supervisor/apps/const.py`):
+`data`, `ssl`, `share`, `media`, `backup`, `homeassistant_config`, `app_config`,
+`all_app_configs`, `local_apps`, and the deprecated `config`.
+
+**Use the app-based names.** As of Supervisor 2026.07 these are deprecated and each logs
+`uses legacy map type '<old>'; use '<new>' instead`:
+
+| legacy | use instead | container path changes? |
+|---|---|---|
+| `addon_config` | `app_config` | no — both mount at `/config` |
+| `all_addon_configs` | `all_app_configs` | **yes** — `/addon_configs` → `/app_configs` |
+| `addons` | `local_apps` | **yes** — `/addons` → `/local_apps` |
+
+Never list a legacy name alongside its replacement — Supervisor logs "incompatible map options"
+and ignores the legacy one.
+
+**A misspelled map name is silently skipped, not rejected** — the mount is dropped and the app
+installs anyway, with no error. `pr-validate.yml` checks these names for exactly that reason.
+
+Also renamed: app containers are now `app_<slug>`, not `addon_<slug>` (Supervisor 2026.07.4).
+A script that builds its own container name should try `app_` first and keep `addon_` as a
+fallback — better still, read the real 64-hex ID from `/proc/self/mountinfo`. The Supervisor
+**REST API is still `/addons/self/*`** — do not rename that.
+
+### build.yaml Conventions
+
+```yaml
+build_from:
+  aarch64: ghcr.io/hassio-addons/base:21.0.1
+  amd64: ghcr.io/hassio-addons/base:21.0.1
+args:
+  <APP_NAME>_VERSION: X.Y.Z
+```
+
+Always check what the current base image version is by looking at existing apps' build.yaml files - use the same version.
+
+### translations/en.yaml Format
+
+Every app ships a `translations/en.yaml` at the app root. Home Assistant renders it as the option **label** and **helper text** in the app's Configuration tab, so the raw `config.yaml` keys (e.g. `unifi_api_key`) never appear in the UI. This file is **required** and must stay in sync with `config.yaml`'s `options`/`schema`.
+
+Structure: a single top-level `configuration:` map keyed by the **exact** option keys from `config.yaml`. Each entry has:
+- `name:` — a Title Case, plain-English label (no snake_case, no jargon)
+- `description:` — what the option does plus any guidance/defaults. Use a folded `>-` scalar for multi-line text so it wraps cleanly in the UI.
+
+```yaml
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail the app writes to its log. Leave on "info" unless you
+      are troubleshooting, in which case use "debug".
+  some_host:
+    name: Server address
+    description: >-
+      IP address or hostname of the upstream server (for example 192.168.1.1).
+      Leave blank to run standalone.
+```
+
+Add one entry for **every** option in `config.yaml` — including `log_level`. See `aegis_ha/translations/en.yaml` for a complete, well-written exemplar covering hosts, API keys, booleans, numeric delays, and advanced options.
+
+### Dockerfile Structure
+
+```dockerfile
+ARG BUILD_FROM
+FROM $BUILD_FROM
+
+ARG <APP>_VERSION=X.Y.Z
+
+# Always upgrade first to resolve package conflicts
+RUN apk upgrade --no-cache \
+    && apk add --no-cache \
+        ca-certificates \
+        curl \
+        jq \
+        # ... app-specific packages
+
+# Download and install the application
+RUN mkdir -p /opt/<app> \
+    && ARCH="$(uname -m)" \
+    && if [ "${ARCH}" = "aarch64" ]; then \
+        <APP>_ARCH="arm64"; \
+    elif [ "${ARCH}" = "x86_64" ]; then \
+        <APP>_ARCH="amd64"; \
+    else \
+        echo "Unsupported architecture: ${ARCH}"; \
+        exit 1; \
+    fi \
+    && echo "Downloading <App> v${<APP>_VERSION} for ${<APP>_ARCH}..." \
+    && curl -L -f -S -o /tmp/<app>.tar.gz \
+        "<download-url>" \
+    && # Extract/install as appropriate \
+    && rm /tmp/<app>.tar.gz
+
+COPY rootfs /
+
+RUN chmod a+x /etc/cont-init.d/*.sh \
+    && chmod a+x /etc/services.d/*/run \
+    && chmod a+x /etc/services.d/*/finish
+
+# Healthcheck — Supervisor reads this and uses it to gate the
+# STARTUP → STARTED state transition (yellow → green dot in HA UI).
+# Reuse the same endpoint as `watchdog:` in config.yaml.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fs http://127.0.0.1:<main-port>/<health-path> || exit 1
+
+# Build arguments
+ARG BUILD_ARCH
+ARG BUILD_DATE
+ARG BUILD_DESCRIPTION
+ARG BUILD_NAME
+ARG BUILD_REF
+ARG BUILD_REPOSITORY
+ARG BUILD_VERSION
+
+# Labels
+LABEL \
+    io.hass.name="${BUILD_NAME}" \
+    io.hass.description="${BUILD_DESCRIPTION}" \
+    io.hass.arch="${BUILD_ARCH}" \
+    io.hass.type="addon" \
+    io.hass.version=${BUILD_VERSION} \
+    maintainer="<App> for Home Assistant" \
+    <app>.version="${<APP>_VERSION}" \
+    org.opencontainers.image.title="${BUILD_NAME}" \
+    org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
+    org.opencontainers.image.vendor="Home Assistant Apps" \
+    org.opencontainers.image.authors="<App> for Home Assistant" \
+    org.opencontainers.image.licenses="<license>" \
+    org.opencontainers.image.url="<project-url>" \
+    org.opencontainers.image.source="<source-url>" \
+    org.opencontainers.image.documentation="<docs-url>" \
+    org.opencontainers.image.created=${BUILD_DATE} \
+    org.opencontainers.image.revision=${BUILD_REF} \
+    org.opencontainers.image.version=${BUILD_VERSION}
+```
+
+If the upstream provides checksums, verify them (see Portainer's Dockerfile for the SHA256 verification pattern).
+
+### S6 Scripts
+
+**cont-init.d/<name>.sh** - Initialization (runs once on startup):
+```bash
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: <App Name>
+# Runs initialization for <App Name>
+# ==============================================================================
+bashio::require.unprotected  # Only if docker_api: true
+
+# Create data directories
+bashio::log.info "Creating data directories..."
+mkdir -p /data/<app>
+chmod 755 /data/<app>
+
+# Validate installation
+if [[ ! -f /opt/<app>/<binary> ]]; then
+    bashio::log.error "<Binary> not found!"
+    exit 1
+fi
+
+if [[ ! -x /opt/<app>/<binary> ]]; then
+    bashio::log.warning "<Binary> not executable, fixing..."
+    chmod +x /opt/<app>/<binary>
+fi
+
+# Check Docker socket (only if docker_api: true)
+if [[ -S /var/run/docker.sock ]]; then
+    bashio::log.info "Docker socket found"
+elif [[ -S /run/docker.sock ]]; then
+    bashio::log.info "Docker socket found at /run/docker.sock"
+else
+    bashio::log.error "Docker socket not found!"
+fi
+
+# Any one-time setup (secrets generation, DB init, etc.)
+
+bashio::log.info "<App Name> initialization complete"
+```
+
+**services.d/<name>/run** - Service runner (supervised, restarts on exit):
+```bash
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: <App Name>
+# Runs <App Name>
+# ==============================================================================
+
+bashio::log.info 'Starting <App Name>...'
+
+# Read configuration and set environment variables
+# Use bashio::config for string values
+# Use bashio::config.true for boolean checks
+# Use bashio::config.has_value for optional values
+
+# Log level mapping (standard pattern)
+if bashio::config.has_value 'log_level'; then
+    case "$(bashio::config 'log_level')" in
+        trace|debug)
+            export LOG_LEVEL="debug"
+            ;;
+        warning|error|fatal)
+            export LOG_LEVEL="error"
+            ;;
+        *)
+            export LOG_LEVEL="info"
+            ;;
+    esac
+fi
+
+# Log configuration at startup
+bashio::log.info "Starting with configuration:"
+bashio::log.info "  KEY: ${VALUE}"
+
+# Execute the main process (MUST use exec)
+exec /opt/<app>/<binary> [options...]
+```
+
+**services.d/<name>/finish** - Exit handler:
+```bash
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: <App Name>
+# Take down the S6 supervision tree when <App Name> fails
+# ==============================================================================
+if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
+    bashio::log.warning "<App Name> crashed with exit code ${1}. Respawning..."
+fi
+```
+
+### AppArmor Profile
+
+Start with the standard template from `references/templates.md`. The profile name should match the app slug. Add app-specific paths for:
+- Binary location (`/opt/<app>/** ix`)
+- Data directories (`owner /data/<app>/** rwk`)
+- Any additional filesystem paths the app needs
+- Docker socket access (if `docker_api: true`)
+
+**Critical: Character device access (GPIO, vcio, etc.)**: If the app uses `ioctl()` on character devices (e.g., `/dev/gpiochip*`, `/dev/vcio`), do NOT add specific path rules like `/dev/gpiochip* rw,`. Specific path rules override the blanket `file,` rule and strip ioctl permission. Use only the blanket `file,` rule:
+
+```
+profile app_slug flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  capability,
+  file,
+  # Both directions: AppArmor mediates signal DELIVERY too, so a send-only
+  # rule stops s6's SIGTERM from reaching the app — graceful shutdown is
+  # skipped and the container is SIGKILLed (exit 137).
+  signal (send,receive),
+  network,
+}
+```
+
+If even this doesn't work (HAOS kernel AppArmor version may block ioctl regardless), Protection Mode must be disabled by the user in the HA UI.
+
+### build.sh
+
+The build script follows an identical pattern across all apps. Read `references/templates.md` for the template. Customize:
+- The version ARG name (e.g., `PORTAINER_VERSION`, `ARCANE_VERSION`)
+- The build description string
+- The test `docker run` command with correct ports
+
+## Phase 4: CI/CD Integration
+
+Read `references/ci-automation.md` for full details. This phase creates:
+
+1. **Update script** (`.github/scripts/update-<app>.sh`) - Checks upstream for new versions and updates all app files
+2. **Update workflow** (`.github/workflows/update-<app>.yml`) - Runs the update script daily and creates PRs
+3. **Modifications to existing files**:
+   - Add the app to the `APP_DIRS` list in `.github/scripts/update-base-image.sh`
+   - The builder workflow (`builder.yml`) auto-discovers apps, so no changes needed there
+
+### Update Script Pattern
+
+The update script must:
+- Support `CHECK_ONLY=true` mode (for CI check job)
+- Support `JSON_OUTPUT=true` mode (for workflow output parsing)
+- Fetch the latest version from the upstream source (GitHub API, Docker Hub, etc.)
+- Compare with current version in `config.yaml`
+- Update all files where the version appears: `config.yaml`, `build.yaml`, `Dockerfile`, `README.md`, `DOCS.md`, `CHANGELOG.md`
+- Use conservative regex for documentation updates (only update specific version references, never section headers)
+- Include retry logic for API calls (3 attempts, 2-second delay)
+
+### Update Workflow Pattern
+
+```yaml
+name: Update <App Name>
+on:
+  schedule:
+    - cron: '<MM> <HH> * * *'  # Pick a unique time slot (check existing workflows)
+  workflow_dispatch:
+```
+
+Use `peter-evans/create-pull-request@v8` with `sign-commits: true` and labels `automated, <app-slug>, update`. Trigger `repository_dispatch` after PR creation so the validation workflow runs.
+
+## Phase 5: Verification Checklist
+
+Before considering the app complete, verify:
+
+- [ ] `config.yaml` has all required fields and valid schema types
+- [ ] `translations/en.yaml` exists and documents **every** `config.yaml` option with a Title Case `name:` and a plain-English `description:`
+- [ ] Version is consistent across `config.yaml`, `build.yaml` args, and `Dockerfile` `ARG <APP>_VERSION=`
+- [ ] `build.yaml` uses the same base image version as other apps
+- [ ] Dockerfile starts with `apk upgrade --no-cache` before `apk add`
+- [ ] Dockerfile has `ARG BUILD_FROM` with no default (version comes from `build.yaml`)
+- [ ] Architecture detection covers aarch64 and amd64 only
+- [ ] All S6 scripts use `#!/usr/bin/with-contenv bashio` shebang
+- [ ] Init script calls `bashio::require.unprotected` (if Docker API needed)
+- [ ] Run script uses `exec` for the main process
+- [ ] Finish script handles exit codes correctly
+- [ ] AppArmor profile covers all required paths
+- [ ] `build.sh` extracts correct version ARG name from build.yaml
+- [ ] Update script handles the upstream's version format correctly
+- [ ] Update workflow has a unique cron schedule (don't overlap with existing ones)
+- [ ] Base image update script includes the new app
+- [ ] `icon.png` exists (PNG, minimum 256x256, sourced from upstream project branding)
+- [ ] CHANGELOG.md has an initial entry in the regex-compatible format (`## X.Y.Z` on its own line, date on the line below as `_YYYY-MM-DD_`)
+- [ ] Dockerfile defines a `HEALTHCHECK` matching the `watchdog:` endpoint (skip only for headless/hardware apps with no probe target)
+- [ ] README.md has correct architecture shields (only aarch64 and amd64)
+- [ ] CLAUDE.md accurately describes the app's architecture and critical details
+- [ ] Local build succeeds: `cd <app> && ./build.sh`
+
+## Existing Cron Schedule Reference
+
+Before choosing a cron slot, check the actual workflow files for the current schedule:
+
+```bash
+grep -r "cron:" .github/workflows/update-*.yml .github/workflows/update-base-image.yml | sort
+```
+
+As of last update, the occupied slots were:
+- 1:00 AM UTC - Base image updates
+- 2:00 AM UTC - Portainer LTS + STS updates
+- 3:00 AM UTC - Arcane + Dockhand updates
+- 3:30 AM UTC - Huly updates
+- 4:00 AM UTC - MuninnDB updates
+- 4:15 AM UTC - HAOS release watch
+- 4:30 AM UTC - Lemonade updates
+
+Pick an unoccupied slot (5:00 or 5:30 AM UTC). Always re-run the grep above rather than trusting this list — new apps claim slots.
+
+Pick an unoccupied slot (e.g., 4:00, 4:30, 5:00 AM UTC). Always verify with the grep above since new apps may have claimed slots since this list was written.
+
+## Icon File
+
+Each app **must** have an `icon.png` in its root directory (CI validation will fail without it). Requirements:
+- **Format**: PNG, minimum 256x256 pixels
+- **Source**: Download from the upstream project's website or GitHub repo (logo, favicon, og:image)
+- **Conversion** (if needed): `magick input.{jpg,svg,webp} -resize <size>x<size> -background none -flatten PNG32:icon.png`
+
+The icon appears in the Home Assistant app store and sidebar.

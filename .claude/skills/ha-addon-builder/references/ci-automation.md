@@ -1,0 +1,406 @@
+# CI/CD Automation Reference
+
+This file contains templates for automated version update scripts and GitHub Actions workflows. These integrate the new app into the repository's existing automation pipeline.
+
+## Table of Contents
+
+1. [Update Script Template](#update-script-template)
+2. [Update Workflow Template](#update-workflow-template)
+3. [Base Image Script Integration](#base-image-script-integration)
+4. [Version Source Patterns](#version-source-patterns)
+
+---
+
+## Update Script Template
+
+Save as `.github/scripts/update-<app>.sh`. This script checks for upstream updates and modifies app files when a new version is available.
+
+The script operates in two modes:
+- **Check mode** (`CHECK_ONLY=true`): Only checks if an update is available, outputs JSON
+- **Update mode** (`CHECK_ONLY=false`): Actually modifies files in place
+
+```bash
+#!/bin/bash
+# Update script for <App Name> app
+# Usage: CHECK_ONLY=true JSON_OUTPUT=true bash update-<app>.sh
+
+set -e
+
+# Configuration
+APP_PATH="${APP_PATH:-.}"
+CHECK_ONLY="${CHECK_ONLY:-false}"
+JSON_OUTPUT="${JSON_OUTPUT:-false}"
+SILENT="${SILENT:-false}"
+
+# Colors (only when not silent)
+if [ "$SILENT" = "false" ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    NC='\033[0m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    NC=''
+fi
+
+log() {
+    if [ "$SILENT" = "false" ]; then
+        echo -e "$1"
+    fi
+}
+
+# Get current version from config.yaml
+CURRENT_VERSION=$(grep "^version:" "${APP_PATH}/config.yaml" | cut -d'"' -f2)
+log "Current version: ${YELLOW}${CURRENT_VERSION}${NC}"
+
+# Fetch latest version from upstream
+# ===================================
+# CUSTOMIZE THIS SECTION for each app's version source.
+# See "Version Source Patterns" section below for examples.
+# ===================================
+
+LATEST_VERSION=""
+CHANGELOG=""
+MAX_RETRIES=3
+RETRY_DELAY=2
+
+for i in $(seq 1 $MAX_RETRIES); do
+    # --- REPLACE THIS BLOCK with app-specific version detection ---
+    RESPONSE=$(curl -s -f "https://api.github.com/repos/<owner>/<repo>/releases/latest" 2>/dev/null) && break
+    log "${YELLOW}Retry $i/$MAX_RETRIES...${NC}"
+    sleep $RETRY_DELAY
+done
+
+if [ -z "$RESPONSE" ]; then
+    log "${RED}Failed to fetch latest version after $MAX_RETRIES attempts${NC}"
+    if [ "$JSON_OUTPUT" = "true" ]; then
+        echo '{"update_available": false, "error": "Failed to fetch version"}'
+    fi
+    exit 1
+fi
+
+# --- REPLACE with app-specific version extraction ---
+LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')
+CHANGELOG=$(echo "$RESPONSE" | jq -r '.body // "No changelog available"')
+
+log "Latest version: ${GREEN}${LATEST_VERSION}${NC}"
+
+# Compare versions
+if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+    log "${GREEN}Already up to date${NC}"
+    if [ "$JSON_OUTPUT" = "true" ]; then
+        echo "{\"update_available\": false, \"current\": \"${CURRENT_VERSION}\", \"latest\": \"${LATEST_VERSION}\"}"
+    fi
+    exit 0
+fi
+
+log "${YELLOW}Update available: ${CURRENT_VERSION} -> ${LATEST_VERSION}${NC}"
+
+# If check-only mode, output and exit
+if [ "$CHECK_ONLY" = "true" ]; then
+    if [ "$JSON_OUTPUT" = "true" ]; then
+        # Escape changelog for JSON
+        ESCAPED_CHANGELOG=$(echo "$CHANGELOG" | jq -Rs '.')
+        echo "{\"update_available\": true, \"current\": \"${CURRENT_VERSION}\", \"latest\": \"${LATEST_VERSION}\", \"changelog\": ${ESCAPED_CHANGELOG}}"
+    fi
+    exit 0
+fi
+
+# Apply updates
+log "\n${YELLOW}Applying update...${NC}"
+
+# Update config.yaml - version field
+sed -i "s/^version: \".*\"/version: \"${LATEST_VERSION}\"/" "${APP_PATH}/config.yaml"
+log "Updated config.yaml"
+
+# Update build.yaml - version arg
+sed -i "s/<APP_UPPER>_VERSION: .*/<APP_UPPER>_VERSION: ${LATEST_VERSION}/" "${APP_PATH}/build.yaml"
+log "Updated build.yaml"
+
+# Update Dockerfile - ARG default
+sed -i "s/ARG <APP_UPPER>_VERSION=.*/ARG <APP_UPPER>_VERSION=${LATEST_VERSION}/" "${APP_PATH}/Dockerfile"
+log "Updated Dockerfile"
+
+# Update README.md - version reference (conservative regex)
+sed -i "s/Currently running <App Name> [0-9][0-9.]*/Currently running <App Name> ${LATEST_VERSION}/" "${APP_PATH}/README.md"
+log "Updated README.md"
+
+# Update DOCS.md (if it has version references)
+# Use conservative regex - only update specific version patterns, never section headers
+
+# Update CHANGELOG.md - prepend new entry
+#
+# Placement rule for hand-written maintenance notes (not this script's job, but
+# the reason this script's output must stay well-formed): a
+# `> _Maintenance (YYYY-MM-DD):_ ...` blockquote goes immediately BELOW the
+# `## <version>` heading it amends. Home Assistant slices release notes from the
+# latest version's heading down to the installed one, so a note written above
+# the first heading is either swallowed by the next prepended version (what
+# happened to lemonade 11.5.1) or never rendered at all (what happened to
+# dockge). pr-validate.yml rejects notes above the first heading.
+# Format: bare "## X.Y.Z" header (no "Version " prefix, no trailing date)
+# so Core's release-notes regex ^#* {version}\n matches and only the
+# new-version delta is shown in the HA UI.
+DATE=$(date +%Y-%m-%d)
+CHANGELOG_ENTRY="## ${LATEST_VERSION}
+
+_${DATE}_
+
+${CHANGELOG}
+
+---
+
+"
+
+# Prepend the new entry. Do NOT use `sed "/^# Changelog$/a\\ ..."` here: GNU sed
+# ends append text at the first line not ending in a backslash, so any
+# multi-line changelog (i.e. every real one) aborts with
+# `sed: -e expression #1, char N: unknown command: '-'`. With `2>/dev/null`
+# that failure is invisible and the fallback below silently does all the work.
+# Every update-*.sh in this repo writes the file directly instead:
+TEMP_FILE=$(mktemp)
+cat > "$TEMP_FILE" << EOF
+# Changelog
+
+${CHANGELOG_ENTRY}
+$(tail -n +2 "${APP_PATH}/CHANGELOG.md")
+EOF
+mv "$TEMP_FILE" "${APP_PATH}/CHANGELOG.md"
+log "Updated CHANGELOG.md"
+
+log "\n${GREEN}Update complete: ${CURRENT_VERSION} -> ${LATEST_VERSION}${NC}"
+
+# If running on Home Assistant, reload supervisor
+if command -v ha &> /dev/null; then
+    log "Reloading Home Assistant Supervisor..."
+    ha supervisor reload || true
+fi
+```
+
+### Customization Points
+
+Replace these placeholders:
+- `<app>` - app slug (lowercase, underscores)
+- `<App Name>` - human-readable name
+- `<APP_UPPER>` - uppercase version ARG name (e.g., `PORTAINER`, `ARCANE`)
+- `<owner>/<repo>` - upstream GitHub repository
+- The version detection block (see Version Source Patterns below)
+
+---
+
+## Update Workflow Template
+
+Save as `.github/workflows/update-<app>.yml`.
+
+```yaml
+name: Update <App Name>
+
+on:
+  schedule:
+    # Pick a unique time slot - see SKILL.md for existing schedule
+    - cron: '<MM> <HH> * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-update:
+    runs-on: ubuntu-latest
+    outputs:
+      update_available: ${{ steps.check.outputs.update_available }}
+      current_version: ${{ steps.check.outputs.current_version }}
+      latest_version: ${{ steps.check.outputs.latest_version }}
+      changelog: ${{ steps.check.outputs.changelog }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check for updates
+        id: check
+        run: |
+          cd <app_slug>
+          result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-<app>.sh)
+          echo "Result: $result"
+
+          update_available=$(echo "$result" | jq -r '.update_available')
+          current=$(echo "$result" | jq -r '.current')
+          latest=$(echo "$result" | jq -r '.latest')
+          changelog=$(echo "$result" | jq -r '.changelog')
+
+          echo "update_available=$update_available" >> $GITHUB_OUTPUT
+          echo "current_version=$current" >> $GITHUB_OUTPUT
+          echo "latest_version=$latest" >> $GITHUB_OUTPUT
+          # Unique delimiter: upstream release notes are arbitrary text and a
+          # literal `EOF` line in them would break this heredoc and fail the step.
+          delim="CHANGELOG_EOF_$(date +%s%N)_$RANDOM"
+          {
+            echo "changelog<<${delim}"
+            echo "$changelog"
+            echo "${delim}"
+          } >> "$GITHUB_OUTPUT"
+
+  update-version:
+    needs: check-update
+    if: needs.check-update.outputs.update_available == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update <App Name>
+        id: update
+        run: |
+          cd <app_slug>
+          APP_PATH=. CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-<app>.sh
+
+      - name: Create Pull Request
+        id: create-pr
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          sign-commits: true
+          commit-message: |
+            Update <App Name> to ${{ needs.check-update.outputs.latest_version }}
+
+            Automated update from ${{ needs.check-update.outputs.current_version }} to ${{ needs.check-update.outputs.latest_version }}
+          branch: update-<app>-${{ needs.check-update.outputs.latest_version }}
+          delete-branch: true
+          title: "Update <App Name> to ${{ needs.check-update.outputs.latest_version }}"
+          body: |
+            ## <App Name> Update
+
+            This automated PR updates <App Name> from `${{ needs.check-update.outputs.current_version }}` to `${{ needs.check-update.outputs.latest_version }}`.
+
+            ### Changelog
+
+            ${{ needs.check-update.outputs.changelog }}
+
+            ### Changes
+
+            - Updated `config.yaml` version
+            - Updated `build.yaml` <APP_UPPER>_VERSION
+            - Updated `Dockerfile` <APP_UPPER>_VERSION
+            - Updated documentation files
+            - Updated CHANGELOG.md
+
+            ### Source
+
+            Version tracked from: <upstream-url>
+
+            ---
+
+            This PR was automatically generated by the Update <App Name> workflow
+          labels: |
+            automated
+            <app_slug>
+            update
+          draft: false
+
+      - name: Trigger downstream workflows
+        if: steps.create-pr.outputs.pull-request-number
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d '{
+              "event_type": "automated-pr-created",
+              "client_payload": {
+                "pull_request_number": "${{ steps.create-pr.outputs.pull-request-number }}",
+                "head_sha": "${{ steps.create-pr.outputs.pull-request-head-sha }}",
+                "branch": "update-<app>-${{ needs.check-update.outputs.latest_version }}",
+                "app": "<app_slug>"
+              }
+            }'
+```
+
+### Key Points
+
+- The `repository_dispatch` trigger at the end is essential - it fires the PR validation and builder workflows, since GitHub won't trigger workflows on events from `GITHUB_TOKEN`-created PRs
+- Labels must include `automated` for the auto-merge system to pick it up
+- `sign-commits: true` is required (repo enforces signed commits)
+- The `delete-branch: true` cleans up after merge
+
+---
+
+## Base Image Script Integration
+
+After creating the app, add it to the existing base image update script at `.github/scripts/update-base-image.sh`.
+
+Find the line that defines the list of apps to update (it looks like):
+```bash
+APP_DIRS="arcane dockge dockhand hay_cm5_fan huly lemonade muninndb portainer_ee_lts portainer_ee_sts sonuntius aegis_ha"
+```
+
+Add the new app slug to this list:
+```bash
+APP_DIRS="arcane dockge dockhand hay_cm5_fan huly lemonade muninndb portainer_ee_lts portainer_ee_sts sonuntius aegis_ha"
+```
+
+This ensures base image updates are applied to the new app automatically.
+
+---
+
+## Version Source Patterns
+
+Different upstreams publish versions differently. Here are the patterns used in this repo:
+
+### GitHub Releases (Latest) - Used by Arcane
+
+```bash
+RESPONSE=$(curl -s -f "https://api.github.com/repos/<owner>/<repo>/releases/latest")
+LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')
+CHANGELOG=$(echo "$RESPONSE" | jq -r '.body // "No changelog available"')
+```
+
+### GitHub Releases (Filtered by Name) - Used by Portainer
+
+Portainer has LTS and STS tracks, filtered by release name:
+
+```bash
+RESPONSE=$(curl -s -f "https://api.github.com/repos/portainer/portainer/releases")
+LATEST_VERSION=$(echo "$RESPONSE" | jq -r \
+    '[.[] | select(.prerelease == false) | select(.name | test("STS"; "i"))] | .[0].tag_name')
+```
+
+### Docker Hub Tags - Used by Dockhand
+
+```bash
+# Check if a specific tag exists on Docker Hub
+TAG_EXISTS=$(curl -s "https://hub.docker.com/v2/repositories/<namespace>/<image>/tags/${VERSION}" | jq -r '.name // empty')
+```
+
+### Raw File in Repository - Used by Huly
+
+Huly fetches version from a config file in the upstream repo:
+
+```bash
+RESPONSE=$(curl -s -f "https://raw.githubusercontent.com/<owner>/<repo>/main/.template.huly.conf")
+LATEST_VERSION=$(echo "$RESPONSE" | grep 'HULY_VERSION=' | cut -d'=' -f2 | tr -d '"')
+```
+
+### Changelog JSON Endpoint - Used by Dockhand
+
+```bash
+RESPONSE=$(curl -s -f "https://raw.githubusercontent.com/<owner>/<repo>/main/changelog.json")
+LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.[0].version')
+CHANGELOG=$(echo "$RESPONSE" | jq -r '.[0] | .changes[]' | sed 's/^/- /')
+```
+
+### Choosing the Right Pattern
+
+1. **GitHub Releases API** is the most common and reliable
+2. If the project has multiple release tracks, filter by release name or tag pattern
+3. If the project doesn't use GitHub Releases, check if they have a version file, changelog JSON, or Docker Hub tags
+4. Always strip the `v` prefix from version tags if present (app versions use bare numbers)
+5. Always include retry logic (3 attempts, 2-second delay) for API calls

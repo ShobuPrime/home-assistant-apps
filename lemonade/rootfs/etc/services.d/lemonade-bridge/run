@@ -1,0 +1,67 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Lemonade
+# Runs the Home Assistant bridge that fronts Lemonade.
+#
+# Always runs. Owns public port 13305, proxies to lemond on loopback 13306.
+# Memory and speech-to-text are gated inside it; the bridge itself is not
+# optional because it is also the browser-Origin gate.
+# ==============================================================================
+
+# No runtime.env means init failed and lemond is serving 13305 itself, so
+# binding it here would collide and restart-loop. Idle instead — sleeping, not
+# exiting: a legacy service that exits during startup wedges S6 shutdown.
+if [[ ! -f /run/lemonade/runtime.env ]]; then
+    bashio::log.warning "runtime.env missing — lemond is serving 13305 itself; idling to avoid a port conflict"
+    bashio::log.warning "  Browser-origin enforcement is lemond's own in this state, and the ingress panel may 403."
+    exec sleep infinity
+fi
+# shellcheck source=/dev/null
+. /run/lemonade/runtime.env
+
+BRIDGE_MEMORY_ENABLED="${BRIDGE_MEMORY_ENABLED:-false}"
+LEMOND_PORT="${LEMOND_PORT:-13306}"
+
+bashio::log.info 'Starting Lemonade bridge...'
+
+export BRIDGE_LISTEN=":13305"
+export BRIDGE_UPSTREAM="http://127.0.0.1:${LEMOND_PORT}"
+
+# The static half of the Origin allowlist, computed in cont-init. The bridge
+# merges Home Assistant's own origins into this at runtime.
+export BRIDGE_ALLOWED_ORIGINS="${BRIDGE_ALLOWED_ORIGINS:-}"
+
+if [[ "${BRIDGE_MEMORY_ENABLED}" == "true" ]]; then
+    export MEMORY_ENABLED="true"
+    MEMORY_URL="$(bashio::config 'memory_url' '')"
+    export MEMORY_URL
+    MEMORY_VAULT="$(bashio::config 'memory_vault' 'home_assistant')"
+    export MEMORY_VAULT
+    MEMORY_RECALL_COUNT="$(bashio::config 'memory_recall_count' '3')"
+    export MEMORY_RECALL_COUNT
+    MEMORY_RECALL_TOKENS="$(bashio::config 'memory_recall_tokens' '300')"
+    export MEMORY_RECALL_TOKENS
+    MEMORY_TIMEOUT_MS="$(bashio::config 'memory_timeout_ms' '400')"
+    export MEMORY_TIMEOUT_MS
+
+    if bashio::config.has_value 'memory_api_key'; then
+        MEMORY_API_KEY="$(bashio::config 'memory_api_key')"
+        export MEMORY_API_KEY
+    fi
+else
+    export MEMORY_ENABLED="false"
+fi
+
+# Speech-to-text. When on, the bridge also serves the Wyoming protocol so
+# Home Assistant can discover Lemonade as a Speech-to-text engine.
+if bashio::config.true 'stt_enabled'; then
+    STT_ENABLED="true"
+    STT_MODEL="$(bashio::config 'stt_model' 'Moonshine-Small-Streaming')"
+    export STT_ENABLED STT_MODEL
+    export STT_LISTEN=":10600"
+    bashio::log.info "  Speech-to-text: ${STT_MODEL} (Wyoming on :10600)"
+else
+    bashio::log.info "  Speech-to-text: disabled"
+fi
+
+exec /opt/ha-lemonade-bridge/ha-lemonade-bridge

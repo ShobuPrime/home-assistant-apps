@@ -1,0 +1,52 @@
+name: "Arcane Docker Manager"
+description: "Modern Docker management UI - lightweight alternative to Portainer"
+version: "2.6.0"
+slug: "arcane"
+init: false
+ingress: true
+ingress_port: 3552
+ingress_stream: true
+panel_icon: mdi:docker
+panel_title: Arcane
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+watchdog: tcp://[HOST]:[PORT:3552]/api/health
+ports:
+  3552/tcp: 3552
+  3553/tcp: 3553
+ports_description:
+  3552/tcp: "Web interface"
+  3553/tcp: "Agent communication port"
+host_network: false
+apparmor: true
+hassio_api: true
+docker_api: true
+hassio_role: admin
+map:
+  - ssl:ro
+  - data:rw
+  - media:rw
+  - share:rw
+options:
+  log_level: info
+  app_url: ""
+  puid: 1000
+  pgid: 1000
+  hide_hassio_containers: true
+  traefik_enable: false
+  traefik_domain: ""
+  traefik_entrypoints: "websecure"
+  traefik_certresolver: "cloudflare"
+schema:
+  log_level: list(trace|debug|info|warning|error|fatal)?
+  app_url: str?
+  puid: int?
+  pgid: int?
+  hide_hassio_containers: bool?
+  traefik_enable: bool?
+  traefik_domain: str?
+  traefik_entrypoints: str?
+  traefik_certresolver: str?

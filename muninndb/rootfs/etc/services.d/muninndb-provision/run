@@ -1,0 +1,207 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: MuninnDB
+# Post-startup provisioning: sets admin password and creates default vault.
+# Runs as an S6 service that exits after provisioning is complete.
+# ==============================================================================
+
+PROVISION_MARKER="/data/muninndb/.provisioned"
+STORED_HASH_FILE="/data/muninndb/.admin_pass_hash"
+STORED_PASS_FILE="/data/muninndb/.admin_pass_set"
+
+# If already provisioned and no password change requested, exit immediately
+if [[ -f "${PROVISION_MARKER}" ]]; then
+    if ! bashio::config.has_value 'admin_password' || [[ -z "$(bashio::config 'admin_password')" ]]; then
+        bashio::log.info "MuninnDB already provisioned, skipping"
+        exec s6-svc -O /run/service/muninndb-provision
+    fi
+fi
+
+# Wait for MuninnDB to be healthy
+bashio::log.info "Waiting for MuninnDB to start..."
+MAX_WAIT=60
+WAITED=0
+while [[ ${WAITED} -lt ${MAX_WAIT} ]]; do
+    if curl -sf http://127.0.0.1:8476/api/health > /dev/null 2>&1; then
+        bashio::log.info "MuninnDB is ready"
+        break
+    fi
+    sleep 1
+    WAITED=$((WAITED + 1))
+done
+
+if [[ ${WAITED} -ge ${MAX_WAIT} ]]; then
+    bashio::log.error "MuninnDB did not become healthy within ${MAX_WAIT}s, skipping provisioning"
+    exec s6-svc -O /run/service/muninndb-provision
+fi
+
+# Determine current password (use default on first run, or stored password)
+CURRENT_PASSWORD="password"
+if [[ -f "${STORED_PASS_FILE}" ]]; then
+    CURRENT_PASSWORD=$(cat "${STORED_PASS_FILE}")
+fi
+
+# Login to get session cookie
+SESSION_COOKIE=$(mktemp)
+LOGIN_PAYLOAD=$(jq -n --arg user "root" --arg pass "${CURRENT_PASSWORD}" \
+    '{username: $user, password: $pass}')
+
+LOGIN_RESPONSE=$(curl -s -w "\n%{http_code}" -c "${SESSION_COOKIE}" \
+    -X POST http://127.0.0.1:8476/api/auth/login \
+    -H 'Content-Type: application/json' \
+    -d "${LOGIN_PAYLOAD}" 2>/dev/null)
+
+HTTP_CODE=$(echo "${LOGIN_RESPONSE}" | tail -1)
+if [[ "${HTTP_CODE}" != "200" ]]; then
+    LOGIN_BODY=$(echo "${LOGIN_RESPONSE}" | sed '$d')
+    bashio::log.warning "Could not login to MuninnDB (HTTP ${HTTP_CODE}): ${LOGIN_BODY}"
+    rm -f "${SESSION_COOKIE}"
+    exec s6-svc -O /run/service/muninndb-provision
+fi
+
+bashio::log.info "Logged in to MuninnDB as root"
+
+# Change admin password if configured
+if bashio::config.has_value 'admin_password' && [[ -n "$(bashio::config 'admin_password')" ]]; then
+    NEW_PASSWORD=$(bashio::config 'admin_password')
+    NEW_HASH=$(printf '%s' "${NEW_PASSWORD}" | sha256sum | cut -d' ' -f1)
+
+    # Compare against stored hash (not the password text)
+    STORED_HASH=""
+    if [[ -f "${STORED_HASH_FILE}" ]]; then
+        STORED_HASH=$(cat "${STORED_HASH_FILE}")
+    fi
+
+    if [[ ${#NEW_PASSWORD} -lt 8 ]]; then
+        bashio::log.error "admin_password must be at least 8 characters (got ${#NEW_PASSWORD})"
+    elif [[ "${NEW_HASH}" == "${STORED_HASH}" ]]; then
+        bashio::log.info "Admin password unchanged"
+    else
+        bashio::log.info "Password change detected, updating..."
+
+        PASS_PAYLOAD=$(jq -n --arg user "root" --arg pass "${NEW_PASSWORD}" \
+            '{username: $user, new_password: $pass}')
+
+        PASS_RESPONSE=$(curl -s -w "\n%{http_code}" -b "${SESSION_COOKIE}" \
+            -X PUT http://127.0.0.1:8476/api/admin/password \
+            -H 'Content-Type: application/json' \
+            -d "${PASS_PAYLOAD}" 2>/dev/null)
+
+        PASS_CODE=$(echo "${PASS_RESPONSE}" | tail -1)
+        PASS_BODY=$(echo "${PASS_RESPONSE}" | sed '$d')
+
+        if [[ "${PASS_CODE}" == "200" ]] || [[ "${PASS_CODE}" == "204" ]]; then
+            bashio::log.info "Admin password updated successfully"
+            # Store both the hash (for comparison) and the password (for login)
+            printf '%s' "${NEW_HASH}" > "${STORED_HASH_FILE}"
+            chmod 600 "${STORED_HASH_FILE}"
+            printf '%s' "${NEW_PASSWORD}" > "${STORED_PASS_FILE}"
+            chmod 600 "${STORED_PASS_FILE}"
+
+            # Re-login with new password for vault creation
+            RELOGIN_PAYLOAD=$(jq -n --arg user "root" --arg pass "${NEW_PASSWORD}" \
+                '{username: $user, password: $pass}')
+            curl -s -c "${SESSION_COOKIE}" \
+                -X POST http://127.0.0.1:8476/api/auth/login \
+                -H 'Content-Type: application/json' \
+                -d "${RELOGIN_PAYLOAD}" > /dev/null 2>&1
+        else
+            bashio::log.warning "Failed to update admin password (HTTP ${PASS_CODE}): ${PASS_BODY}"
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# Vault provisioning
+#
+# Two vaults are created on a fresh install so memory contexts stay separated:
+#
+#   default_vault - the general-purpose vault you use yourself (AI tools over
+#                   MCP, your own agents, experiments).
+#   ha_vault      - dedicated to Home Assistant, so voice-assistant chatter
+#                   does not dilute the relevance ranking of your own notes.
+#                   MuninnDB scores by recency and frequency, and a voice
+#                   assistant writes far more often than a human does, so
+#                   sharing one vault would let it crowd everything else out.
+#
+# Note MuninnDB itself ships a built-in vault literally named `default` which
+# is already open; creating a vault of that name is therefore a no-op.
+# Vaults created here are opened (public) so clients need no API key —
+# additional vaults are otherwise LOCKED on creation.
+# ------------------------------------------------------------------------------
+ensure_vault() {
+    local vault_name="$1"
+    local vault_public="$2"
+    local purpose="$3"
+
+    [[ -z "${vault_name}" ]] && return 0
+
+    # GET /api/vaults returns a JSON array of vault name strings: ["default","homeassistant"]
+    local vault_list
+    vault_list=$(curl -s -b "${SESSION_COOKIE}" \
+        "http://127.0.0.1:8476/api/vaults" 2>/dev/null)
+
+    if echo "${vault_list}" | jq -e --arg name "${vault_name}" \
+        'index($name) != null' > /dev/null 2>&1; then
+        bashio::log.info "Vault '${vault_name}' already exists (${purpose})"
+        return 0
+    fi
+
+    local payload response code body
+    payload=$(jq -n --arg name "${vault_name}" --argjson public "${vault_public}" \
+        '{name: $name, public: $public}')
+
+    response=$(curl -s -w "\n%{http_code}" -b "${SESSION_COOKIE}" \
+        -X PUT http://127.0.0.1:8476/api/admin/vaults/config \
+        -H 'Content-Type: application/json' \
+        -d "${payload}" 2>/dev/null)
+
+    code=$(echo "${response}" | tail -1)
+    if [[ "${code}" == "200" ]] || [[ "${code}" == "201" ]] || [[ "${code}" == "204" ]]; then
+        if [[ "${vault_public}" == "true" ]]; then
+            bashio::log.info "Created vault '${vault_name}' (${purpose}, public)"
+        else
+            bashio::log.info "Created vault '${vault_name}' (${purpose}, private — API key required)"
+        fi
+    else
+        body=$(echo "${response}" | sed '$d')
+        bashio::log.warning "Failed to create vault '${vault_name}' (HTTP ${code}): ${body}"
+    fi
+}
+
+DEFAULT_VAULT=""
+if bashio::config.has_value 'default_vault'; then
+    DEFAULT_VAULT="$(bashio::config 'default_vault')"
+fi
+HA_VAULT=""
+if bashio::config.has_value 'ha_vault'; then
+    HA_VAULT="$(bashio::config 'ha_vault')"
+fi
+
+DEFAULT_VAULT_PUBLIC=true
+bashio::config.true 'default_vault_public' || DEFAULT_VAULT_PUBLIC=false
+HA_VAULT_PUBLIC=true
+bashio::config.true 'ha_vault_public' || HA_VAULT_PUBLIC=false
+
+ensure_vault "${DEFAULT_VAULT}" "${DEFAULT_VAULT_PUBLIC}" "general use"
+
+# Installs predating the split had default_vault set to "homeassistant", so the
+# two options can collide. Creating it once is correct; warn rather than
+# silently doing nothing, because the whole point is to keep them separate.
+if [[ -n "${HA_VAULT}" ]] && [[ "${HA_VAULT}" == "${DEFAULT_VAULT}" ]]; then
+    bashio::log.warning "ha_vault and default_vault are both '${HA_VAULT}' — Home Assistant will share your general vault"
+    bashio::log.warning "Set them to different names to keep voice-assistant memory separate"
+else
+    ensure_vault "${HA_VAULT}" "${HA_VAULT_PUBLIC}" "Home Assistant"
+fi
+
+# Mark as provisioned
+touch "${PROVISION_MARKER}"
+
+# Clean up
+rm -f "${SESSION_COOKIE}"
+
+bashio::log.info "MuninnDB provisioning complete"
+
+# Exit this oneshot service
+exec s6-svc -O /run/service/muninndb-provision

@@ -1,0 +1,78 @@
+name: "AegisHA"
+description: "Home alarm panel for Home Assistant, backed by UniFi Protect, with a native MQTT alarm_control_panel entity and companion Lovelace card"
+version: "0.2.4"
+slug: "aegis_ha"
+url: "https://github.com/ShobuPrime/home-assistant-apps/tree/master/aegis_ha"
+init: false
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+ingress: true
+ingress_port: 8099
+ingress_stream: true
+panel_icon: mdi:shield-home
+panel_title: AegisHA
+panel_admin: false
+hassio_api: true
+hassio_role: manager
+homeassistant_api: true
+apparmor: true
+services:
+  - mqtt:want
+map:
+  - data:rw
+  - homeassistant_config:rw
+options:
+  log_level: info
+  unifi_host: ""
+  unifi_api_key: ""
+  unifi_verify_ssl: false
+  protect_mode: auto
+  unifi_webhook_arm: ""
+  unifi_webhook_disarm: ""
+  unifi_webhook_trigger: ""
+  exit_delay_source: app
+  arm_modes:
+    - away
+  exit_delay: 60
+  entry_delay: 30
+  trigger_time: 1800
+  code: ""
+  require_code_to_arm: false
+  require_code_to_disarm: true
+  disarm_after_trigger: false
+  ignore_blocking_sensors_after_trigger: false
+  lockout_threshold: 5
+  lockout_duration: 300
+  mqtt_topic_prefix: "aegis_ha"
+  enable_web_ui: true
+  enable_companion_card: true
+  expose_zone_entities: false
+schema:
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?
+  unifi_host: str?
+  unifi_api_key: password?
+  unifi_verify_ssl: bool
+  protect_mode: list(auto|local|app-managed)
+  unifi_webhook_arm: str?
+  unifi_webhook_disarm: str?
+  unifi_webhook_trigger: str?
+  exit_delay_source: list(app|unifi)
+  arm_modes:
+    - list(away|home|night|vacation|custom)
+  exit_delay: int(0,600)
+  entry_delay: int(0,600)
+  trigger_time: int(0,3600)
+  code: password?
+  require_code_to_arm: bool
+  require_code_to_disarm: bool
+  disarm_after_trigger: bool
+  ignore_blocking_sensors_after_trigger: bool
+  lockout_threshold: int(1,20)
+  lockout_duration: int(0,3600)
+  mqtt_topic_prefix: str
+  enable_web_ui: bool
+  enable_companion_card: bool
+  expose_zone_entities: bool

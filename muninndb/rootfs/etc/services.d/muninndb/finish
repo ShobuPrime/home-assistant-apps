@@ -1,0 +1,41 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: MuninnDB
+# Runs after MuninnDB exits — handles crash logging and shutdown backups.
+# ==============================================================================
+
+EXIT_CODE="${1}"
+
+# On crash (non-zero, non-256), just log and let S6 respawn
+if [[ "${EXIT_CODE}" -ne 0 ]] && [[ "${EXIT_CODE}" -ne 256 ]]; then
+    bashio::log.warning "MuninnDB crashed with exit code ${EXIT_CODE}. Respawning..."
+    exit 0
+fi
+
+# On clean shutdown (exit 0), create an offline backup if enabled
+if [[ "${EXIT_CODE}" -eq 0 ]] && bashio::config.true 'backup_on_shutdown'; then
+    BACKUP_DIR="/data/muninndb/backups/shutdown-$(date +%Y%m%d-%H%M%S)"
+
+    bashio::log.info "Creating offline shutdown backup: ${BACKUP_DIR}"
+
+    if /opt/muninndb/muninn backup \
+        --output "${BACKUP_DIR}" \
+        --data-dir /data/muninndb 2>&1; then
+        bashio::log.info "Shutdown backup complete: ${BACKUP_DIR}"
+    else
+        bashio::log.warning "Shutdown backup failed"
+    fi
+
+    # Prune old shutdown backups (keep last 3)
+    BACKUP_BASE="/data/muninndb/backups"
+    if [[ -d "${BACKUP_BASE}" ]]; then
+        COUNT=0
+        for backup in $(ls -dt "${BACKUP_BASE}"/shutdown-* 2>/dev/null); do
+            COUNT=$((COUNT + 1))
+            if [[ ${COUNT} -gt 3 ]]; then
+                bashio::log.info "Pruning old backup: ${backup}"
+                rm -rf "${backup}"
+            fi
+        done
+    fi
+fi

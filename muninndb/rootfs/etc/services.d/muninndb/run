@@ -1,0 +1,151 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: MuninnDB
+# Runs MuninnDB
+# ==============================================================================
+
+bashio::log.info "========================================"
+bashio::log.info "MuninnDB starting at $(date '+%Y-%m-%d %H:%M:%S %Z')"
+bashio::log.info "========================================"
+
+# Set data directory
+export MUNINNDB_DATA="/data/muninndb"
+
+# Local ONNX embedder (bge-small-en-v1.5, 384-dim) is built into the binary.
+# Enabled by default. Disable if using an external provider exclusively.
+if bashio::config.true 'local_embed'; then
+    export MUNINN_LOCAL_EMBED="1"
+else
+    export MUNINN_LOCAL_EMBED="0"
+    bashio::log.info "Local embedder disabled"
+fi
+
+# Configure Ollama integration
+if bashio::config.has_value 'ollama_url' && [[ -n "$(bashio::config 'ollama_url')" ]]; then
+    export MUNINN_OLLAMA_URL=$(bashio::config 'ollama_url')
+    bashio::log.info "Ollama URL: ${MUNINN_OLLAMA_URL}"
+fi
+
+# Configure OpenAI embeddings
+if bashio::config.has_value 'openai_key' && [[ -n "$(bashio::config 'openai_key')" ]]; then
+    export MUNINN_OPENAI_KEY=$(bashio::config 'openai_key')
+    bashio::log.info "OpenAI embeddings configured"
+fi
+
+# Configure OpenAI-compatible endpoint override
+if bashio::config.has_value 'openai_url' && [[ -n "$(bashio::config 'openai_url')" ]]; then
+    export MUNINN_OPENAI_URL=$(bashio::config 'openai_url')
+    bashio::log.info "OpenAI URL override: ${MUNINN_OPENAI_URL}"
+fi
+
+# Configure Anthropic API key for LLM enrichment
+if bashio::config.has_value 'anthropic_key' && [[ -n "$(bashio::config 'anthropic_key')" ]]; then
+    export MUNINN_ANTHROPIC_KEY=$(bashio::config 'anthropic_key')
+    bashio::log.info "Anthropic API key configured"
+fi
+
+# Configure LLM enrichment URL (e.g., anthropic://claude-haiku-4-5-20251001)
+if bashio::config.has_value 'enrich_url' && [[ -n "$(bashio::config 'enrich_url')" ]]; then
+    export MUNINN_ENRICH_URL=$(bashio::config 'enrich_url')
+    bashio::log.info "LLM enrichment URL: ${MUNINN_ENRICH_URL}"
+fi
+
+# Configure memory limit
+if bashio::config.has_value 'mem_limit_gb'; then
+    MEM_LIMIT=$(bashio::config 'mem_limit_gb')
+    if [[ "${MEM_LIMIT}" -gt 0 ]]; then
+        export MUNINN_MEM_LIMIT_GB="${MEM_LIMIT}"
+        bashio::log.info "Memory limit: ${MEM_LIMIT}GB"
+    fi
+fi
+
+# Configure additional embedding provider API keys
+if bashio::config.has_value 'voyage_key' && [[ -n "$(bashio::config 'voyage_key')" ]]; then
+    export MUNINN_VOYAGE_KEY=$(bashio::config 'voyage_key')
+    bashio::log.info "Voyage embeddings configured"
+fi
+
+if bashio::config.has_value 'cohere_key' && [[ -n "$(bashio::config 'cohere_key')" ]]; then
+    export MUNINN_COHERE_KEY=$(bashio::config 'cohere_key')
+    bashio::log.info "Cohere embeddings configured"
+fi
+
+if bashio::config.has_value 'google_key' && [[ -n "$(bashio::config 'google_key')" ]]; then
+    export MUNINN_GOOGLE_KEY=$(bashio::config 'google_key')
+    bashio::log.info "Google (Gemini) embeddings configured"
+fi
+
+if bashio::config.has_value 'jina_key' && [[ -n "$(bashio::config 'jina_key')" ]]; then
+    export MUNINN_JINA_KEY=$(bashio::config 'jina_key')
+    bashio::log.info "Jina embeddings configured"
+fi
+
+if bashio::config.has_value 'mistral_key' && [[ -n "$(bashio::config 'mistral_key')" ]]; then
+    export MUNINN_MISTRAL_KEY=$(bashio::config 'mistral_key')
+    bashio::log.info "Mistral embeddings configured"
+fi
+
+# Log level configuration
+if bashio::config.has_value 'log_level'; then
+    case "$(bashio::config 'log_level')" in
+        trace|debug)
+            export LOG_LEVEL="debug"
+            ;;
+        warning|error|fatal)
+            export LOG_LEVEL="error"
+            ;;
+        *)
+            export LOG_LEVEL="info"
+            ;;
+    esac
+fi
+
+# Configure automated backups
+if bashio::config.has_value 'backup_interval' && [[ -n "$(bashio::config 'backup_interval')" ]]; then
+    export MUNINN_BACKUP_INTERVAL=$(bashio::config 'backup_interval')
+    export MUNINN_BACKUP_DIR="/data/muninndb/backups"
+    mkdir -p "${MUNINN_BACKUP_DIR}"
+    bashio::log.info "Automated backups: every ${MUNINN_BACKUP_INTERVAL}"
+fi
+
+if bashio::config.has_value 'backup_retain'; then
+    RETAIN=$(bashio::config 'backup_retain')
+    if [[ "${RETAIN}" -gt 0 ]]; then
+        export MUNINN_BACKUP_RETAIN="${RETAIN}"
+    fi
+fi
+
+# Build TLS flags
+TLS_FLAGS=""
+if bashio::config.has_value 'ssl_certfile' && [[ -n "$(bashio::config 'ssl_certfile')" ]]; then
+    CERTFILE=$(bashio::config 'ssl_certfile')
+    KEYFILE=$(bashio::config 'ssl_keyfile')
+
+    if [[ -f "/ssl/${CERTFILE}" ]] && [[ -f "/ssl/${KEYFILE}" ]]; then
+        TLS_FLAGS="-tls-cert /ssl/${CERTFILE} -tls-key /ssl/${KEYFILE}"
+        bashio::log.info "TLS enabled: /ssl/${CERTFILE}"
+    else
+        bashio::log.error "SSL files not found: /ssl/${CERTFILE} or /ssl/${KEYFILE}"
+        bashio::log.error "Falling back to plain HTTP"
+    fi
+fi
+
+# Log configuration
+bashio::log.info "Starting MuninnDB with configuration:"
+bashio::log.info "  Data directory: ${MUNINNDB_DATA}"
+bashio::log.info "  Ports: 8474 (MBP), 8475 (REST), 8476 (Web UI), 8477 (gRPC), 8750 (MCP)"
+if [[ -n "${TLS_FLAGS}" ]]; then
+    bashio::log.info "  TLS: enabled"
+fi
+
+# Change to the muninndb directory
+cd /opt/muninndb
+
+# Run MuninnDB in foreground mode (--daemon flag runs the server process
+# directly instead of daemonizing, which is what S6 needs).
+# -listen-host 0.0.0.0 is required so ports are accessible outside the container.
+# shellcheck disable=SC2086
+exec /opt/muninndb/muninn --daemon \
+    -data /data/muninndb \
+    -listen-host 0.0.0.0 \
+    ${TLS_FLAGS}

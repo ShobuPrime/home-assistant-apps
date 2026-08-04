@@ -1,0 +1,189 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Lemonade
+# One-shot provisioning: registers and downloads the configured models, and
+# optionally loads them so the first request from Home Assistant is not slow.
+#
+# Runs as an S6 service (not cont-init) because the `lemonade` CLI talks to
+# the running server over HTTP — the server has to be up first.
+# ==============================================================================
+
+export HOME="/data/lemonade"
+export XDG_RUNTIME_DIR="/run/lemonade"
+
+# Talk to lemond directly on whichever port this boot put it on, bypassing the
+# memory proxy — provisioning is not a conversation and must not be remembered.
+if [[ -f /run/lemonade/runtime.env ]]; then
+    # shellcheck source=/dev/null
+    . /run/lemonade/runtime.env
+fi
+LEMOND_PORT="${LEMOND_PORT:-13305}"
+
+# Stop this one-shot service without S6 treating it as a crash.
+finish_up() {
+    exec s6-svc -O /run/service/lemonade-provision
+}
+
+CLI_ARGS=(--host 127.0.0.1 --port "${LEMOND_PORT}")
+if bashio::config.has_value 'api_key'; then
+    LEMONADE_API_KEY="$(bashio::config 'api_key')"
+    export LEMONADE_API_KEY
+fi
+
+CHAT_NAME=""
+bashio::config.has_value 'model_name' && CHAT_NAME="$(bashio::config 'model_name')"
+CHAT_CHECKPOINT=""
+bashio::config.has_value 'model_checkpoint' && CHAT_CHECKPOINT="$(bashio::config 'model_checkpoint')"
+
+EMBED_NAME=""
+bashio::config.has_value 'embedding_model_name' && EMBED_NAME="$(bashio::config 'embedding_model_name')"
+EMBED_CHECKPOINT=""
+bashio::config.has_value 'embedding_model_checkpoint' && EMBED_CHECKPOINT="$(bashio::config 'embedding_model_checkpoint')"
+
+if [[ -z "${CHAT_NAME}" || -z "${CHAT_CHECKPOINT}" ]] \
+    && [[ -z "${EMBED_NAME}" || -z "${EMBED_CHECKPOINT}" ]]; then
+    bashio::log.info "No models configured — skipping automatic model download"
+    finish_up
+fi
+
+# ------------------------------------------------------------------------------
+# Wait for the server to accept requests
+# ------------------------------------------------------------------------------
+bashio::log.info "Waiting for the Lemonade server to become ready..."
+MAX_WAIT=120
+WAITED=0
+while [[ ${WAITED} -lt ${MAX_WAIT} ]]; do
+    if curl -sf --max-time 3 "http://127.0.0.1:${LEMOND_PORT}/live" > /dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+    WAITED=$((WAITED + 2))
+done
+
+if [[ ${WAITED} -ge ${MAX_WAIT} ]]; then
+    bashio::log.error "Lemonade did not become ready within ${MAX_WAIT}s — skipping model provisioning"
+    finish_up
+fi
+bashio::log.info "Lemonade server is ready"
+
+# ------------------------------------------------------------------------------
+# Register + download one model, if it isn't already present.
+#
+# $1 short name, $2 checkpoint, $3 label passed to `lemonade pull`.
+#
+# Note the temp-file-then-grep dance: piping curl straight into `grep -q` under
+# bashio's `set -o pipefail` gives grep the chance to exit early and kill curl
+# with SIGPIPE, which aborts the whole script.
+# ------------------------------------------------------------------------------
+ensure_model() {
+    local short_name="$1" checkpoint="$2" label="$3"
+    local full_name="user.${short_name}"
+    local models_json
+
+    models_json="$(mktemp)"
+    if curl -sf --max-time 10 "http://127.0.0.1:${LEMOND_PORT}/api/v1/models" -o "${models_json}" 2>/dev/null \
+        && jq -e --arg name "${full_name}" \
+            '[.data[]? | select(.id == $name)] | length > 0' "${models_json}" > /dev/null 2>&1; then
+        bashio::log.info "Model '${full_name}' is already available"
+        rm -f "${models_json}"
+        return 0
+    fi
+    rm -f "${models_json}"
+
+    bashio::log.info "Downloading '${full_name}' from ${checkpoint}"
+    bashio::log.info "First run also fetches the llama.cpp backend — this can take several minutes."
+
+    # The label is what makes Lemonade advertise the model's capability in its
+    # registry and Web UI: `tool-calling` for the chat model so Assist actions
+    # are offered, `embeddings` for the embedding model so clients can find it.
+    if lemonade "${CLI_ARGS[@]}" pull "${full_name}" \
+        --checkpoint main "${checkpoint}" \
+        --recipe llamacpp \
+        --label "${label}"; then
+        bashio::log.info "Model '${full_name}' downloaded"
+        return 0
+    fi
+
+    bashio::log.error "Failed to download '${full_name}' from ${checkpoint}"
+    bashio::log.error "Check the checkpoint name, then use the Web UI to add a model manually."
+    return 1
+}
+
+# ------------------------------------------------------------------------------
+# Chat model
+# ------------------------------------------------------------------------------
+if [[ -n "${CHAT_NAME}" && -n "${CHAT_CHECKPOINT}" ]]; then
+    if ensure_model "${CHAT_NAME}" "${CHAT_CHECKPOINT}" "tool-calling"; then
+        if bashio::config.true 'preload_model'; then
+            bashio::log.info "Loading 'user.${CHAT_NAME}' into memory..."
+            if lemonade "${CLI_ARGS[@]}" load "user.${CHAT_NAME}"; then
+                bashio::log.info "Model 'user.${CHAT_NAME}' loaded and ready"
+            else
+                bashio::log.warning "Could not preload 'user.${CHAT_NAME}' — it will load on first request instead"
+            fi
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# Embedding model
+#
+# Lemonade limits `max_loaded_models` per TYPE slot, not globally, so an
+# embedding model and a chat model stay resident together — verified: both
+# loaded, zero evictions, with the default of 1.
+#
+# It is pinned regardless, because eviction pressure grows as other model types
+# (speech, image) get added, and a memory store that pays a model reload on
+# every recall is worse than useless for a voice assistant.
+# ------------------------------------------------------------------------------
+if [[ -n "${EMBED_NAME}" && -n "${EMBED_CHECKPOINT}" ]]; then
+    if ensure_model "${EMBED_NAME}" "${EMBED_CHECKPOINT}" "embeddings"; then
+        bashio::log.info "Loading 'user.${EMBED_NAME}' for embeddings..."
+        if lemonade "${CLI_ARGS[@]}" load "user.${EMBED_NAME}"; then
+            if lemonade "${CLI_ARGS[@]}" pin "user.${EMBED_NAME}"; then
+                bashio::log.info "Embedding model 'user.${EMBED_NAME}' loaded and pinned"
+            else
+                bashio::log.warning "Loaded 'user.${EMBED_NAME}' but could not pin it — it may be evicted under memory pressure"
+            fi
+        else
+            bashio::log.warning "Could not load 'user.${EMBED_NAME}' — it will load on first embedding request"
+        fi
+        bashio::log.info "  Point MuninnDB's 'ollama_url' at: ollama://<this-host>:13305/${EMBED_NAME}"
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# Speech-to-text model
+#
+# Loaded and pinned at boot so Home Assistant's first voice command does not
+# wait on a cold model. Measured on a CM5: a Moonshine load costs 4-7s, and
+# lemond evicts idle models after 5 minutes by default (evict_idle_timeout=300)
+# — so without pinning, the first command after any quiet spell pays that.
+#
+# Unlike the chat and embedding models this one is NOT registered: it is a
+# catalogue model, so it only has to be downloaded. If it is not, loading fails
+# and we warn rather than fail the boot — chat must keep working, and the user
+# can download it from the Web UI.
+# ------------------------------------------------------------------------------
+if bashio::config.true 'stt_enabled'; then
+    STT_MODEL="$(bashio::config 'stt_model' 'Moonshine-Small-Streaming')"
+    bashio::log.info "Loading speech-to-text model '${STT_MODEL}'..."
+    if lemonade "${CLI_ARGS[@]}" load "${STT_MODEL}"; then
+        if bashio::config.true 'stt_pinned'; then
+            if lemonade "${CLI_ARGS[@]}" pin "${STT_MODEL}"; then
+                bashio::log.info "Speech-to-text model '${STT_MODEL}' loaded and pinned"
+            else
+                bashio::log.warning "Loaded '${STT_MODEL}' but could not pin it — the first voice command after an idle period will be slow"
+            fi
+        else
+            bashio::log.info "Speech-to-text model '${STT_MODEL}' loaded (not pinned)"
+        fi
+    else
+        bashio::log.warning "Could not load '${STT_MODEL}' — is it downloaded?"
+        bashio::log.warning "  Open the Web UI and download it, then restart this app."
+        bashio::log.warning "  Speech-to-text will return empty transcripts until then."
+    fi
+fi
+
+bashio::log.info "Lemonade provisioning complete"
+finish_up

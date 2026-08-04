@@ -1,0 +1,71 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Dockhand
+# Runs Dockhand
+# ==============================================================================
+
+bashio::log.info 'Starting Dockhand...'
+
+# Set environment variables
+export NODE_ENV="production"
+export DATA_DIR="/data/dockhand"
+
+# Configure custom port
+if bashio::config.has_value 'port'; then
+    export PORT=$(bashio::config 'port')
+else
+    export PORT=3000
+fi
+
+# Configure PUID/PGID (Dockhand uses these for socket permissions)
+if bashio::config.has_value 'puid'; then
+    export PUID=$(bashio::config 'puid')
+else
+    export PUID=0
+fi
+
+if bashio::config.has_value 'pgid'; then
+    export PGID=$(bashio::config 'pgid')
+else
+    export PGID=0
+fi
+
+# Log level configuration
+if bashio::config.has_value 'log_level'; then
+    case "$(bashio::config 'log_level')" in
+        trace|debug)
+            export LOG_LEVEL="debug"
+            ;;
+        warning|error|fatal)
+            export LOG_LEVEL="error"
+            ;;
+        *)
+            export LOG_LEVEL="info"
+            ;;
+    esac
+fi
+
+# Log configuration
+bashio::log.info "Starting Dockhand with configuration:"
+bashio::log.info "  PORT: ${PORT}"
+bashio::log.info "  DATA_DIR: ${DATA_DIR}"
+bashio::log.info "  PUID: ${PUID}"
+bashio::log.info "  PGID: ${PGID}"
+
+# Change to the dockhand directory
+cd /opt/dockhand
+
+# Run Dockhand using the Bun runtime bundled with the app
+# Dockhand uses Bun as its JavaScript runtime
+if [[ -f /opt/dockhand/node_modules/.bin/bun ]]; then
+    exec /opt/dockhand/node_modules/.bin/bun run /opt/dockhand/build/index.js
+elif command -v bun &> /dev/null; then
+    exec bun run /opt/dockhand/build/index.js
+elif command -v node &> /dev/null; then
+    # Fallback to Node.js if Bun is not available
+    bashio::log.warning "Bun not found, falling back to Node.js"
+    exec node /opt/dockhand/build/index.js
+else
+    bashio::log.error "No JavaScript runtime found! Please check the Dockerfile."
+    exit 1
+fi

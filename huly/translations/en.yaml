@@ -1,0 +1,78 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail Huly writes to its log. Leave on "info" unless you are
+      troubleshooting, in which case use "debug" or "trace".
+  host_address:
+    name: Host address
+    description: >-
+      The domain name or IP address you use to reach Huly (for example
+      huly.example.com or 192.168.1.100). Required — it is baked into the
+      internal service URLs and the links Huly hands out, so leaving it blank
+      will leave the stack misconfigured.
+  title:
+    name: Site title
+    description: >-
+      The name shown in the Huly web interface, including the browser tab and
+      the login screen. Defaults to "Huly".
+  default_language:
+    name: Default language
+    description: >-
+      Default UI language for new accounts and the login screen, as a language
+      code (for example "en" for English). Defaults to "en".
+  last_name_first:
+    name: Show last name first
+    description: >-
+      Controls how names are displayed across the platform. ON (default) shows
+      "Last First"; turn OFF for "First Last".
+  server_secret:
+    name: Server secret
+    description: >-
+      Huly's internal server secret (a hex string). Leave blank to have a
+      secure value generated automatically on first start. Set it only if you
+      want the secret to survive a reinstall. Do NOT change it after setup —
+      it will break existing data.
+  cockroachdb_password:
+    name: CockroachDB password
+    description: >-
+      Password for CockroachDB's "selfhost" database user. Leave blank to
+      auto-generate on first start. Set it only to survive a reinstall, and do
+      not change it once data exists (you would have to wipe the database
+      directory).
+  minio_root_user:
+    name: MinIO root user
+    description: >-
+      Access key for the bundled MinIO object storage. Defaults to
+      "minioadmin". Change it for a fresh install; do not change it after
+      files have been stored or attachments will become inaccessible.
+  minio_root_password:
+    name: MinIO root password
+    description: >-
+      Secret key for the bundled MinIO object storage. Defaults to
+      "minioadmin" — change it before exposing Huly to the network. Do not
+      change it after files exist without wiping the MinIO data directory.
+  traefik_enable:
+    name: Enable Traefik labels
+    description: >-
+      Turn ON to emit Traefik reverse-proxy routing labels so an external
+      Traefik instance can publish Huly. Leave OFF if you only use Home
+      Assistant ingress or direct port access. The options below apply only
+      when this is ON.
+  traefik_domain:
+    name: Traefik domain
+    description: >-
+      The public hostname Traefik should route to Huly (for example
+      huly.example.com). Required when Traefik labels are enabled.
+  traefik_entrypoints:
+    name: Traefik entrypoints
+    description: >-
+      Which Traefik entrypoint(s) handle Huly traffic. Defaults to
+      "websecure" (HTTPS). Match this to the entrypoint names defined in your
+      Traefik configuration.
+  traefik_certresolver:
+    name: Traefik certificate resolver
+    description: >-
+      The Traefik certificate resolver used to obtain TLS certificates for the
+      domain. Defaults to "cloudflare". Must match a resolver defined in your
+      Traefik configuration.

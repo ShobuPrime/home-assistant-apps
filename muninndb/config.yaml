@@ -1,0 +1,105 @@
+name: "MuninnDB"
+description: "Cognitive database with memory primitives - Ebbinghaus decay, Hebbian learning, Bayesian confidence"
+version: "0.10.0"
+slug: "muninndb"
+init: false
+ingress: true
+ingress_port: 8476
+ingress_stream: true
+panel_icon: mdi:brain
+panel_title: MuninnDB
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+# The Supervisor stops this container for every HAOS update and every backup
+# that includes app data, then SIGKILLs it after this many seconds. The default
+# is 10s, which is not enough for `backup_on_shutdown` to finish a Pebble
+# checkpoint — and a half-written backup is worse than no backup. A stop with
+# backups disabled still completes in a couple of seconds; this is a ceiling.
+timeout: 120
+watchdog: tcp://[HOST]:[PORT:8475]
+ports:
+  8474/tcp: 8474
+  8475/tcp: 8475
+  8476/tcp: 8476
+  8477/tcp: 8477
+  8750/tcp: 8750
+ports_description:
+  8474/tcp: "MBP binary protocol"
+  8475/tcp: "REST API"
+  8476/tcp: "Web UI"
+  8477/tcp: "gRPC API"
+  8750/tcp: "MCP (Model Context Protocol)"
+host_network: false
+apparmor: true
+hassio_api: true
+hassio_role: manager
+map:
+  - ssl:ro
+  - data:rw
+  - media:rw
+  - share:rw
+options:
+  log_level: info
+  admin_password: ""
+  default_vault: "default"
+  default_vault_public: true
+  ha_vault: "home_assistant"
+  ha_vault_public: true
+  backup_on_shutdown: true
+  backup_interval: "6h"
+  backup_retain: 5
+  ssl_certfile: ""
+  ssl_keyfile: ""
+  mem_limit_gb: 0
+  local_embed: true
+  anthropic_key: ""
+  cohere_key: ""
+  enrich_url: ""
+  google_key: ""
+  jina_key: ""
+  mistral_key: ""
+  ollama_url: ""
+  openai_key: ""
+  openai_url: ""
+  voyage_key: ""
+  traefik_enable: false
+  traefik_domain: ""
+  traefik_api_domain: ""
+  traefik_grpc_domain: ""
+  traefik_mcp_domain: ""
+  traefik_entrypoints: "websecure"
+  traefik_certresolver: "cloudflare"
+schema:
+  log_level: list(trace|debug|info|warning|error|fatal)?
+  admin_password: password?
+  default_vault: str?
+  default_vault_public: bool?
+  ha_vault: str?
+  ha_vault_public: bool?
+  backup_on_shutdown: bool?
+  backup_interval: str?
+  backup_retain: int?
+  ssl_certfile: str?
+  ssl_keyfile: str?
+  mem_limit_gb: int?
+  local_embed: bool?
+  anthropic_key: password?
+  cohere_key: password?
+  enrich_url: str?
+  google_key: password?
+  jina_key: password?
+  mistral_key: password?
+  ollama_url: str?
+  openai_key: password?
+  openai_url: str?
+  voyage_key: password?
+  traefik_enable: bool?
+  traefik_domain: str?
+  traefik_api_domain: str?
+  traefik_grpc_domain: str?
+  traefik_mcp_domain: str?
+  traefik_entrypoints: str?
+  traefik_certresolver: str?

@@ -1,0 +1,185 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail Lemonade writes to its log. Leave on "info" unless you
+      are troubleshooting, in which case use "debug".
+  llamacpp_backend:
+    name: Inference backend
+    description: >-
+      Which llama.cpp build Lemonade uses to run models. "cpu" is the right
+      choice on Home Assistant Yellow, Green and Raspberry Pi hardware, and is
+      the default. Choose "vulkan" only on an x86 machine with a supported
+      GPU, or "auto" to let Lemonade probe the hardware itself. Changing this
+      downloads a different llama.cpp build on the next start.
+  llamacpp_bin:
+    name: Inference engine build
+    description: >-
+      Which build of the llama.cpp engine to run. "builtin" (default) uses the
+      one shipped with this version of Lemonade — it needs no internet at
+      startup and is the build Lemonade was tested against. "latest" downloads
+      the newest release instead, which may be faster or support newer models,
+      but requires internet the first time and is not tested against this
+      server version. You can also enter a specific version tag such as
+      "b8664". Changing this downloads a different engine on the next start.
+  model_name:
+    name: Model name
+    description: >-
+      The short name this model is given inside Lemonade. It becomes
+      "user.<name>" — with the default it is "user.LFM2.5-230M", which is the
+      name you enter in the Home Assistant Ollama integration. Leave blank to
+      skip automatic model setup and add models yourself from the Web UI.
+  model_checkpoint:
+    name: Model checkpoint
+    description: >-
+      The Hugging Face repository and GGUF file to download, written as
+      "org/repo:filename.gguf". The default pulls Liquid AI's LFM2.5-230M at
+      Q4_K_M (about 150 MB) — small and fast enough for voice assistant duty
+      on a Pi. Use "LFM2.5-230M-Q8_0.gguf" instead for better quality at
+      roughly double the size and half the speed.
+  embedding_model_name:
+    name: Embedding model name
+    description: >-
+      Leave blank (default) unless something needs embeddings. Filling this in
+      makes Lemonade also serve a text-embedding model, which is what MuninnDB
+      uses to give the assistant long-term memory — you then point MuninnDB's
+      Ollama URL at this app instead of using its built-in embedder. The name
+      you enter here is the one MuninnDB refers to.
+  embedding_model_checkpoint:
+    name: Embedding model checkpoint
+    description: >-
+      Which embedding model to download, as "org/repo:filename.gguf". Defaults
+      to Liquid AI's LFM2.5-Embedding-350M at Q8_0 (about 360 MB), the
+      embedding counterpart to the LFM2.5 chat model. Only used when an
+      embedding model name is set above.
+  extra_models_dir:
+    name: Extra models folder
+    description: >-
+      A folder Home Assistant shares with you that Lemonade also scans for
+      GGUF model files, in addition to the ones it downloads itself. Defaults
+      to /share/lemonade_models, which is reachable over Samba or the File
+      editor. Copy in as many .gguf files as you like and restart the app —
+      each is listed separately under its own filename without the extension,
+      and a subfolder counts as one model named after the folder. Models placed
+      here are never deleted by Lemonade and survive reinstalling the app.
+      Leave blank to turn this off.
+  preload_model:
+    name: Load model at startup
+    description: >-
+      When ON (default), the model is loaded into memory as soon as the app
+      starts, so the first request from Home Assistant answers immediately.
+      Turn OFF to save memory while idle, at the cost of a slow first request.
+  ctx_size:
+    name: Context size
+    description: >-
+      How many tokens of conversation the model can consider at once. Defaults
+      to 8192 to match what Home Assistant's Ollama integration asks for, so
+      the two agree out of the box. Lower it only if you are short on memory —
+      if it is smaller than what Home Assistant requests, long conversations
+      get truncated. Set to 0 to use each model's own default.
+  max_loaded_models:
+    name: Maximum loaded models
+    description: >-
+      How many models Lemonade may keep in memory at the same time. Leave at 1
+      on memory-constrained hardware; raise it only if you switch between
+      models often and have RAM to spare.
+  api_key:
+    name: API key
+    description: >-
+      Optional key that API clients must present. Leave blank for an open
+      server on your local network, which is the simplest setup when only
+      Home Assistant talks to it. Set a key if you expose port 13305 beyond
+      your trusted network. Stored as a secret and never logged.
+  allowed_origins:
+    name: Extra allowed browser origins
+    description: >-
+      Leave blank (default) unless a browser reports "Origin not allowed".
+      Lemonade only accepts requests from web pages it recognises, which
+      protects it from other websites you visit. The app already allows your
+      Home Assistant address and this device's own addresses, so the Web UI
+      works out of the box both here and on your network. Add an entry only if
+      you open the Web UI by some other name — for example a custom domain.
+      Write them exactly as the browser sees them, including http:// or
+      https:// and the port, separated by commas, e.g.
+      "http://mypc.local:13305". Avoid "*", which lets any website use your
+      models.
+  stt_enabled:
+    name: Enable speech-to-text
+    description: >-
+      When ON, this app also offers speech-to-text to Home Assistant and shows
+      up in Settings > Voice assistants under "Speech-to-text", alongside
+      options like faster-whisper. It is discovered automatically — there is
+      nothing to type in. OFF by default because it keeps a second model in
+      memory. Text-to-speech is not offered: this hardware has no supported
+      engine, so keep using Piper for that.
+  stt_model:
+    name: Speech-to-text model
+    description: >-
+      Which Moonshine model to listen with. "Moonshine-Small-Streaming"
+      (default) is the best balance — on a Raspberry Pi CM5 it made about half
+      as many mistakes as the Tiny model on noisy audio while still
+      transcribing faster than real time. "Moonshine-Tiny-Streaming" is quicker
+      and fine for a close-up microphone in a quiet room.
+      "Moonshine-Medium-Streaming" is not recommended: it was slower AND less
+      accurate than Small in testing. Download the model first from the Web UI.
+  stt_pinned:
+    name: Keep the speech model loaded
+    description: >-
+      When ON (default), the speech-to-text model stays in memory instead of
+      being unloaded after a few minutes idle. Leaving it OFF means the first
+      voice command after a quiet spell waits several seconds for the model to
+      load again. Turn OFF only if you are short on memory.
+  memory_enabled:
+    name: Enable long-term memory
+    description: >-
+      When ON, conversations are saved to a MuninnDB vault and relevant past
+      exchanges are recalled and given to the model on later questions, so it
+      gets more useful over time. Requires the MuninnDB app. When OFF (default)
+      nothing is added to the request path at all — Lemonade serves directly.
+      If MuninnDB is unreachable, chat keeps working and memory is simply
+      skipped.
+  memory_url:
+    name: MuninnDB address
+    description: >-
+      The REST address of your MuninnDB app, for example
+      http://local-muninndb:8475. You can find the exact hostname on the
+      MuninnDB app's Info tab. Leave blank to keep memory switched off.
+  memory_vault:
+    name: MuninnDB vault
+    description: >-
+      Which vault to store and recall from. Defaults to "home_assistant", the
+      dedicated vault the MuninnDB app creates for you, which keeps assistant
+      chatter out of your general notes.
+  memory_api_key:
+    name: MuninnDB API key
+    description: >-
+      Only needed if the vault is locked. The vaults the MuninnDB app creates
+      are open by default, so this is normally left blank. Stored as a secret.
+  memory_recall_count:
+    name: Memories to recall
+    description: >-
+      How many past memories to look up and give the model each turn. Defaults
+      to 3. Higher values give more background but use more of a small model's
+      limited context and slow replies down.
+  memory_recall_tokens:
+    name: Memory context budget
+    description: >-
+      Hard upper limit, in tokens, on how much recalled memory is added to a
+      request. Defaults to 300, a small slice of the 8192-token window, so this
+      stops memory from crowding out the actual conversation.
+  memory_timeout_ms:
+    name: Memory lookup timeout
+    description: >-
+      How long to wait for a memory lookup before giving up and answering
+      without it, in milliseconds. Defaults to 1000. A lookup is slower than it
+      sounds because MuninnDB has to turn your question into a vector using
+      this app's embedding model first, so it makes a round trip back here —
+      measured at roughly 300-400ms, and longer when several chats overlap.
+      Lower it if you would rather have a fast reply than a remembered one; too
+      low and lookups are abandoned before they finish and memory quietly stops
+      working.
+  telemetry:
+    name: Send usage telemetry
+    description: >-
+      When OFF (default), Lemonade reports nothing to its developers. Turn ON
+      only if you want to share anonymous usage tracing.

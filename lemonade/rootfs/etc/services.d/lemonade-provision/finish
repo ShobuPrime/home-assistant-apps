@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Lemonade
+# Provisioning is one-shot; a non-zero exit must not take the app down.
+# ==============================================================================
+if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
+    bashio::log.warning "Lemonade provisioning exited with code ${1}"
+fi

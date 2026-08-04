@@ -1,0 +1,335 @@
+name: Builder
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  repository_dispatch:
+    types: [automated-pr-created, master-post-merge]
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'App to build (or "all")'
+        required: true
+        type: string
+
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    name: Initialize build
+    outputs:
+      changed_apps: ${{ steps.changed_apps.outputs.apps }}
+      changed: ${{ steps.changed_apps.outputs.changed }}
+      all_apps: ${{ steps.all_apps.outputs.apps }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.head_sha || '' }}
+          fetch-depth: 0
+
+      - name: Discover all apps
+        id: all_apps
+        run: |
+          # Dynamically find all app directories (those with config.yaml)
+          declare -a all_apps
+          for config in */config.yaml; do
+            app_dir=$(dirname "$config")
+            # Skip hidden directories and non-app directories
+            if [[ ! "$app_dir" =~ ^\. ]]; then
+              all_apps+=("$app_dir")
+              echo "Found app: $app_dir"
+            fi
+          done
+
+          # Create JSON array of all apps
+          apps_json=$(printf '%s\n' "${all_apps[@]}" | jq -R . | jq -sc '.')
+          echo "apps=${apps_json}" >> "$GITHUB_OUTPUT"
+          echo "All apps: ${apps_json}"
+
+      - name: Find changed apps
+        id: changed_apps
+        run: |
+          declare -a changed_apps
+
+          # For manual dispatch or repository_dispatch, use the specified app
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DISPATCH_APP="${{ github.event.inputs.app }}"
+            echo "Triggered manually for app: ${DISPATCH_APP}"
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            DISPATCH_APP="${{ github.event.client_payload.app }}"
+            echo "Triggered via repository_dispatch for app: ${DISPATCH_APP}"
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+
+            if [ "${DISPATCH_APP}" = "all" ]; then
+              for config in */config.yaml; do
+                app_dir=$(dirname "$config")
+                if [[ ! "$app_dir" =~ ^\. ]]; then
+                  changed_apps+=("\"${app_dir}\"")
+                  echo "Building app: $app_dir"
+                fi
+              done
+            elif [ "${DISPATCH_APP}" = "changed" ]; then
+              # Post-merge validation of master. A merge performed with
+              # GITHUB_TOKEN raises no push event, so the `push:` trigger above
+              # never fires for an auto-merged commit and master would land
+              # unvalidated - which is how lemonade 11.5.1 reached master in
+              # Jul 2026 with no build or smoke test of any kind. The auto-merge
+              # job dispatches master-post-merge instead, and we diff the merge
+              # commit against its parent so exactly what landed gets built,
+              # the same set the push path would have chosen.
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+              echo "Changed files in the merge commit:"
+              echo "$CHANGED_FILES"
+
+              for config in */config.yaml; do
+                app_dir=$(dirname "$config")
+                if [[ ! "$app_dir" =~ ^\. ]]; then
+                  if echo "$CHANGED_FILES" | grep -q "^${app_dir}/"; then
+                    changed_apps+=("\"${app_dir}\"")
+                    echo "App changed: $app_dir"
+                  fi
+                fi
+              done
+            else
+              changed_apps+=("\"${DISPATCH_APP}\"")
+              echo "Building app: ${DISPATCH_APP}"
+            fi
+
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PRs, diff against the base branch
+            BASE_REF="${{ github.base_ref }}"
+            git fetch origin "${BASE_REF}"
+            CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+            echo "Changed files vs ${BASE_REF}:"
+            echo "$CHANGED_FILES"
+
+            for config in */config.yaml; do
+              app_dir=$(dirname "$config")
+              if [[ ! "$app_dir" =~ ^\. ]]; then
+                if echo "$CHANGED_FILES" | grep -q "^${app_dir}/"; then
+                  changed_apps+=("\"${app_dir}\"")
+                  echo "App changed: $app_dir"
+                fi
+              fi
+            done
+
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # For pushes to main/master, diff against the previous commit
+            BEFORE="${{ github.event.before }}"
+            if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              echo "Initial push, building all apps"
+              for config in */config.yaml; do
+                app_dir=$(dirname "$config")
+                if [[ ! "$app_dir" =~ ^\. ]]; then
+                  changed_apps+=("\"${app_dir}\"")
+                fi
+              done
+            else
+              CHANGED_FILES=$(git diff --name-only "${BEFORE}...HEAD")
+              echo "Changed files since ${BEFORE}:"
+              echo "$CHANGED_FILES"
+
+              for config in */config.yaml; do
+                app_dir=$(dirname "$config")
+                if [[ ! "$app_dir" =~ ^\. ]]; then
+                  if echo "$CHANGED_FILES" | grep -q "^${app_dir}/"; then
+                    changed_apps+=("\"${app_dir}\"")
+                    echo "App changed: $app_dir"
+                  fi
+                fi
+              done
+            fi
+          fi
+
+          # Fallback: if no app-specific changes detected, skip building
+          if [[ ${#changed_apps[@]} -eq 0 ]]; then
+            echo "No app-specific changes detected, skipping builds"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo 'apps=[]' >> "$GITHUB_OUTPUT"
+          else
+            changed=$(echo ${changed_apps[@]} | jq -sc '.')
+            echo "apps=${changed}" >> "$GITHUB_OUTPUT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "Changed apps: $(echo ${changed_apps[@]} | jq -sc '.')"
+
+  build:
+    needs: init
+    runs-on: ubuntu-latest
+    if: needs.init.outputs.changed == 'true'
+    name: Build ${{ matrix.app }} app
+    strategy:
+      matrix:
+        app: ${{ fromJson(needs.init.outputs.changed_apps) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.head_sha || '' }}
+
+      - name: Get build config
+        id: config
+        run: |
+          APP="${{ matrix.app }}"
+          VERSION=$(grep "^version:" "${APP}/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+
+          # Read architectures from config.yaml
+          ARCHS=$(grep -A10 "^arch:" "${APP}/config.yaml" | grep "^\s*-" | sed 's/.*- //' | tr '\n' ' ')
+          echo "Architectures: ${ARCHS}"
+
+          # Try amd64 first (native on CI runner), fall back to aarch64
+          BASE_IMAGE=$(grep "amd64:" "${APP}/build.yaml" | head -1 | awk '{print $2}')
+          BUILD_ARCH="amd64"
+          if [ -z "${BASE_IMAGE}" ]; then
+            BASE_IMAGE=$(grep "aarch64:" "${APP}/build.yaml" | head -1 | awk '{print $2}')
+            BUILD_ARCH="aarch64"
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "base_image=${BASE_IMAGE}" >> $GITHUB_OUTPUT
+          echo "build_arch=${BUILD_ARCH}" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        if: steps.config.outputs.build_arch != 'amd64'
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build ${{ matrix.app }} (test mode)
+        run: |
+          APP="${{ matrix.app }}"
+
+          # Extract version ARG from build.yaml (e.g., DOCKHAND_VERSION, ARCANE_VERSION)
+          VERSION_ARG=$(grep -E '_VERSION:' "${APP}/build.yaml" | head -1 | awk -F: '{print $1}' | xargs)
+          VERSION_VAL=$(grep -E '_VERSION:' "${APP}/build.yaml" | head -1 | awk -F: '{print $2}' | xargs)
+
+          BUILD_ARGS=(
+            --build-arg "BUILD_FROM=${{ steps.config.outputs.base_image }}"
+            --build-arg "BUILD_ARCH=${{ steps.config.outputs.build_arch }}"
+            --build-arg "BUILD_VERSION=${{ steps.config.outputs.version }}"
+            --build-arg "BUILD_NAME=${APP}"
+            --build-arg "BUILD_DESCRIPTION=Test build"
+            --build-arg "BUILD_REF=$(git rev-parse --short HEAD)"
+            --build-arg "BUILD_REPOSITORY=${{ github.repository }}"
+            --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          )
+
+          if [ -n "${VERSION_ARG}" ] && [ -n "${VERSION_VAL}" ]; then
+            BUILD_ARGS+=(--build-arg "${VERSION_ARG}=${VERSION_VAL}")
+          fi
+
+          PLATFORM_ARGS=()
+          if [ "${{ steps.config.outputs.build_arch }}" != "amd64" ]; then
+            PLATFORM_ARGS=(--platform "linux/arm64")
+          fi
+
+          echo "Building ${APP} (${{ steps.config.outputs.build_arch }})..."
+          docker buildx build \
+            "${PLATFORM_ARGS[@]}" \
+            "${BUILD_ARGS[@]}" \
+            --load \
+            -t "test/${APP}:${{ steps.config.outputs.version }}" \
+            "./${APP}"
+
+          echo "Build successful: test/${APP}:${{ steps.config.outputs.version }}"
+
+  smoke-test:
+    needs: [init, build]
+    runs-on: ubuntu-latest
+    if: needs.init.outputs.changed == 'true'
+    name: Smoke test ${{ matrix.app }}
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.init.outputs.changed_apps) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.head_sha || '' }}
+
+      - name: Get build config
+        id: config
+        run: |
+          APP="${{ matrix.app }}"
+          VERSION=$(grep "^version:" "${APP}/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+
+          # Try amd64 first (native on CI runner), fall back to aarch64
+          BASE_IMAGE=$(grep "amd64:" "${APP}/build.yaml" | head -1 | awk '{print $2}')
+          BUILD_ARCH="amd64"
+          PLATFORM="linux/amd64"
+          if [ -z "${BASE_IMAGE}" ]; then
+            BASE_IMAGE=$(grep "aarch64:" "${APP}/build.yaml" | head -1 | awk '{print $2}')
+            BUILD_ARCH="aarch64"
+            PLATFORM="linux/arm64"
+            echo "No amd64 base image found, using aarch64 with QEMU"
+          fi
+
+          IMAGE_TAG="smoke-test/${APP}:${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "base_image=${BASE_IMAGE}" >> $GITHUB_OUTPUT
+          echo "build_arch=${BUILD_ARCH}" >> $GITHUB_OUTPUT
+          echo "platform=${PLATFORM}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        if: steps.config.outputs.build_arch != 'amd64'
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        if: steps.config.outputs.build_arch != 'amd64'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image for smoke test
+        run: |
+          APP="${{ matrix.app }}"
+
+          # Extract the version ARG name from build.yaml (e.g., MUNINNDB_VERSION, ARCANE_VERSION)
+          VERSION_ARG=$(grep -E '_VERSION:' "${APP}/build.yaml" | head -1 | awk -F: '{print $1}' | xargs)
+          VERSION_VAL=$(grep -E '_VERSION:' "${APP}/build.yaml" | head -1 | awk -F: '{print $2}' | xargs)
+
+          BUILD_ARGS=(
+            --build-arg "BUILD_FROM=${{ steps.config.outputs.base_image }}"
+            --build-arg "BUILD_ARCH=${{ steps.config.outputs.build_arch }}"
+            --build-arg "BUILD_VERSION=${{ steps.config.outputs.version }}"
+            --build-arg "BUILD_NAME=${APP}"
+            --build-arg "BUILD_DESCRIPTION=Smoke test"
+            --build-arg "BUILD_REF=$(git rev-parse --short HEAD)"
+            --build-arg "BUILD_REPOSITORY=local"
+            --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            --build-arg "TARGETARCH=${{ steps.config.outputs.build_arch }}"
+          )
+
+          if [ -n "${VERSION_ARG}" ] && [ -n "${VERSION_VAL}" ]; then
+            BUILD_ARGS+=(--build-arg "${VERSION_ARG}=${VERSION_VAL}")
+          fi
+
+          # Use --platform for cross-arch builds, --load to make image available locally
+          PLATFORM_ARGS=()
+          if [ "${{ steps.config.outputs.build_arch }}" != "amd64" ]; then
+            PLATFORM_ARGS=(--platform "${{ steps.config.outputs.platform }}" --load)
+          fi
+
+          echo "Building ${APP} for smoke test (${{ steps.config.outputs.build_arch }})..."
+          docker buildx build \
+            "${PLATFORM_ARGS[@]}" \
+            "${BUILD_ARGS[@]}" \
+            -t "${{ steps.config.outputs.image_tag }}" \
+            "./${APP}"
+
+      - name: Run smoke test
+        run: |
+          IMAGE_NAME="${{ steps.config.outputs.image_tag }}" \
+            bash .github/scripts/smoke-test.sh \
+            "${{ matrix.app }}" \
+            "${{ steps.config.outputs.image_tag }}"

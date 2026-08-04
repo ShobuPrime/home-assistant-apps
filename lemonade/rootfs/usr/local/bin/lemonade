@@ -1,0 +1,14 @@
+#!/bin/sh
+# ==============================================================================
+# Home Assistant App: Lemonade
+# Wrapper for the `lemonade` CLI.
+#
+# Lemonade's binaries are glibc builds running on a musl (Alpine) base, so they
+# need the bundled glibc closure in /opt/glibc/lib. LD_LIBRARY_PATH is applied
+# here rather than globally, because Alpine's own curl/jq/bashio would break if
+# they resolved glibc's libz/libssl instead of musl's.
+#
+# Exists so `docker exec addon_<slug> lemonade list` just works.
+# ==============================================================================
+exec env LD_LIBRARY_PATH="/opt/glibc/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+    /opt/lemonade/lemonade "$@"

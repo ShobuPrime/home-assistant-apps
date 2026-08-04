@@ -1,0 +1,151 @@
+name: Update Lemonade
+
+on:
+  schedule:
+    # Run daily at 4:30 AM UTC
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-update:
+    runs-on: ubuntu-latest
+    outputs:
+      update_available: ${{ steps.check.outputs.update_available }}
+      current_version: ${{ steps.check.outputs.current_version }}
+      latest_version: ${{ steps.check.outputs.latest_version }}
+      changelog: ${{ steps.check.outputs.changelog }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check for updates
+        id: check
+        run: |
+          cd lemonade
+          result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-lemonade.sh)
+          echo "Result: $result"
+
+          update_available=$(echo "$result" | jq -r '.update_available')
+          current=$(echo "$result" | jq -r '.current')
+          latest=$(echo "$result" | jq -r '.latest')
+          changelog=$(echo "$result" | jq -r '.changelog')
+
+          echo "update_available=$update_available" >> $GITHUB_OUTPUT
+          echo "current_version=$current" >> $GITHUB_OUTPUT
+          echo "latest_version=$latest" >> $GITHUB_OUTPUT
+          # CHANGELOG.md gets the release notes in full — the update script
+          # writes that file itself and no longer truncates. This copy feeds the
+          # PR body, which GitHub hard-caps at 65,536 characters; exceeding it
+          # fails PR creation outright. So clamp only that, only when it would
+          # actually overflow, on a line boundary, and say so with a link rather
+          # than stopping mid-sentence the way the old 1000-byte cut did.
+          if [ "$(printf '%s' "$changelog" | wc -c)" -gt 60000 ]; then
+            changelog="$(printf '%s\n' "$changelog" \
+              | awk 'BEGIN { n = 0 } { n += length($0) + 1; if (n > 60000) exit; print }')
+
+          _Truncated to fit GitHub's PR body limit — the full notes are in this PR's CHANGELOG.md diff._"
+          fi
+
+          # A delimiter the release notes cannot contain. Upstream text is
+          # arbitrary now that it is not capped, and a literal EOF line in it
+          # would break this heredoc and fail the step.
+          delim="CHANGELOG_EOF_$(date +%s%N)_$RANDOM"
+          {
+            echo "changelog<<${delim}"
+            echo "$changelog"
+            echo "${delim}"
+          } >> "$GITHUB_OUTPUT"
+
+  update-version:
+    needs: check-update
+    if: needs.check-update.outputs.update_available == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update Lemonade
+        id: update
+        run: |
+          cd lemonade
+          APP_PATH=. CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-lemonade.sh
+
+      - name: Create Pull Request
+        id: create-pr
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          sign-commits: true
+          commit-message: |
+            Update Lemonade to ${{ needs.check-update.outputs.latest_version }}
+
+            Automated update from ${{ needs.check-update.outputs.current_version }} to ${{ needs.check-update.outputs.latest_version }}
+          branch: update-lemonade-${{ needs.check-update.outputs.latest_version }}
+          delete-branch: true
+          title: "Update Lemonade to ${{ needs.check-update.outputs.latest_version }}"
+          body: |
+            ## Lemonade LLM Server Update
+
+            This automated PR updates Lemonade from `${{ needs.check-update.outputs.current_version }}` to `${{ needs.check-update.outputs.latest_version }}`.
+
+            ### Changelog
+
+            ${{ needs.check-update.outputs.changelog }}
+
+            ### Changes
+
+            - Updated `config.yaml` version
+            - Updated `build.yaml` LEMONADE_VERSION
+            - Updated `Dockerfile` LEMONADE_VERSION
+            - Updated documentation files
+            - Updated CHANGELOG.md
+
+            ### Packaging check
+
+            The update script verified this release ships both
+            `lemonade-embeddable-<version>-ubuntu-arm64.tar.gz` and
+            `...-x64.tar.gz`, which are the archives this app installs.
+
+            The image bundles a glibc closure computed with `ldd` at build time.
+            If this release adds a new shared-library dependency, the smoke test
+            will surface it as `error while loading shared libraries`.
+
+            ### Release Notes
+
+            Full release notes: https://github.com/lemonade-sdk/lemonade/releases/tag/v${{ needs.check-update.outputs.latest_version }}
+
+            ---
+
+            This PR was automatically generated by the Update Lemonade workflow
+          labels: |
+            automated
+            lemonade
+            update
+          draft: false
+
+      - name: Trigger downstream workflows
+        if: steps.create-pr.outputs.pull-request-number
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d '{
+              "event_type": "automated-pr-created",
+              "client_payload": {
+                "pull_request_number": "${{ steps.create-pr.outputs.pull-request-number }}",
+                "head_sha": "${{ steps.create-pr.outputs.pull-request-head-sha }}",
+                "branch": "update-lemonade-${{ needs.check-update.outputs.latest_version }}",
+                "app": "lemonade"
+              }
+            }'

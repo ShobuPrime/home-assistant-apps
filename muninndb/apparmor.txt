@@ -1,0 +1,67 @@
+#include <tunables/global>
+
+profile muninndb flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Capabilities
+  capability,
+  file,
+  # Both directions: AppArmor mediates signal DELIVERY too, so a send-only
+  # rule stops s6's SIGTERM from reaching the app — the graceful shutdown is
+  # skipped and the container is SIGKILLed (exit 137). See "AppArmor Profile
+  # Rules" in the root CLAUDE.md.
+  signal (send,receive),
+  network,
+  mount,
+
+  # S6-Overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Bashio
+  /usr/lib/bashio/** ix,
+  /tmp/** rwk,
+
+  # MuninnDB binary and data
+  /opt/muninndb/** ix,
+  /data/** rw,
+
+  # Access to options.json and other addon data
+  /data/** rw,
+
+  # SSL certificates
+  /ssl/** r,
+
+  # Shared volumes
+  /share/** rw,
+  /media/** rw,
+
+  # DNS resolution
+  /etc/hosts r,
+  /etc/resolv.conf r,
+  /etc/nsswitch.conf r,
+  /etc/passwd r,
+  /etc/group r,
+
+  # Device access
+  /dev/null rw,
+  /dev/urandom r,
+  /dev/random r,
+
+  # Proc filesystem
+  /proc/*/mountinfo r,
+  /proc/*/stat r,
+  /proc/*/status r,
+
+  # MuninnDB specific paths
+  owner /data/muninndb/** rwk,
+}

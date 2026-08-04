@@ -1,0 +1,58 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Lemonade
+# Runs the Lemonade server (lemond)
+# ==============================================================================
+
+bashio::log.info 'Starting Lemonade server...'
+
+# All persistent state (config, model weights, llama.cpp binaries) is derived
+# from $HOME — see cont-init.d/lemonade.sh.
+export HOME="/data/lemonade"
+export XDG_RUNTIME_DIR="/run/lemonade"
+
+if bashio::config.has_value 'api_key'; then
+    LEMONADE_API_KEY="$(bashio::config 'api_key')"
+    export LEMONADE_API_KEY
+fi
+
+# Where to bind is decided once, in cont-init.d/lemonade.sh: always loopback
+# :13306, with the bridge owning the public :13305 in front.
+#
+# Falling back to serving 13305 directly if that file is missing keeps a failed
+# init from turning into a crash loop: better to serve unproxied than not to
+# serve at all.
+if [[ -f /run/lemonade/runtime.env ]]; then
+    # shellcheck source=/dev/null
+    . /run/lemonade/runtime.env
+else
+    bashio::log.warning "runtime.env missing — serving 13305 directly, unproxied"
+fi
+LEMOND_BIND_HOST="${LEMOND_BIND_HOST:-0.0.0.0}"
+LEMOND_PORT="${LEMOND_PORT:-13305}"
+
+# The bridge enforces browser origins, not lemond — so lemond accepts any.
+# Safe only because it is on loopback behind the bridge, which is why this is
+# tied to the bind host rather than set unconditionally. The wildcard also
+# keeps lemond emitting correct CORS headers. See lemonade/CLAUDE.md.
+if [[ "${LEMOND_BIND_HOST}" == "127.0.0.1" ]]; then
+    export LEMONADE_ALLOWED_ORIGINS="*"
+else
+    bashio::log.warning "lemond is not behind the bridge — keeping its own Origin allowlist"
+    if [[ -n "${BRIDGE_ALLOWED_ORIGINS:-}" ]]; then
+        export LEMONADE_ALLOWED_ORIGINS="${BRIDGE_ALLOWED_ORIGINS}"
+    fi
+fi
+
+bashio::log.info "  Binding ${LEMOND_BIND_HOST}:${LEMOND_PORT}"
+
+# --host/--port override config.json. They are passed explicitly so the server
+# binds where this boot decided, even if a config.json written by an older
+# version says otherwise.
+#
+# LD_LIBRARY_PATH points at the bundled glibc closure (see Dockerfile): these
+# are glibc binaries on a musl base. It is set per-exec rather than exported,
+# so Alpine's own musl tools keep resolving musl libraries. llama-server is
+# spawned by lemond and inherits it, which is exactly what it needs.
+exec env LD_LIBRARY_PATH="/opt/glibc/lib" \
+    /opt/lemonade/lemond --host "${LEMOND_BIND_HOST}" --port "${LEMOND_PORT}"

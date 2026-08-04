@@ -1,0 +1,66 @@
+name: "HAY CM5 Fan Controller"
+description: "GPIO-based fan control with thermal management for Home Assistant Yellow with CM5"
+version: "1.3.0"
+slug: "hay_cm5_fan"
+url: "https://github.com/ShobuPrime/home-assistant-apps"
+init: false
+arch:
+  - aarch64
+startup: system
+boot: auto
+# The Supervisor stops this container for every HAOS update and every backup
+# that includes app data, then SIGKILLs it after this many seconds. The default
+# is 10s. A normal stop is well under a second now that the poll sleep is
+# interruptible; this is headroom for cleanup()'s MQTT publish, which has no
+# timeout and can block if the broker is already shutting down.
+# Must stay above S6_SERVICES_GRACETIME (10s) in the Dockerfile.
+timeout: 30
+# NOT full_access. Everything this app reads for CPU clock, utilisation, memory
+# and temperatures comes from /proc and /sys — plain filesystem reads that device
+# permissions never gated. The only real device needs are the GPIO chip and
+# /dev/vcio (which vcgencmd opens; it also probes /dev/vcio_gencmd). Verified on
+# a live Yellow: with only these two devices and no full_access, vcgencmd,
+# gpiodetect, /proc/stat, /proc/meminfo and all four hwmon sensors still work,
+# and the container sees 16 /dev entries instead of 224.
+#
+# This also un-breaks the `devices:` list below: Supervisor logs "has full device
+# access; its selective device access configuration is redundant and ignored"
+# when full_access is set, so that list was decorative until now.
+privileged:
+  - SYS_RAWIO
+hassio_api: true
+hassio_role: manager
+homeassistant_api: true
+services:
+  - mqtt:want
+apparmor: true
+devices:
+  - /dev/gpiochip0
+  # vcgencmd's mailbox interface — supplies the official firmware throttle and
+  # undervoltage flags. Previously reachable only because full_access exposed
+  # the whole host /dev.
+  - /dev/vcio
+map:
+  - data:rw
+options:
+  gpio_chip: "gpiochip0"
+  gpio_line: 14
+  temp_sensor_path: "/sys/class/hwmon/hwmon0/temp1_input"
+  poll_interval: 5
+  temperature_unit: celsius
+  temp_on: 50
+  temp_off: 33
+  fan_mode: auto
+  leave_on_at_shutdown: true
+  log_level: info
+schema:
+  gpio_chip: str
+  gpio_line: int(0,53)
+  temp_sensor_path: str
+  poll_interval: int(1,60)
+  temperature_unit: list(celsius|fahrenheit)
+  temp_on: int(30,200)
+  temp_off: int(25,200)
+  fan_mode: list(auto|on|off)
+  leave_on_at_shutdown: bool
+  log_level: list(trace|debug|info|warning|error|fatal)?

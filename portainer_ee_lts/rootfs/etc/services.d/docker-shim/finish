@@ -1,0 +1,13 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Portainer EE
+# Reports Docker socket shim exits
+# ==============================================================================
+if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
+    bashio::log.warning "Docker socket shim crashed with exit code ${1}. Respawning..."
+    # nginx exits immediately on a bad config, so S6 would otherwise respawn it
+    # about once a second and bury the rest of the log. Back off — but stay
+    # well inside S6_KILL_FINISH_MAXTIME (5s), or a crash-looping shim would
+    # slow the container's shutdown down with it.
+    sleep 2
+fi

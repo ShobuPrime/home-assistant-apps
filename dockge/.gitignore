@@ -1,0 +1,16 @@
+# Build artifacts
+*.tar.gz
+*.zip
+
+# Local testing
+.DS_Store
+*.log
+*.tmp
+
+# IDE files
+.vscode/
+.idea/
+
+# Test data
+data/
+test/

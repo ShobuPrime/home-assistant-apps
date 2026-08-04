@@ -1,0 +1,93 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Huly
+# Stops the Huly stack cleanly on shutdown or crash
+#
+# Strategy: send parallel stop signals to ALL containers via Docker API first,
+# then run docker-compose down to clean up networks/volumes. This is much faster
+# than docker-compose down alone, which stops containers sequentially.
+# ==============================================================================
+bashio::log.info "Stopping Huly stack..."
+bashio::log.debug "Finish script called with exit code: ${1:-unknown}"
+
+DOCKER_SOCK="/var/run/docker.sock"
+PROJECT_FILTER='%7B%22label%22%3A%5B%22com.docker.compose.project%3Dhuly_ha%22%5D%7D'
+
+# Phase 1: Send SIGTERM to ALL huly_ha containers in parallel via Docker API.
+# Docker's /stop endpoint sends SIGTERM and waits up to ?t= seconds before SIGKILL.
+# By firing all stop requests in parallel (backgrounded curl), all 14+ containers
+# begin their graceful shutdown simultaneously instead of sequentially.
+CONTAINER_IDS=$(curl -s --unix-socket "${DOCKER_SOCK}" \
+    "http://localhost/containers/json?filters=${PROJECT_FILTER}" \
+    2>/dev/null | jq -r '.[].Id // empty' 2>/dev/null) || true
+
+if [[ -n "${CONTAINER_IDS}" ]]; then
+    CONTAINER_COUNT=$(echo "${CONTAINER_IDS}" | wc -w)
+    bashio::log.info "Sending parallel stop to ${CONTAINER_COUNT} Huly containers..."
+
+    for cid in ${CONTAINER_IDS}; do
+        # Stop with 20s grace period, backgrounded for parallelism
+        curl -s --unix-socket "${DOCKER_SOCK}" \
+            -X POST "http://localhost/containers/${cid}/stop?t=20" \
+            2>/dev/null &
+    done
+
+    # Wait for all parallel stop requests to complete (max 30s).
+    # The stops run concurrently so this takes ~20s, not 20s * N.
+    bashio::log.debug "Waiting for parallel stop to complete..."
+    wait
+    bashio::log.info "Parallel stop complete"
+else
+    bashio::log.debug "No running Huly containers found"
+fi
+
+# Disconnect app from compose network before teardown
+APP_CID=$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -1) || true
+if [[ -n "${APP_CID}" ]]; then
+    curl -sf --unix-socket "${DOCKER_SOCK}" \
+        -X POST -H "Content-Type: application/json" \
+        -d "{\"Container\": \"${APP_CID}\", \"Force\": true}" \
+        "http://localhost/networks/huly_ha_huly_net/disconnect" 2>/dev/null || true
+fi
+
+# Phase 2: Run docker-compose down to remove stopped containers and networks.
+# Since containers are already stopped, this is fast — it just cleans up.
+if cd /data/huly 2>/dev/null; then
+    /usr/local/bin/docker-compose down --remove-orphans --timeout 10 2>&1 \
+        | while IFS= read -r line; do bashio::log.debug "${line}"; done
+    bashio::log.debug "docker-compose down completed"
+else
+    bashio::log.warning "Could not access /data/huly for compose down"
+fi
+
+# Phase 3: Safety net — force-remove any containers that survived both phases.
+REMAINING=$(curl -s --unix-socket "${DOCKER_SOCK}" \
+    "http://localhost/containers/json?all=true&filters=${PROJECT_FILTER}" \
+    2>/dev/null | jq -r '.[].Id // empty' 2>/dev/null) || true
+
+if [[ -n "${REMAINING}" ]]; then
+    bashio::log.warning "Force-removing surviving Huly containers..."
+    for cid in ${REMAINING}; do
+        bashio::log.debug "Force-removing container ${cid:0:12}..."
+        curl -s --unix-socket "${DOCKER_SOCK}" \
+            -X DELETE "http://localhost/containers/${cid}?force=true" \
+            2>/dev/null || true
+    done
+fi
+
+# Phase 4: Clean up the compose network if still present.
+NETWORK_ID=$(curl -s --unix-socket "${DOCKER_SOCK}" \
+    "http://localhost/networks?filters=%7B%22name%22%3A%5B%22huly_ha_huly_net%22%5D%7D" \
+    2>/dev/null | jq -r '.[0].Id // empty' 2>/dev/null) || true
+
+if [[ -n "${NETWORK_ID}" ]]; then
+    bashio::log.debug "Removing leftover network huly_ha_huly_net..."
+    curl -s --unix-socket "${DOCKER_SOCK}" \
+        -X DELETE "http://localhost/networks/${NETWORK_ID}" 2>/dev/null || true
+fi
+
+bashio::log.info "Huly stack shutdown complete"
+
+if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
+    bashio::log.warning "Huly crashed with exit code ${1}. Respawning..."
+fi

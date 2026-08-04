@@ -1,0 +1,58 @@
+name: "Huly"
+description: "All-in-one project management platform - alternative to Linear, Jira, Slack, and Notion"
+version: "0.7.426"
+slug: "huly"
+init: false
+ingress: true
+ingress_port: 4859
+ingress_stream: true
+panel_icon: mdi:clipboard-check-multiple-outline
+panel_title: Huly
+arch:
+  - aarch64
+  - amd64
+startup: application
+timeout: 120
+boot: auto
+watchdog: tcp://[HOST]:[PORT:4859]/
+ports:
+  4859/tcp: 4859
+ports_description:
+  4859/tcp: "Huly web interface"
+host_network: false
+apparmor: true
+hassio_api: true
+docker_api: true
+hassio_role: admin
+map:
+  - ssl:ro
+  - data:rw
+  - share:rw
+options:
+  log_level: info
+  host_address: ""
+  title: "Huly"
+  default_language: "en"
+  last_name_first: true
+  server_secret: ""
+  cockroachdb_password: ""
+  minio_root_user: "minioadmin"
+  minio_root_password: "minioadmin"
+  traefik_enable: false
+  traefik_domain: ""
+  traefik_entrypoints: "websecure"
+  traefik_certresolver: "cloudflare"
+schema:
+  log_level: list(trace|debug|info|warning|error|fatal)?
+  host_address: str
+  title: str?
+  default_language: str?
+  last_name_first: bool?
+  server_secret: password?
+  cockroachdb_password: password?
+  minio_root_user: str?
+  minio_root_password: password?
+  traefik_enable: bool?
+  traefik_domain: str?
+  traefik_entrypoints: str?
+  traefik_certresolver: str?
