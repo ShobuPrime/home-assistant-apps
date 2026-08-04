@@ -1,0 +1,72 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Dockge
+# Runs Dockge
+# ==============================================================================
+declare -a docker_labels
+export DOCKGE_STACKS_DIR
+export DOCKGE_DATA_DIR
+
+bashio::log.info 'Starting Dockge...'
+
+# Set Dockge directories
+DOCKGE_STACKS_DIR="$(bashio::config 'stacks_dir')"
+DOCKGE_DATA_DIR="/data/dockge"
+
+bashio::log.info "Stacks directory: ${DOCKGE_STACKS_DIR}"
+bashio::log.info "Data directory: ${DOCKGE_DATA_DIR}"
+
+# Hide Home Assistant containers option
+bashio::log.info "hide_hassio_containers config value: $(bashio::config 'hide_hassio_containers')"
+if bashio::config.true 'hide_hassio_containers'; then
+    bashio::log.info "Hiding Home Assistant system containers"
+    docker_labels+=(--label io.dockge.hide=true)
+    docker_labels+=(--label io.hass.type=supervisor)
+    docker_labels+=(--label io.hass.type=addon)
+    docker_labels+=(--label io.hass.type=core)
+    docker_labels+=(--label io.hass.type=audio)
+    docker_labels+=(--label io.hass.type=dns)
+    docker_labels+=(--label io.hass.type=multicast)
+    docker_labels+=(--label io.hass.type=cli)
+    docker_labels+=(--label io.hass.type=observer)
+else
+    bashio::log.info "NOT hiding Home Assistant system containers"
+fi
+
+# Log level configuration
+if bashio::config.has_value 'log_level'; then
+    case "$(bashio::config 'log_level')" in
+        trace|debug)
+            export NODE_ENV=development
+            bashio::log.info "Log level: DEBUG"
+            ;;
+        warning|error|fatal)
+            export NODE_ENV=production
+            export LOG_LEVEL=error
+            bashio::log.info "Log level: ERROR"
+            ;;
+        *)
+            export NODE_ENV=production
+            bashio::log.info "Log level: INFO"
+            ;;
+    esac
+fi
+
+# Dockge listens on port 5001 by default
+export DOCKGE_PORT=5001
+
+bashio::log.info "Starting Dockge on port ${DOCKGE_PORT}..."
+
+# Run Dockge using the entrypoint from the official image
+# The official Dockge image uses node to run the application
+cd /app || exit 1
+
+# Check if package.json exists (from official image)
+if [[ -f /app/package.json ]]; then
+    bashio::log.info "Running Dockge from /app"
+    # Dockge uses TypeScript — run with tsx (copied from upstream image)
+    exec tsx /app/backend/index.ts
+else
+    bashio::log.error "Dockge application files not found!"
+    exit 1
+fi

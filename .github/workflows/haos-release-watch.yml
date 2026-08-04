@@ -1,0 +1,74 @@
+name: HAOS Release Watch
+
+on:
+  schedule:
+    # Run daily at 4:15 AM UTC (staggered from other update workflows)
+    - cron: '15 4 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+permissions:
+  issues: write
+
+jobs:
+  watch:
+    name: Check for new HAOS release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check latest HAOS release and open tracking issue
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // New HAOS releases can change kernel/AppArmor/Docker behavior in
+            // ways CI cannot reproduce (CI runners don't run the HAOS kernel).
+            // Precedent: HAOS 18.1 (kernel 6.18) silently broke AF_UNIX socket
+            // access for processes confined by nested AppArmor child profiles,
+            // taking the Huly add-on down in production while all CI was green.
+            // This watcher opens a checklist issue per HAOS release so the
+            // on-device verification actually happens.
+            const { data: release } = await github.rest.repos.getLatestRelease({
+              owner: 'home-assistant',
+              repo: 'operating-system',
+            });
+            const tag = release.tag_name;
+            console.log(`Latest HAOS release: ${tag}`);
+
+            // Dedupe: skip if an issue for this release already exists (open or closed)
+            const marker = `HAOS ${tag}`;
+            const { data: found } = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} in:title "${marker}" type:issue`,
+            });
+            if (found.total_count > 0) {
+              console.log(`Issue for ${marker} already exists — nothing to do`);
+              return;
+            }
+
+            const body = [
+              `Home Assistant OS **${tag}** was released: ${release.html_url}`,
+              '',
+              'CI cannot reproduce HAOS kernel behavior, so after upgrading the device run the on-device checks below.',
+              'Precedent: HAOS 18.1 (kernel 6.18) denied AF_UNIX socket connects under nested AppArmor child profiles',
+              'while every CI check was green — see the "AppArmor Profile Rules" section in `CLAUDE.md` and the',
+              '`huly/CHANGELOG.md` 0.7.426 maintenance notes.',
+              '',
+              '## Post-upgrade checklist',
+              '',
+              '- [ ] Note the new kernel version (`uname -r` via SSH) and whether the AppArmor userspace changed',
+              '- [ ] All docker-socket apps start and stay up: Huly, Portainer, Arcane, Dockhand (and Dockge if installed)',
+              '- [ ] Huly compose stack fully up: `sudo docker ps` shows the `huly_ha-*` services, web UI answers on :4859',
+              '- [ ] Socket sanity per docker-socket app: `sudo docker exec <addon> curl -s --unix-socket /run/docker.sock http://localhost/_ping` returns `OK`',
+              '- [ ] No add-on is being restarted by the Supervisor watchdog (`sudo docker logs hassio_supervisor | grep -i watchdog`)',
+              '- [ ] hay_cm5_fan MQTT entities still report (no `Unknown` sensors)',
+              '',
+              '_Opened automatically by the HAOS Release Watch workflow._',
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `${marker} released — verify app compatibility on-device`,
+              body,
+              labels: ['haos-update'],
+            });
+            console.log(`Opened tracking issue for ${marker}`);

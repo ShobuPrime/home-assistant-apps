@@ -1,0 +1,54 @@
+name: "Portainer EE (STS)"
+description: "Manage your Docker environment with Portainer Enterprise Edition (Short Term Support)"
+version: "2.44.0"
+slug: "portainer_ee_sts"
+init: false
+ingress: true
+ingress_port: 9000
+ingress_stream: true
+panel_icon: mdi:docker
+panel_title: Docker
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+watchdog: tcp://[HOST]:[PORT:9000]/api/status
+ports:
+  8000/tcp: 8000
+  9000/tcp: 9000
+  9443/tcp: 9443
+ports_description:
+  8000/tcp: "Edge agent tunnel service"
+  9000/tcp: "Web interface (HTTP)"
+  9443/tcp: "Web interface (HTTPS)"
+host_network: false
+apparmor: true
+hassio_api: true
+docker_api: true
+hassio_role: admin
+map:
+  - ssl:ro
+  - data:rw
+  - media:rw
+  - share:rw
+options:
+  log_level: info
+  ssl: false
+  agent_secret: ""
+  license_key: ""
+  hide_hassio_containers: true
+  traefik_enable: false
+  traefik_domain: ""
+  traefik_entrypoints: "websecure"
+  traefik_certresolver: "cloudflare"
+schema:
+  log_level: list(trace|debug|info|warning|error|fatal)?
+  ssl: bool?
+  agent_secret: password?
+  license_key: password?
+  hide_hassio_containers: bool?
+  traefik_enable: bool?
+  traefik_domain: str?
+  traefik_entrypoints: str?
+  traefik_certresolver: str?

@@ -1,0 +1,82 @@
+#include <tunables/global>
+
+profile arcane flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Capabilities
+  capability,
+  file,
+  # Both directions: AppArmor mediates signal DELIVERY too, so a send-only
+  # rule stops s6's SIGTERM from reaching the app — the graceful shutdown is
+  # skipped and the container is SIGKILLed (exit 137). See "AppArmor Profile
+  # Rules" in the root CLAUDE.md.
+  signal (send,receive),
+  network,
+  mount,
+
+  # S6-Overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Bashio
+  /usr/lib/bashio/** ix,
+  /tmp/** rwk,
+
+  # Arcane binary and data
+  /opt/arcane/** ix,
+  /data/** rw,
+
+  # Access to options.json and other addon data
+  /data/** rw,
+
+  # SSL certificates
+  /ssl/** r,
+
+  # Docker socket access - critical for Arcane
+  /var/run/docker.sock rw,
+  /run/docker.sock rw,
+  /{,var/}run/docker.sock rw,
+
+  # Docker runtime access
+  /sys/fs/cgroup/** r,
+  /proc/sys/net/ipv4/ip_forward r,
+
+  # Shared volumes
+  /share/** rw,
+  /media/** rw,
+
+  # DNS resolution
+  /etc/hosts r,
+  /etc/resolv.conf r,
+  /etc/nsswitch.conf r,
+  /etc/passwd r,
+  /etc/group r,
+
+  # Device access needed for Docker operations
+  /dev/null rw,
+  /dev/urandom r,
+  /dev/random r,
+  /dev/net/tun rw,
+
+  # Proc filesystem
+  /proc/*/mountinfo r,
+  /proc/*/stat r,
+  /proc/*/status r,
+
+  # Arcane specific paths
+  owner /data/arcane/** rwk,
+  owner /data/projects/** rwk,
+
+  # Allow process tracing for container management
+  ptrace (read,trace) peer=docker-default,
+  ptrace (read,trace) peer=unconfined,
+}

@@ -1,0 +1,1370 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: HAY CM5 Fan Controller
+# Thermal monitoring daemon with hysteresis-based fan control
+# Uses libgpiod (/dev/gpiochip0) + MQTT discovery for proper HA entities
+# ==============================================================================
+
+bashio::log.info "Starting HAY CM5 Fan Controller daemon..."
+
+# ==============================================================================
+# Configuration
+# ==============================================================================
+GPIO_CHIP=$(bashio::config 'gpio_chip')
+GPIO_LINE=$(bashio::config 'gpio_line')
+POLL_INTERVAL=$(bashio::config 'poll_interval')
+TEMP_ON=$(bashio::config 'temp_on')
+TEMP_OFF=$(bashio::config 'temp_off')
+TEMP_UNIT=$(bashio::config 'temperature_unit')
+FAN_MODE=$(bashio::config 'fan_mode')
+TEMP_SENSOR=$(bashio::config 'temp_sensor_path')
+APP_HOSTNAME=$(hostname)
+APP_VERSION=$(bashio::app.version)
+
+# ── Temperature unit handling ──────────────────────────────────────────────
+# Internal fan control and hwmon readings are ALWAYS Celsius (the kernel hwmon
+# ABI reports millidegrees C). `temperature_unit` only changes how the user's
+# thresholds are interpreted and how THIS add-on's own logs/tables read. Home
+# Assistant entities are always published in native °C; HA converts the
+# displayed unit per your HA unit settings (the "Home Information" page,
+# /config/general) or a per-entity unit override.
+if [ "${TEMP_UNIT}" = "fahrenheit" ]; then
+    TEMP_LABEL="F"
+    TEMP_ON_C=$(( (TEMP_ON - 32) * 5 / 9 ))
+    TEMP_OFF_C=$(( (TEMP_OFF - 32) * 5 / 9 ))
+else
+    TEMP_LABEL="C"
+    TEMP_ON_C="${TEMP_ON}"
+    TEMP_OFF_C="${TEMP_OFF}"
+fi
+
+# Format a hwmon millidegree-Celsius reading into the configured display unit,
+# one decimal place, with a plain C/F suffix (no degree glyph, so the byte-width
+# math of the ASCII status tables stays correct).
+fmt_temp() {
+    local mc=$1                 # millidegrees Celsius
+    local deci=$(( mc / 100 ))  # tenths of a degree C
+    [ "${TEMP_UNIT}" = "fahrenheit" ] && deci=$(( deci * 9 / 5 + 320 ))
+    local sign=""
+    if [ "${deci}" -lt 0 ]; then sign="-"; deci=$(( -deci )); fi
+    printf '%s%d.%d%s' "${sign}" "$(( deci / 10 ))" "$(( deci % 10 ))" "${TEMP_LABEL}"
+}
+
+# State tracking
+FAN_STATE=""
+GPIOSET_PID=""
+LAST_REPORTED_STATE=""
+LAST_REPORTED_CPU_TEMP=""
+LAST_REPORTED_FREQ=""
+LAST_REPORTED_THROTTLE=""
+LAST_REPORTED_UNDERVOLT=""
+SENSOR_CACHE_DIR="/tmp/hay_cm5_fan_cache"
+mkdir -p "${SENSOR_CACHE_DIR}"
+
+# CPU frequency + utilization tracking
+CPUFREQ_DIR="/sys/devices/system/cpu/cpu0/cpufreq"
+CPU_MAX_FREQ_KHZ=""
+PREV_CPU_IDLE=0
+PREV_CPU_TOTAL=0
+CPU_UTIL_PCT=0
+LAST_REPORTED_UTIL=""
+VCGENCMD_AVAILABLE=false
+
+# ==============================================================================
+# MQTT Setup — auto-detect via Supervisor API
+# ==============================================================================
+MQTT_AVAILABLE=false
+MQTT_RETRY_DELAY=5          # seconds between startup probes
+# Deliberately SHORT. This retry runs before the poll loop, so every second here
+# is a second with no thermal control after a boot. The race it exists to win is
+# tiny — measured on a live Yellow, this app started 582 ms before the broker —
+# so a few seconds covers the realistic case. Anything slower than that is
+# handled without blocking by the in-loop re-check below, which runs forever.
+MQTT_RETRY_MAX_SECONDS=15
+MQTT_RECHECK_SECONDS=60     # while in REST mode, re-probe this often
+MQTT_HOST=""
+MQTT_PORT=""
+MQTT_USER=""
+MQTT_PASS=""
+
+# Probe the Supervisor MQTT service and, if usable, latch MQTT_AVAILABLE=true.
+# Returns 0 when MQTT is usable, 1 otherwise. $1="quiet" suppresses the
+# per-attempt chatter so retries don't flood the log.
+#
+# This MUST stay re-runnable. `services: mqtt:want` does NOT guarantee the broker
+# is up before us: measured on a live Yellow, this app started 582 ms BEFORE
+# core-mosquitto and a one-shot probe therefore fell back to REST for the rest of
+# the day, publishing to a second set of entity IDs while the dashboard watched
+# the MQTT ones. The probe is now retried at startup and re-run periodically
+# while in REST mode.
+setup_mqtt() {
+    local quiet="${1:-}"
+    [ "${quiet}" = "quiet" ] || bashio::log.info "Checking for MQTT service..."
+    local mqtt_info
+    mqtt_info=$(curl -s -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        http://supervisor/services/mqtt 2>/dev/null) || return 1
+
+    local result
+    result=$(echo "${mqtt_info}" | jq -r '.result' 2>/dev/null) || return 1
+
+    if [ "${result}" = "ok" ]; then
+        MQTT_HOST=$(echo "${mqtt_info}" | jq -r '.data.host')
+        MQTT_PORT=$(echo "${mqtt_info}" | jq -r '.data.port')
+        MQTT_USER=$(echo "${mqtt_info}" | jq -r '.data.username')
+        MQTT_PASS=$(echo "${mqtt_info}" | jq -r '.data.password')
+
+        # Test connection
+        if mosquitto_pub -h "${MQTT_HOST}" -p "${MQTT_PORT}" \
+            -u "${MQTT_USER}" -P "${MQTT_PASS}" \
+            -t "hay_cm5_fan/status" -m "online" 2>/dev/null; then
+            MQTT_AVAILABLE=true
+            bashio::log.info "MQTT connected: ${MQTT_HOST}:${MQTT_PORT}"
+            bashio::log.info "Entities will use MQTT discovery (unique IDs enabled)"
+            return 0
+        else
+            [ "${quiet}" = "quiet" ] || bashio::log.warning "MQTT credentials found but connection failed"
+        fi
+    else
+        [ "${quiet}" = "quiet" ] || bashio::log.info "MQTT service not registered yet"
+    fi
+    return 1
+}
+
+# Bounded startup retry. The broker and this app are started concurrently by the
+# Supervisor, so losing the race by a fraction of a second is normal and must not
+# decide the entity naming for the whole run.
+setup_mqtt_with_retry() {
+    local attempt=1
+    if setup_mqtt; then
+        return 0
+    fi
+    bashio::log.info "MQTT not up yet — retrying every ${MQTT_RETRY_DELAY}s for up to ${MQTT_RETRY_MAX_SECONDS}s..."
+    while [ $((attempt * MQTT_RETRY_DELAY)) -le "${MQTT_RETRY_MAX_SECONDS}" ]; do
+        sleep "${MQTT_RETRY_DELAY}"
+        if setup_mqtt quiet; then
+            bashio::log.info "MQTT became available after $((attempt * MQTT_RETRY_DELAY))s"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+    done
+    bashio::log.warning "MQTT still unavailable after ${MQTT_RETRY_MAX_SECONDS}s — starting in REST fallback mode"
+    bashio::log.warning "Not waiting longer: thermal control must not be deferred at boot."
+    bashio::log.warning "Will keep re-checking every ${MQTT_RECHECK_SECONDS}s and switch over automatically."
+    return 1
+}
+
+mqtt_pub() {
+    local topic=$1
+    local payload=$2
+    # ${3:-} (not ${3}) because bashio runs under `set -u`: state/attribute
+    # publishes call this with only 2 args, so a bare $3 is an unbound
+    # variable and aborts the whole daemon.
+    local retain_flag=""
+    [ "${3:-}" = "retain" ] && retain_flag="-r"
+    # Returns non-zero on failure so publish_state() can hold its change-gate
+    # cache back. Callers must never let that status escape unhandled: bashio
+    # runs under `set -e` and a transient broker error must not kill the
+    # thermal-control daemon (fan safety > telemetry).
+    mosquitto_pub -h "${MQTT_HOST}" -p "${MQTT_PORT}" \
+        -u "${MQTT_USER}" -P "${MQTT_PASS}" \
+        -t "${topic}" -m "${payload}" ${retain_flag} 2>/dev/null
+}
+
+# Rate-limited failure logging. A broker or Core outage would otherwise emit one
+# line per entity per poll — ~15 lines every 5 s — burying everything else.
+PUBLISH_FAIL_COUNT=0
+PUBLISH_FAIL_LAST_LOG=0
+publish_failure_log() {
+    local msg=$1
+    local now
+    now=$(date +%s)
+    PUBLISH_FAIL_COUNT=$((PUBLISH_FAIL_COUNT + 1))
+    if [ $((now - PUBLISH_FAIL_LAST_LOG)) -ge 60 ]; then
+        if [ "${PUBLISH_FAIL_COUNT}" -gt 1 ]; then
+            bashio::log.warning "${msg} (+$((PUBLISH_FAIL_COUNT - 1)) more since last report)"
+        else
+            bashio::log.warning "${msg}"
+        fi
+        PUBLISH_FAIL_LAST_LOG="${now}"
+        PUBLISH_FAIL_COUNT=0
+    fi
+}
+
+# Mirror the entity_id Home Assistant derives for our MQTT entities:
+# slugify("<device name> <entity name>"). Confirmed empirically on a live HA by
+# publishing a probe discovery config: device "HAY CM5" + name "Processor
+# Temperature" produced sensor.hay_cm5_processor_temperature.
+#
+# Note the payload's `object_id` does NOT drive this — it has been set since the
+# first MQTT release and HA ignored it, because these entities carry a device and
+# has_entity_name, so HA composes "<device> <name>" instead.
+ha_entity_id() {
+    printf '%s' "HAY CM5 $1" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/[^a-z0-9][^a-z0-9]*/_/g; s/^_//; s/_$//'
+}
+
+# ==============================================================================
+# MQTT Discovery — register entities with HA (unique_id, device grouping)
+# ==============================================================================
+# Discovery namespace. This is BOTH the MQTT discovery node_id
+# (homeassistant/<domain>/<ns>/<object>/config) and the unique_id prefix.
+#
+# It changed from "hay_cm5_fan" to "hay_cm5" in 1.3.0 so that Home Assistant
+# derives short entity IDs (sensor.hay_cm5_processor_temperature) instead of
+# sensor.hay_cm5_fan_controller_cm5_processor_temperature.
+#
+# Renaming the device and entities alone could not achieve that: HA pins an
+# entity_id the first time it registers an entity and will not re-derive it.
+# Verified on a live Home Assistant, all three of these leave the ID unchanged:
+#   - changing the device/entity names   (1.2.0 did this; new installs only)
+#   - deleting and republishing the same discovery config
+#   - changing unique_id on the SAME discovery topic (migrated in place)
+# Only a NEW discovery topic carrying a NEW unique_id registers a genuinely new
+# entity, which is what finally lets HA derive the short ID.
+DISCOVERY_NS="hay_cm5"
+LEGACY_DISCOVERY_NS="hay_cm5_fan"
+
+DEVICE_JSON="{\"identifiers\":[\"hay_cm5_fan_${APP_HOSTNAME}\"],\"name\":\"HAY CM5\",\"model\":\"Raspberry Pi CM5 on HA Yellow\",\"manufacturer\":\"ShobuPrime\",\"sw_version\":\"${APP_VERSION}\"}"
+
+publish_sensor_discovery() {
+    local object_id=$1
+    local name=$2
+    local icon=${3:-"mdi:thermometer"}
+    # Default unit is the degree-Celsius symbol (U+00B0 then 'C'), built with
+    # printf octal escapes so the real UTF-8 bytes (C2 B0 43) reach jq. Do NOT
+    # write a literal backslash-u-00b0-C here: bash does not expand \u in
+    # string literals, so jq would serialize it verbatim and HA would see the
+    # 7-char string instead of the degree sign, rejecting the entity.
+    local degc; degc=$(printf '\302\260C')
+    local unit=${4:-$degc}
+    # device_class defaults to "temperature"; pass "" to omit it entirely
+    # (a generic % gauge has no valid device class). HA rejects any
+    # unit_of_measurement that does not match its device_class.
+    local device_class=${5-"temperature"}
+
+    local payload
+    payload=$(jq -cn \
+        --arg name "$name" \
+        --arg uid "${DISCOVERY_NS}_${object_id}" \
+        --arg oid "hay_cm5_${object_id}" \
+        --arg st "hay_cm5_fan/${object_id}/state" \
+        --arg at "hay_cm5_fan/${object_id}/attributes" \
+        --arg unit "$unit" \
+        --arg icon "$icon" \
+        --arg dc "$device_class" \
+        --argjson dev "$DEVICE_JSON" \
+        '{
+            name: $name,
+            unique_id: $uid,
+            object_id: $oid,
+            state_topic: $st,
+            json_attributes_topic: $at,
+            unit_of_measurement: $unit,
+            state_class: "measurement",
+            icon: $icon,
+            availability_topic: "hay_cm5_fan/status",
+            payload_available: "online",
+            payload_not_available: "offline",
+            device: $dev
+        }
+        + (if $dc == "" then {} else {device_class: $dc} end)')
+
+    mqtt_pub "homeassistant/sensor/${DISCOVERY_NS}/${object_id}/config" "$payload" retain
+}
+
+publish_binary_sensor_discovery() {
+    local object_id=$1
+    local name=$2
+    local icon=$3
+    local dc=${4:-"running"}
+
+    local payload
+    payload=$(jq -cn \
+        --arg name "$name" \
+        --arg uid "${DISCOVERY_NS}_${object_id}" \
+        --arg oid "hay_cm5_${object_id}" \
+        --arg st "hay_cm5_fan/${object_id}/state" \
+        --arg at "hay_cm5_fan/${object_id}/attributes" \
+        --arg icon "$icon" \
+        --arg dc "$dc" \
+        --argjson dev "$DEVICE_JSON" \
+        '{
+            name: $name,
+            unique_id: $uid,
+            object_id: $oid,
+            state_topic: $st,
+            json_attributes_topic: $at,
+            device_class: $dc,
+            payload_on: "ON",
+            payload_off: "OFF",
+            icon: $icon,
+            availability_topic: "hay_cm5_fan/status",
+            payload_available: "online",
+            payload_not_available: "offline",
+            device: $dev
+        }')
+
+    mqtt_pub "homeassistant/binary_sensor/${DISCOVERY_NS}/${object_id}/config" "$payload" retain
+}
+
+publish_text_sensor_discovery() {
+    local object_id=$1
+    local name=$2
+    local icon=$3
+
+    local payload
+    payload=$(jq -cn \
+        --arg name "$name" \
+        --arg uid "${DISCOVERY_NS}_${object_id}" \
+        --arg oid "hay_cm5_${object_id}" \
+        --arg st "hay_cm5_fan/${object_id}/state" \
+        --arg at "hay_cm5_fan/${object_id}/attributes" \
+        --arg icon "$icon" \
+        --argjson dev "$DEVICE_JSON" \
+        '{
+            name: $name,
+            unique_id: $uid,
+            object_id: $oid,
+            state_topic: $st,
+            json_attributes_topic: $at,
+            icon: $icon,
+            availability_topic: "hay_cm5_fan/status",
+            payload_available: "online",
+            payload_not_available: "offline",
+            device: $dev
+        }')
+
+    mqtt_pub "homeassistant/sensor/${DISCOVERY_NS}/${object_id}/config" "$payload" retain
+}
+
+# ==============================================================================
+# Entity Publishing — MQTT or REST API fallback
+# ==============================================================================
+publish_state() {
+    local entity_type=$1   # sensor, binary_sensor
+    local object_id=$2     # processor_temperature
+    local state=$3         # 63.9 or ON/OFF
+    local friendly_name=$4 # CM5 Processor Temperature
+    local attrs_json=$5    # JSON string of attributes
+
+    if [ "${MQTT_AVAILABLE}" = "true" ]; then
+        # Retain state + attributes so Home Assistant gets the last known value
+        # the instant it subscribes (after an HA restart, or once it finishes
+        # processing discovery). Without retain, entities that only publish on
+        # change — the fan and the throttle/undervoltage binary sensors — stay
+        # "Unknown" because their single publish happened before HA subscribed.
+        if ! mqtt_pub "hay_cm5_fan/${object_id}/state" "${state}" retain; then
+            publish_failure_log "MQTT publish of ${object_id} failed"
+            return 1
+        fi
+        if [ -n "${attrs_json}" ]; then
+            mqtt_pub "hay_cm5_fan/${object_id}/attributes" "${attrs_json}" retain || true
+        fi
+        return 0
+    else
+        # REST API fallback — must include all attributes in every POST
+        local full_attrs
+        if [ -n "${attrs_json}" ]; then
+            full_attrs=$(echo "${attrs_json}" | jq -c --arg fn "${friendly_name}" '. + {friendly_name: $fn}')
+        else
+            full_attrs="{\"friendly_name\": \"${friendly_name}\"}"
+        fi
+
+        # Target the SAME entity_id MQTT discovery produces, so a fallback boot
+        # does not fork every metric's history into a second entity.
+        local entity_id
+        entity_id="${entity_type}.$(ha_entity_id "${friendly_name}")"
+
+        local http_code
+        http_code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"state\": \"${state}\", \"attributes\": ${full_attrs}}" \
+            --max-time 10 \
+            "http://supervisor/core/api/states/${entity_id}" 2>/dev/null) || http_code="000"
+
+        # 200 = updated an existing entity, 201 = created it. Anything else is a
+        # failed publish and MUST be reported as such: the caller relies on this
+        # to leave its change-gate cache untouched so the next cycle retries,
+        # instead of recording a value the recorder never received.
+        case "${http_code}" in
+            200|201) return 0 ;;
+            *)
+                publish_failure_log "REST publish of ${entity_id} failed (HTTP ${http_code})"
+                return 1
+                ;;
+        esac
+    fi
+}
+
+# ==============================================================================
+# GPIO Management
+# ==============================================================================
+kill_gpioset() {
+    if [ -n "${GPIOSET_PID}" ] && kill -0 "${GPIOSET_PID}" 2>/dev/null; then
+        kill "${GPIOSET_PID}" 2>/dev/null
+        wait "${GPIOSET_PID}" 2>/dev/null
+    fi
+    GPIOSET_PID=""
+}
+
+set_fan() {
+    local new_state=$1
+    if [ "${new_state}" != "${FAN_STATE}" ]; then
+        kill_gpioset
+        # Retry up to 3 times if line is busy (previous container's gpioset may linger)
+        local attempt=0
+        while [ ${attempt} -lt 3 ]; do
+            gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=${new_state}" &
+            GPIOSET_PID=$!
+            sleep 0.3
+            if kill -0 "${GPIOSET_PID}" 2>/dev/null; then
+                break  # gpioset is running, line acquired
+            fi
+            attempt=$((attempt + 1))
+            [ ${attempt} -lt 3 ] && bashio::log.warning "GPIO line busy, retry ${attempt}/3..." && sleep 2
+        done
+        FAN_STATE=${new_state}
+        if [ "${new_state}" = "1" ]; then
+            bashio::log.info "Fan turned ON (gpioset PID: ${GPIOSET_PID})"
+        else
+            bashio::log.info "Fan turned OFF (gpioset PID: ${GPIOSET_PID})"
+        fi
+    fi
+}
+
+cleanup() {
+    bashio::log.info "Shutdown signal received..."
+    kill_gpioset
+
+    if bashio::config.true 'leave_on_at_shutdown'; then
+        bashio::log.info "Leaving fan ON for safety"
+        gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=1" &
+        sleep 0.2
+    else
+        bashio::log.info "Turning fan OFF"
+        gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=0" &
+        sleep 0.2
+    fi
+
+    # Publish offline status via MQTT
+    if [ "${MQTT_AVAILABLE}" = "true" ]; then
+        mqtt_pub "hay_cm5_fan/status" "offline" retain
+    fi
+
+    rm -rf "${SENSOR_CACHE_DIR}" 2>/dev/null
+    exit 0
+}
+
+trap cleanup SIGTERM SIGINT
+
+# Interruptible sleep for the poll loop.
+#
+# A bare `sleep` runs as a foreground child, and bash defers trap handlers
+# until the foreground child exits. SIGTERM therefore sat unhandled for up to
+# poll_interval — 5s by default, and the option allows up to 60 — while s6's
+# 3s grace expired and killed the daemon partway through cleanup(), before it
+# could publish the retained MQTT "offline" status. That leaves exactly the
+# stale-availability state in Home Assistant that #148 was written to fix.
+#
+# Backgrounding the sleep and waiting on it lets bash run the trap the instant
+# the signal arrives. `|| true` because `wait` returns 128+signal when
+# interrupted, which would otherwise abort the script under bashio's `set -e`
+# before the trap has finished.
+poll_sleep() {
+    sleep "${POLL_INTERVAL}" &
+    wait $! || true
+}
+
+# ==============================================================================
+# GPIO Header + Temperature Status Report
+# ==============================================================================
+# Yellow 10-Pin Header (J11) physical pinout:
+#   Odd pins (left)            Even pins (right)
+#   Pin 1  3.3V Power          Pin 2  5V Power
+#   Pin 3  GPIO2  I2C SDA      Pin 4  5V Power
+#   Pin 5  GPIO3  I2C SCL      Pin 6  GND
+#   Pin 7  GPIO4  GPCLK0       Pin 8  GPIO14 UART TX (fan)
+#   Pin 9  GND                 Pin 10 GPIO15 UART RX
+
+# Helper: parse a single GPIO line from gpioinfo output
+# Sets: _GPIO_DIR, _GPIO_CONSUMER, _GPIO_STATUS
+parse_gpio_line() {
+    local gpio_num=$1
+    _GPIO_DIR="input" ; _GPIO_CONSUMER="" ; _GPIO_STATUS=""
+
+    echo "${_GPIOINFO}" > /tmp/hay_gpio_parse.tmp
+    local line_info
+    line_info=$(grep "line *${gpio_num}:" /tmp/hay_gpio_parse.tmp | head -1 || true)
+    rm -f /tmp/hay_gpio_parse.tmp
+    [ -z "${line_info}" ] && return
+
+    echo "${line_info}" | grep -q "output" && _GPIO_DIR="output"
+    if echo "${line_info}" | grep -q 'consumer=' 2>/dev/null; then
+        _GPIO_CONSUMER=$(echo "${line_info}" | sed 's/.*consumer="\([^"]*\)".*/\1/' || true)
+    fi
+
+    if [ -n "${_GPIO_CONSUMER}" ]; then
+        _GPIO_STATUS="[${_GPIO_DIR}, ${_GPIO_CONSUMER}]"
+    else
+        _GPIO_STATUS="[${_GPIO_DIR}]"
+    fi
+}
+
+# ── Table rendering primitives ──
+# Simulates rendered table output with ASCII borders and dynamically
+# centered content. Column widths are re-computed on every render so
+# alignment stays perfect regardless of content length changes.
+
+# Return the max string length among all arguments
+max_len() {
+    local max=0
+    for s in "$@"; do [ ${#s} -gt ${max} ] && max=${#s}; done
+    echo ${max}
+}
+
+# Center text within a field of given width
+center_text() {
+    local text=$1 width=$2
+    local len=${#text}
+    if [ ${len} -ge ${width} ]; then
+        printf "%s" "${text}"
+        return
+    fi
+    local pad_left=$(( (width - len) / 2 ))
+    local pad_right=$(( width - len - pad_left ))
+    printf "%${pad_left}s%s%${pad_right}s" "" "${text}" ""
+}
+
+# Build a horizontal border: +------+------+
+# Usage: tbl_border w1 w2 w3 ...
+tbl_border() {
+    local result="+" first=true
+    for w in "$@"; do
+        result="${result}$(printf '%*s' $((w + 2)) '' | tr ' ' '-')+"
+    done
+    echo "${result}"
+}
+
+# Build a data row with centered content: | val | val |
+# Usage: tbl_row val1 w1 val2 w2 ...
+tbl_row() {
+    local result="|"
+    while [ $# -ge 2 ]; do
+        local text=$1 width=$2
+        shift 2
+        result="${result} $(center_text "${text}" ${width}) |"
+    done
+    echo "${result}"
+}
+
+# ── Combined status report: GPIO pinout + thermal ──
+print_status_report() {
+    # ── Capture GPIO info ──
+    _GPIOINFO=$(gpioinfo 2>/dev/null || true)
+
+    parse_gpio_line 2  ; local s2=${_GPIO_STATUS} c2=${_GPIO_CONSUMER}
+    parse_gpio_line 3  ; local s3=${_GPIO_STATUS} c3=${_GPIO_CONSUMER}
+    parse_gpio_line 4  ; local s4=${_GPIO_STATUS} c4=${_GPIO_CONSUMER}
+    parse_gpio_line 14 ; local s14=${_GPIO_STATUS} c14=${_GPIO_CONSUMER}
+    parse_gpio_line 15 ; local s15=${_GPIO_STATUS} c15=${_GPIO_CONSUMER}
+
+    local active=0 avail=0
+    for c in "${c2}" "${c3}" "${c4}" "${c14}" "${c15}"; do
+        [ -n "${c}" ] && active=$((active + 1)) || avail=$((avail + 1))
+    done
+
+    # ── GPIO table data ──
+    # Columns: Status | Name | Function | Pin | Pin | Function | Name | Status
+    local R1_LS="" R1_LN="3v3"    R1_LF="Power"   R1_LP="Pin 1"  R1_RP="Pin 2"  R1_RF="Power"   R1_RN="5v"     R1_RS=""
+    local R2_LS="${s2}"  R2_LN="GPIO2"  R2_LF="I2C SDA"  R2_LP="Pin 3"  R2_RP="Pin 4"  R2_RF="Power"   R2_RN="5v"     R2_RS=""
+    local R3_LS="${s3}"  R3_LN="GPIO3"  R3_LF="I2C SCL"  R3_LP="Pin 5"  R3_RP="Pin 6"  R3_RF="Ground"  R3_RN="GND"    R3_RS=""
+    local R4_LS="${s4}"  R4_LN="GPIO4"  R4_LF="GPCLK0"   R4_LP="Pin 7"  R4_RP="Pin 8"  R4_RF="UART TX" R4_RN="GPIO14" R4_RS="${s14}"
+    local R5_LS="" R5_LN="GND"    R5_LF="Ground"  R5_LP="Pin 9"  R5_RP="Pin 10" R5_RF="UART RX" R5_RN="GPIO15" R5_RS="${s15}"
+
+    # ── Compute column widths (resilient: always re-measured from data) ──
+    local W_LS=$(max_len "Status" "$R1_LS" "$R2_LS" "$R3_LS" "$R4_LS" "$R5_LS")
+    local W_LN=$(max_len "Name" "$R1_LN" "$R2_LN" "$R3_LN" "$R4_LN" "$R5_LN")
+    local W_LF=$(max_len "Function" "$R1_LF" "$R2_LF" "$R3_LF" "$R4_LF" "$R5_LF")
+    local W_LP=$(max_len "Pin" "$R1_LP" "$R2_LP" "$R3_LP" "$R4_LP" "$R5_LP")
+    local W_RP=$(max_len "Pin" "$R1_RP" "$R2_RP" "$R3_RP" "$R4_RP" "$R5_RP")
+    local W_RF=$(max_len "Function" "$R1_RF" "$R2_RF" "$R3_RF" "$R4_RF" "$R5_RF")
+    local W_RN=$(max_len "Name" "$R1_RN" "$R2_RN" "$R3_RN" "$R4_RN" "$R5_RN")
+    local W_RS=$(max_len "Status" "$R1_RS" "$R2_RS" "$R3_RS" "$R4_RS" "$R5_RS")
+
+    # ── Render GPIO table ──
+    bashio::log.info ""
+    bashio::log.info "  Yellow 10-Pin GPIO Header (J11) -- Pin 1 = square pad"
+    bashio::log.info ""
+    bashio::log.info "$(tbl_border $W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
+    bashio::log.info "$(tbl_row "Status" $W_LS "Name" $W_LN "Function" $W_LF "Pin" $W_LP "Pin" $W_RP "Function" $W_RF "Name" $W_RN "Status" $W_RS)"
+    bashio::log.info "$(tbl_border $W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
+    bashio::log.info "$(tbl_row "$R1_LS" $W_LS "$R1_LN" $W_LN "$R1_LF" $W_LF "$R1_LP" $W_LP "$R1_RP" $W_RP "$R1_RF" $W_RF "$R1_RN" $W_RN "$R1_RS" $W_RS)"
+    bashio::log.info "$(tbl_row "$R2_LS" $W_LS "$R2_LN" $W_LN "$R2_LF" $W_LF "$R2_LP" $W_LP "$R2_RP" $W_RP "$R2_RF" $W_RF "$R2_RN" $W_RN "$R2_RS" $W_RS)"
+    bashio::log.info "$(tbl_row "$R3_LS" $W_LS "$R3_LN" $W_LN "$R3_LF" $W_LF "$R3_LP" $W_LP "$R3_RP" $W_RP "$R3_RF" $W_RF "$R3_RN" $W_RN "$R3_RS" $W_RS)"
+    bashio::log.info "$(tbl_row "$R4_LS" $W_LS "$R4_LN" $W_LN "$R4_LF" $W_LF "$R4_LP" $W_LP "$R4_RP" $W_RP "$R4_RF" $W_RF "$R4_RN" $W_RN "$R4_RS" $W_RS)"
+    bashio::log.info "$(tbl_row "$R5_LS" $W_LS "$R5_LN" $W_LN "$R5_LF" $W_LF "$R5_LP" $W_LP "$R5_RP" $W_RP "$R5_RF" $W_RF "$R5_RN" $W_RN "$R5_RS" $W_RS)"
+    bashio::log.info "$(tbl_border $W_LS $W_LN $W_LF $W_LP $W_RP $W_RF $W_RN $W_RS)"
+    bashio::log.info "  ${active} active, ${avail} available"
+
+    # ── Read all temperatures ──
+    local cpu_temp="" nvme_temp="" rp1_temp=""
+    for hwmon_dir in /sys/class/hwmon/hwmon*; do
+        [ -d "${hwmon_dir}" ] || continue
+        local hname
+        hname=$(cat "${hwmon_dir}/name" 2>/dev/null || true)
+        for tf in "${hwmon_dir}"/temp*_input; do
+            [ -f "${tf}" ] || continue
+            local raw
+            raw=$(cat "${tf}" 2>/dev/null || true)
+            [ -z "${raw}" ] && continue
+            local tval; tval="$(fmt_temp "${raw}")"
+            case "${hname}" in
+                cpu_thermal) cpu_temp="${tval}" ;;
+                nvme)        nvme_temp="${tval}" ;;
+                rp1_adc)     rp1_temp="${tval}" ;;
+            esac
+        done
+    done
+
+    # ── System status table ──
+    local fan_str="OFF"
+    [ "${FAN_STATE}" = "1" ] && fan_str="ON"
+    local fan_detail="${fan_str} (${FAN_MODE}, on>=${TEMP_ON}${TEMP_LABEL} off<=${TEMP_OFF}${TEMP_LABEL})"
+
+    # Read CPU stats for the report
+    local rpt_freq="" rpt_max="" rpt_gov="" rpt_throttle="No" rpt_undervolt="OK" rpt_util="${CPU_UTIL_PCT}%"
+    if [ -f "${CPUFREQ_DIR}/scaling_cur_freq" ]; then
+        local fk
+        fk=$(cat "${CPUFREQ_DIR}/scaling_cur_freq")
+        rpt_freq="$((fk / 1000)) MHz"
+        [ -n "${CPU_MAX_FREQ_KHZ}" ] && rpt_max="$((CPU_MAX_FREQ_KHZ / 1000)) MHz"
+    fi
+    [ -f "${CPUFREQ_DIR}/scaling_governor" ] && rpt_gov=$(cat "${CPUFREQ_DIR}/scaling_governor")
+    # Read firmware throttle flags for the report
+    local rpt_flags="N/A"
+    if [ "${VCGENCMD_AVAILABLE}" = "true" ]; then
+        rpt_flags=$(vcgencmd get_throttled 2>/dev/null | sed 's/throttled=//' || echo "N/A")
+        if [ "${rpt_flags}" != "0x0" ] && [ "${rpt_flags}" != "N/A" ]; then
+            local dec_flags=$((rpt_flags))
+            [ $((dec_flags & 0x1)) -ne 0 ] && rpt_undervolt="ALERT"
+            [ $((dec_flags & 0x4)) -ne 0 ] && rpt_throttle="YES"
+            [ $((dec_flags & 0x2)) -ne 0 ] && rpt_throttle="YES (freq-capped)"
+            [ $((dec_flags & 0x8)) -ne 0 ] && rpt_throttle="YES (soft-temp)"
+        fi
+    fi
+
+    local freq_display="${rpt_freq}"
+    [ -n "${rpt_max}" ] && freq_display="${rpt_freq} / ${rpt_max}"
+
+    local T_WN=$(max_len "Metric" "CM5 Processor" "CM5 I/O Controller (RP1)" "NVMe SSD" "Fan" "CPU Clock Speed" "CPU Utilization" "CPU Governor" "CPU Throttled" "Undervoltage" "Firmware Flags")
+    local T_WV=$(max_len "Value" "${cpu_temp}" "${rp1_temp}" "${nvme_temp}" "${fan_detail}" "${freq_display}" "${rpt_util}" "${rpt_gov}" "${rpt_throttle}" "${rpt_undervolt}" "${rpt_flags}")
+
+    bashio::log.info ""
+    bashio::log.info "  System Status"
+    bashio::log.info ""
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
+    bashio::log.info "$(tbl_row "Metric" $T_WN "Value" $T_WV)"
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
+    [ -n "${cpu_temp}" ]  && bashio::log.info "$(tbl_row "CM5 Processor" $T_WN "${cpu_temp}" $T_WV)"
+    [ -n "${rp1_temp}" ]  && bashio::log.info "$(tbl_row "CM5 I/O Controller (RP1)" $T_WN "${rp1_temp}" $T_WV)"
+    [ -n "${nvme_temp}" ] && bashio::log.info "$(tbl_row "NVMe SSD" $T_WN "${nvme_temp}" $T_WV)"
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
+    bashio::log.info "$(tbl_row "CPU Clock Speed" $T_WN "${freq_display}" $T_WV)"
+    bashio::log.info "$(tbl_row "CPU Utilization" $T_WN "${rpt_util}" $T_WV)"
+    bashio::log.info "$(tbl_row "CPU Governor" $T_WN "${rpt_gov}" $T_WV)"
+    bashio::log.info "$(tbl_row "CPU Throttled" $T_WN "${rpt_throttle}" $T_WV)"
+    bashio::log.info "$(tbl_row "Undervoltage" $T_WN "${rpt_undervolt}" $T_WV)"
+    bashio::log.info "$(tbl_row "Firmware Flags" $T_WN "${rpt_flags}" $T_WV)"
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
+    bashio::log.info "$(tbl_row "Fan" $T_WN "${fan_detail}" $T_WV)"
+    bashio::log.info "$(tbl_border $T_WN $T_WV)"
+    bashio::log.info ""
+
+    # ── Publish GPIO header HA entity ──
+    local gpio_json
+    gpio_json=$(jq -cn \
+        --arg s2 "${s2}" --arg c2 "${c2:-none}" \
+        --arg s3 "${s3}" --arg c3 "${c3:-none}" \
+        --arg s4 "${s4}" --arg c4 "${c4:-none}" \
+        --arg s14 "${s14}" --arg c14 "${c14:-none}" \
+        --arg s15 "${s15}" --arg c15 "${c15:-none}" \
+        '{
+            pin_1: "3.3V Power", pin_2: "5V Power",
+            pin_3_GPIO2: {function: "I2C SDA", status: $s2, consumer: $c2},
+            pin_4: "5V Power",
+            pin_5_GPIO3: {function: "I2C SCL", status: $s3, consumer: $c3},
+            pin_6: "GND",
+            pin_7_GPIO4: {function: "GPCLK0", status: $s4, consumer: $c4},
+            pin_8_GPIO14: {function: "UART TX / Fan", status: $s14, consumer: $c14},
+            pin_9: "GND",
+            pin_10_GPIO15: {function: "UART RX", status: $s15, consumer: $c15}
+        }' 2>/dev/null || echo '{}')
+
+    # Tolerate failure: publish_state returns non-zero on a failed publish and
+    # this call is not gated, so `set -e` would otherwise take the daemon down.
+    publish_state "sensor" "gpio_header" "${active} active, ${avail} available" "GPIO Header" "${gpio_json}" || true
+}
+
+# ==============================================================================
+# Sensor Discovery — map hwmon names to friendly English names
+# ==============================================================================
+get_friendly_name() {
+    local hwmon_name=$1
+    local sensor_label=$2
+
+    case "${hwmon_name}" in
+        cpu_thermal)
+            echo "Processor Temperature"
+            ;;
+        rp1_adc)
+            # RP1 is the I/O controller chip on the Pi 5 / CM5
+            echo "IO Controller Temperature"
+            ;;
+        nvme)
+            if [ "${sensor_label}" = "Composite" ] || [ -z "${sensor_label}" ]; then
+                echo "NVMe Temperature"
+            else
+                echo "NVMe ${sensor_label} Temperature"
+            fi
+            ;;
+        *)
+            if [ -n "${sensor_label}" ]; then
+                echo "${hwmon_name} ${sensor_label} Temperature"
+            else
+                echo "${hwmon_name} Temperature"
+            fi
+            ;;
+    esac
+}
+
+get_object_id() {
+    local hwmon_name=$1
+    local sensor_label=$2
+
+    case "${hwmon_name}" in
+        cpu_thermal)
+            echo "processor_temperature"
+            ;;
+        rp1_adc)
+            echo "io_controller_temperature"
+            ;;
+        nvme)
+            if [ "${sensor_label}" = "Composite" ] || [ -z "${sensor_label}" ]; then
+                echo "nvme_temperature"
+            else
+                local clean_label
+                clean_label=$(echo "${sensor_label}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+                echo "nvme_${clean_label}_temperature"
+            fi
+            ;;
+        *)
+            local clean_name
+            clean_name=$(echo "${hwmon_name}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g' | sed 's/__*/_/g')
+            if [ -n "${sensor_label}" ]; then
+                local clean_label
+                clean_label=$(echo "${sensor_label}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g' | sed 's/__*/_/g')
+                echo "${clean_name}_${clean_label}_temperature"
+            else
+                echo "${clean_name}_temperature"
+            fi
+            ;;
+    esac
+}
+
+discover_sensors() {
+    bashio::log.info "Discovering hardware temperature sensors..."
+    local sensor_count=0
+
+    for hwmon_dir in /sys/class/hwmon/hwmon*; do
+        [ -d "${hwmon_dir}" ] || continue
+
+        local hwmon_name="unknown"
+        [ -f "${hwmon_dir}/name" ] && hwmon_name=$(cat "${hwmon_dir}/name" 2>/dev/null || echo "unknown")
+
+        for temp_file in "${hwmon_dir}"/temp*_input; do
+            [ -f "${temp_file}" ] || continue
+
+            local temp_idx
+            temp_idx=$(basename "${temp_file}" | sed 's/temp\([0-9]*\)_input/\1/')
+
+            local sensor_label=""
+            local label_file="${hwmon_dir}/temp${temp_idx}_label"
+            [ -f "${label_file}" ] && sensor_label=$(cat "${label_file}" 2>/dev/null || echo "")
+
+            local friendly_name object_id
+            friendly_name=$(get_friendly_name "${hwmon_name}" "${sensor_label}")
+            object_id=$(get_object_id "${hwmon_name}" "${sensor_label}")
+
+            # Primary CPU sensor handled separately but still needs discovery
+            if [ "${temp_file}" = "${TEMP_SENSOR}" ]; then
+                bashio::log.info "  [CPU] ${temp_file} -> ${friendly_name} (${object_id})"
+                # Discovery is published by publish_all_discovery(), which replays
+                # this cache — so it can also be re-run if MQTT arrives mid-flight.
+                # Store CPU object_id for the main loop
+                echo "${object_id}|${friendly_name}" > "${SENSOR_CACHE_DIR}/_cpu_info"
+                continue
+            fi
+
+            # Store sensor info
+            local cache_key
+            cache_key=$(echo "${temp_file}" | md5sum | cut -d' ' -f1)
+            echo "${temp_file}|${object_id}|${friendly_name}" > "${SENSOR_CACHE_DIR}/${cache_key}"
+
+            # Register MQTT discovery
+
+            sensor_count=$((sensor_count + 1))
+            bashio::log.info "  [${sensor_count}] ${temp_file} -> ${friendly_name} (${object_id})"
+        done
+    done
+
+    bashio::log.info "Discovered ${sensor_count} additional temperature sensor(s) beyond CPU"
+}
+
+# ==============================================================================
+# Entity Updates
+# ==============================================================================
+update_primary_entities() {
+    local temp_display=$1
+    local fan_on=$2
+
+    # Read CPU sensor info
+    local cpu_info cpu_object_id cpu_friendly_name
+    cpu_info=$(cat "${SENSOR_CACHE_DIR}/_cpu_info" 2>/dev/null || echo "processor_temperature|Processor Temperature")
+    cpu_object_id=$(echo "${cpu_info}" | cut -d'|' -f1)
+    cpu_friendly_name=$(echo "${cpu_info}" | cut -d'|' -f2)
+
+    # CPU temperature (only when changed)
+    if [ "${temp_display}" != "${LAST_REPORTED_CPU_TEMP}" ]; then
+        local temp_attrs
+        temp_attrs=$(jq -cn \
+            --arg unit "°C" --arg src "${TEMP_SENSOR}" \
+            '{unit_of_measurement: $unit, device_class: "temperature", state_class: "measurement", icon: "mdi:thermometer", source: $src}')
+        if publish_state "sensor" "${cpu_object_id}" "${temp_display}" "${cpu_friendly_name}" "${temp_attrs}"; then
+            LAST_REPORTED_CPU_TEMP="${temp_display}"
+        fi
+    fi
+
+    # Fan state (only when changed)
+    local fan_state_str="OFF"
+    [ "${fan_on}" = "1" ] && fan_state_str="ON"
+
+    if [ "${fan_state_str}" != "${LAST_REPORTED_STATE}" ]; then
+        local fan_attrs
+        fan_attrs=$(jq -cn \
+            --arg chip "${GPIO_CHIP}" --argjson line "${GPIO_LINE}" \
+            --arg mode "${FAN_MODE}" --argjson temp_on "${TEMP_ON_C}" --argjson temp_off "${TEMP_OFF_C}" \
+            --arg temp "${temp_display}" \
+            '{icon: "mdi:fan", temperature: $temp, gpio_chip: $chip, gpio_line: $line, mode: $mode, temp_on_threshold: $temp_on, temp_off_threshold: $temp_off}')
+        if publish_state "binary_sensor" "fan" "${fan_state_str}" "Fan" "${fan_attrs}"; then
+            LAST_REPORTED_STATE="${fan_state_str}"
+        fi
+    fi
+}
+
+update_discovered_sensors() {
+    for cache_file in "${SENSOR_CACHE_DIR}"/*; do
+        [ -f "${cache_file}" ] || continue
+        # Skip internal files
+        local basename_file
+        basename_file=$(basename "${cache_file}")
+        case "${basename_file}" in _*|*.last) continue ;; esac
+
+        local line sensor_path object_id friendly_name
+        line=$(cat "${cache_file}")
+        sensor_path=$(echo "${line}" | cut -d'|' -f1)
+        object_id=$(echo "${line}" | cut -d'|' -f2)
+        friendly_name=$(echo "${line}" | cut -d'|' -f3)
+
+        if [ -f "${sensor_path}" ]; then
+            local raw_temp temp_c temp_frac temp_val
+            raw_temp=$(cat "${sensor_path}" 2>/dev/null) || continue
+            temp_c=$((raw_temp / 1000))
+            temp_frac=$(( (raw_temp % 1000) / 100 ))
+            temp_val="${temp_c}.${temp_frac}"
+
+            local last_file="${cache_file}.last"
+            local last_val=""
+            [ -f "${last_file}" ] && last_val=$(cat "${last_file}")
+
+            if [ "${temp_val}" != "${last_val}" ]; then
+                local attrs
+                attrs=$(jq -cn \
+                    --arg unit "°C" --arg src "${sensor_path}" \
+                    '{unit_of_measurement: $unit, device_class: "temperature", state_class: "measurement", icon: "mdi:thermometer", source: $src}')
+                if publish_state "sensor" "${object_id}" "${temp_val}" "${friendly_name}" "${attrs}"; then
+                    echo "${temp_val}" > "${last_file}"
+                fi
+            fi
+        fi
+    done
+}
+
+# Rolling-average the CPU clock.
+#
+# One instantaneous sample per poll ALIASES badly under the `ondemand` governor,
+# which steps between OPPs constantly. Measured on a live Yellow: five samples
+# one second apart read 2000/1800/1800/1900/1900 while the published entity sat
+# at a flat 1900. Publishing the mean over a short window tracks real load;
+# min/max are carried as attributes so the instantaneous behaviour stays visible.
+#
+# Sets CUR_FREQ_MHZ, FREQ_MIN_MHZ, FREQ_MAX_MHZ.
+freq_push_sample() {
+    local sample=$1
+    FREQ_SAMPLES="${FREQ_SAMPLES} ${sample}"
+    # keep only the last FREQ_WINDOW readings
+    FREQ_SAMPLES=$(echo "${FREQ_SAMPLES}" | tr ' ' '\n' | grep -v '^$' \
+        | tail -n "${FREQ_WINDOW}" | tr '\n' ' ')
+
+    local n=0 sum=0 min="" max="" s
+    for s in ${FREQ_SAMPLES}; do
+        n=$((n + 1))
+        sum=$((sum + s))
+        if [ -z "${min}" ] || [ "${s}" -lt "${min}" ]; then min="${s}"; fi
+        if [ -z "${max}" ] || [ "${s}" -gt "${max}" ]; then max="${s}"; fi
+    done
+
+    if [ "${n}" -gt 0 ]; then
+        CUR_FREQ_MHZ=$(( (sum + n / 2) / n ))   # rounded mean
+        FREQ_MIN_MHZ="${min}"
+        FREQ_MAX_MHZ="${max}"
+    fi
+}
+
+# ==============================================================================
+# Validate & Start
+# ==============================================================================
+if [ "${TEMP_OFF}" -ge "${TEMP_ON}" ]; then
+    if [ "${FAN_MODE}" = "auto" ]; then
+        bashio::log.error "temp_off (${TEMP_OFF}${TEMP_LABEL}) must be less than temp_on (${TEMP_ON}${TEMP_LABEL})!"
+        exit 1
+    else
+        bashio::log.warning "temp_off (${TEMP_OFF}${TEMP_LABEL}) >= temp_on (${TEMP_ON}${TEMP_LABEL}) — ignored (fan_mode=${FAN_MODE})"
+    fi
+fi
+
+# Soft sanity check: the config schema range is widened to accept both °C and °F
+# scales, so confirm the entered thresholds actually suit the selected unit.
+if [ "${TEMP_UNIT}" = "fahrenheit" ]; then RANGE_LO=77; RANGE_HI=200; else RANGE_LO=25; RANGE_HI=95; fi
+for _thr in "${TEMP_ON}" "${TEMP_OFF}"; do
+    if [ "${_thr}" -lt "${RANGE_LO}" ] || [ "${_thr}" -gt "${RANGE_HI}" ]; then
+        bashio::log.warning "Threshold ${_thr}${TEMP_LABEL} is outside the typical ${RANGE_LO}-${RANGE_HI}${TEMP_LABEL} range for ${TEMP_UNIT}"
+    fi
+done
+
+# Publish every discovery config. Split out of startup so it can be re-run when
+# MQTT appears mid-flight (see the REST-mode re-check in the poll loop) — a
+# switch-over is worthless if HA never learns the entities exist.
+# Retire the pre-1.3.0 discovery topics. An empty retained payload tells Home
+# Assistant to remove that entity, which is what frees the short entity IDs for
+# the new configs published below. Idempotent: publishing empty to a topic that
+# is already empty is a no-op, so this is safe on every start.
+retire_legacy_discovery() {
+    local swept=0 domain obj
+    for domain in sensor binary_sensor; do
+        for obj in fan cpu_clock_speed cpu_utilization cpu_throttled undervoltage \
+                   cpu_governor gpio_header processor_temperature \
+                   io_controller_temperature nvme_temperature; do
+            mqtt_pub "homeassistant/${domain}/${LEGACY_DISCOVERY_NS}/${obj}/config" "" retain || true
+            swept=$((swept + 1))
+        done
+    done
+    # Temperature sensors discovered at runtime are not in the fixed list above.
+    local cache_file
+    for cache_file in "${SENSOR_CACHE_DIR}"/*; do
+        [ -f "${cache_file}" ] || continue
+        case "$(basename "${cache_file}")" in _*|*.last) continue ;; esac
+        obj=$(cut -d'|' -f2 "${cache_file}" 2>/dev/null)
+        [ -n "${obj}" ] || continue
+        mqtt_pub "homeassistant/sensor/${LEGACY_DISCOVERY_NS}/${obj}/config" "" retain || true
+        swept=$((swept + 1))
+    done
+    # The primary CPU sensor is cached as "object_id|friendly_name" — a
+    # different layout to the files above, so it needs field 1, not field 2.
+    if [ -f "${SENSOR_CACHE_DIR}/_cpu_info" ]; then
+        obj=$(cut -d'|' -f1 "${SENSOR_CACHE_DIR}/_cpu_info" 2>/dev/null)
+        if [ -n "${obj}" ]; then
+            mqtt_pub "homeassistant/sensor/${LEGACY_DISCOVERY_NS}/${obj}/config" "" retain || true
+            swept=$((swept + 1))
+        fi
+    fi
+    bashio::log.info "Retired ${swept} legacy discovery topic(s) from ${LEGACY_DISCOVERY_NS}"
+    # Let Home Assistant apply the removals before the new configs arrive. If the
+    # new entity registers while the old one still holds its entity_id, HA
+    # appends a _2 suffix and the whole migration is pointless.
+    sleep 3
+}
+
+publish_all_discovery() {
+    retire_legacy_discovery
+    bashio::log.info "Publishing MQTT discovery configs..."
+    # Retained availability signal — the discovery configs reference this topic,
+    # so it must read "online" (retained) while we run, overriding any stale
+    # "offline" left retained by a previous shutdown. cleanup() sets it back to
+    # "offline" (retained) on SIGTERM so entities show unavailable when stopped.
+    mqtt_pub "hay_cm5_fan/status" "online" retain
+    publish_binary_sensor_discovery "fan" "Fan" "mdi:fan"
+    # cpu_clock_speed: device_class "frequency" (accepts Hz/kHz/MHz/GHz)
+    publish_sensor_discovery "cpu_clock_speed" "CPU Clock Speed" "mdi:speedometer" "MHz" "frequency"
+    # cpu_utilization: generic percentage — no device_class is valid for "%"
+    publish_sensor_discovery "cpu_utilization" "CPU Utilization" "mdi:cpu-64-bit" "%" ""
+    publish_binary_sensor_discovery "cpu_throttled" "CPU Throttled" "mdi:alert-octagon" "problem"
+    publish_binary_sensor_discovery "undervoltage" "Undervoltage" "mdi:flash-alert" "problem"
+    publish_text_sensor_discovery "cpu_governor" "CPU Governor" "mdi:tune"
+    publish_text_sensor_discovery "gpio_header" "GPIO Header" "mdi:chip"
+
+    # The primary CPU sensor is cached separately, under a name the loop below
+    # deliberately skips.
+    if [ -f "${SENSOR_CACHE_DIR}/_cpu_info" ]; then
+        local cpu_line
+        cpu_line=$(cat "${SENSOR_CACHE_DIR}/_cpu_info")
+        publish_sensor_discovery "$(echo "${cpu_line}" | cut -d'|' -f1)" \
+                                 "$(echo "${cpu_line}" | cut -d'|' -f2)"
+    fi
+
+    # Remaining temperature sensors, replayed from the cache discover_sensors()
+    # wrote, so this needs no second hwmon scan.
+    local cache_file line object_id friendly_name
+    for cache_file in "${SENSOR_CACHE_DIR}"/*; do
+        [ -f "${cache_file}" ] || continue
+        case "$(basename "${cache_file}")" in _*|*.last) continue ;; esac
+        line=$(cat "${cache_file}")
+        object_id=$(echo "${line}" | cut -d'|' -f2)
+        friendly_name=$(echo "${line}" | cut -d'|' -f3)
+        publish_sensor_discovery "${object_id}" "${friendly_name}"
+    done
+}
+
+# Setup MQTT (optional) — retried, because the broker may still be starting
+setup_mqtt_with_retry || true
+
+# Discover temperature sensors (writes the cache publish_all_discovery replays)
+discover_sensors
+
+if [ "${MQTT_AVAILABLE}" = "true" ]; then
+    publish_all_discovery
+fi
+
+# Read CPU max frequency (static, doesn't change at runtime)
+if [ -f "${CPUFREQ_DIR}/scaling_max_freq" ]; then
+    CPU_MAX_FREQ_KHZ=$(cat "${CPUFREQ_DIR}/scaling_max_freq")
+    bashio::log.info "CPU max frequency: $((CPU_MAX_FREQ_KHZ / 1000)) MHz"
+fi
+
+# Detect vcgencmd for official firmware throttle flags
+if command -v vcgencmd &> /dev/null && vcgencmd get_throttled &>/dev/null; then
+    VCGENCMD_AVAILABLE=true
+    bashio::log.info "vcgencmd available — using firmware throttle flags"
+else
+    bashio::log.warning "vcgencmd not available — throttle detection uses utilization heuristic"
+fi
+
+# Log configuration
+bashio::log.info "Configuration:"
+bashio::log.info "  GPIO: ${GPIO_CHIP} line ${GPIO_LINE}"
+bashio::log.info "  Poll: ${POLL_INTERVAL}s | Thresholds: ON=${TEMP_ON}${TEMP_LABEL} OFF=${TEMP_OFF}${TEMP_LABEL}"
+bashio::log.info "  Fan mode: ${FAN_MODE} | Leave on at shutdown: $(bashio::config 'leave_on_at_shutdown')"
+bashio::log.info "  MQTT: ${MQTT_AVAILABLE} | Hostname: ${APP_HOSTNAME}"
+
+# Initialize temperature variables (needed by status report before main loop)
+TEMP_C=0
+TEMP_DISPLAY="0.0"
+TEMP_DISP="0.0${TEMP_LABEL}"
+if [ -f "${TEMP_SENSOR}" ]; then
+    TEMP_RAW=$(cat "${TEMP_SENSOR}")
+    TEMP_C=$((TEMP_RAW / 1000))
+    TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
+    TEMP_DISPLAY="${TEMP_C}.${TEMP_FRAC}"
+    TEMP_DISP="$(fmt_temp "${TEMP_RAW}")"
+fi
+
+# Turn fan ON as initial safe state (before first report so GPIO14 shows active)
+bashio::log.info "Turning fan ON (initial safe state)..."
+set_fan 1
+
+# Print initial status report (GPIO + temps)
+print_status_report
+
+# ==============================================================================
+# Main Loop
+# ==============================================================================
+GPIO_SCAN_COUNTER=0
+GPIO_SCAN_INTERVAL=12  # Every 12 cycles (60s at 5s poll)
+
+# Rolling window for the CPU clock average (see freq_push_sample)
+FREQ_SAMPLES=""
+FREQ_WINDOW=6
+FREQ_INSTANT_MHZ=0
+FREQ_MIN_MHZ=0
+FREQ_MAX_MHZ=0
+
+# Seconds between MQTT re-probes while running in REST fallback, and between
+# unconditional re-publishes of every entity. Converted to cycle counts against
+# the configured poll interval so both track a wall-clock period rather than a
+# number of polls.
+MQTT_RECHECK_CYCLES=$(( MQTT_RECHECK_SECONDS / POLL_INTERVAL )); [ "${MQTT_RECHECK_CYCLES}" -lt 1 ] && MQTT_RECHECK_CYCLES=1
+KEEPALIVE_SECONDS=300
+KEEPALIVE_CYCLES=$(( KEEPALIVE_SECONDS / POLL_INTERVAL )); [ "${KEEPALIVE_CYCLES}" -lt 1 ] && KEEPALIVE_CYCLES=1
+MQTT_RECHECK_COUNTER=0
+KEEPALIVE_COUNTER=0
+FORCE_REPUBLISH=false
+
+while true; do
+    # Verify gpioset is still holding the line
+    if [ -n "${GPIOSET_PID}" ] && ! kill -0 "${GPIOSET_PID}" 2>/dev/null; then
+        bashio::log.warning "gpioset process died unexpectedly, restarting with fan ON..."
+        FAN_STATE=""
+        set_fan 1
+    fi
+
+    # Read CPU temperature
+    if [ -f "${TEMP_SENSOR}" ]; then
+        TEMP_RAW=$(cat "${TEMP_SENSOR}")
+        TEMP_C=$((TEMP_RAW / 1000))
+        TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
+        TEMP_DISPLAY="${TEMP_C}.${TEMP_FRAC}"
+        TEMP_DISP="$(fmt_temp "${TEMP_RAW}")"
+    else
+        bashio::log.warning "CPU temp sensor not found: ${TEMP_SENSOR}"
+        set_fan 1
+        poll_sleep
+        continue
+    fi
+
+    # Apply fan control
+    case "${FAN_MODE}" in
+        on)  set_fan 1 ;;
+        off) set_fan 0 ;;
+        auto)
+            if [ "${TEMP_C}" -ge "${TEMP_ON_C}" ]; then
+                set_fan 1
+            elif [ "${TEMP_C}" -le "${TEMP_OFF_C}" ]; then
+                set_fan 0
+            fi
+            ;;
+    esac
+
+    # ── CPU utilization (from /proc/stat delta between poll cycles) ──
+    # /proc/stat cpu line: user nice system idle iowait irq softirq steal
+    cpu_line=$(head -1 /proc/stat)
+    cpu_user=$(echo "${cpu_line}" | awk '{print $2}')
+    cpu_nice=$(echo "${cpu_line}" | awk '{print $3}')
+    cpu_system=$(echo "${cpu_line}" | awk '{print $4}')
+    cpu_idle=$(echo "${cpu_line}" | awk '{print $5}')
+    cpu_iowait=$(echo "${cpu_line}" | awk '{print $6}')
+    cpu_irq=$(echo "${cpu_line}" | awk '{print $7}')
+    cpu_softirq=$(echo "${cpu_line}" | awk '{print $8}')
+    cpu_steal=$(echo "${cpu_line}" | awk '{print $9}')
+
+    cpu_total=$((cpu_user + cpu_nice + cpu_system + cpu_idle + cpu_iowait + cpu_irq + cpu_softirq + cpu_steal))
+
+    if [ "${PREV_CPU_TOTAL}" -gt 0 ]; then
+        delta_total=$((cpu_total - PREV_CPU_TOTAL))
+        delta_idle=$((cpu_idle - PREV_CPU_IDLE))
+        if [ "${delta_total}" -gt 0 ]; then
+            CPU_UTIL_PCT=$(( (delta_total - delta_idle) * 100 / delta_total ))
+        fi
+    fi
+    PREV_CPU_TOTAL=${cpu_total}
+    PREV_CPU_IDLE=${cpu_idle}
+
+    # ── CPU clock speed ──
+    CUR_FREQ_KHZ=""
+    CUR_FREQ_MHZ=""
+    CPU_GOVERNOR=""
+
+    if [ -f "${CPUFREQ_DIR}/scaling_cur_freq" ]; then
+        CUR_FREQ_KHZ=$(cat "${CPUFREQ_DIR}/scaling_cur_freq")
+        FREQ_INSTANT_MHZ=$((CUR_FREQ_KHZ / 1000))
+
+        # One instantaneous sample per poll ALIASES badly under the `ondemand`
+        # governor, which steps between OPPs constantly. Measured on a live
+        # Yellow: five samples one second apart read 2000/1800/1800/1900/1900
+        # while the published entity sat at a flat 1900. Publish a rolling mean
+        # over the last FREQ_WINDOW samples, and carry the spread as attributes
+        # so the instantaneous behaviour is still visible.
+        freq_push_sample "${FREQ_INSTANT_MHZ}"
+    fi
+    if [ -f "${CPUFREQ_DIR}/scaling_governor" ]; then
+        CPU_GOVERNOR=$(cat "${CPUFREQ_DIR}/scaling_governor")
+    fi
+
+    # ── Official firmware throttle flags via vcgencmd ──
+    # get_throttled returns a hex bitmask:
+    #   Bit 0: Under-voltage detected (currently)
+    #   Bit 1: Arm frequency capped (currently)
+    #   Bit 2: Currently throttled
+    #   Bit 3: Soft temperature limit active (currently)
+    #   Bit 16: Under-voltage has occurred (since boot)
+    #   Bit 17: Arm frequency capping has occurred
+    #   Bit 18: Throttling has occurred
+    #   Bit 19: Soft temperature limit has occurred
+    CPU_THROTTLED="OFF"
+    CPU_UNDERVOLT="OFF"
+    THROTTLE_FLAGS=""
+    THROTTLE_REASONS=""
+
+    if [ "${VCGENCMD_AVAILABLE}" = "true" ]; then
+        THROTTLE_FLAGS=$(vcgencmd get_throttled 2>/dev/null | sed 's/throttled=//' || echo "0x0")
+        throttle_dec=$((THROTTLE_FLAGS))
+
+        # Current flags (bits 0-3)
+        if [ $((throttle_dec & 0x1)) -ne 0 ]; then
+            CPU_UNDERVOLT="ON"
+            THROTTLE_REASONS="${THROTTLE_REASONS}under-voltage "
+        fi
+        if [ $((throttle_dec & 0x2)) -ne 0 ]; then
+            CPU_THROTTLED="ON"
+            THROTTLE_REASONS="${THROTTLE_REASONS}freq-capped "
+        fi
+        if [ $((throttle_dec & 0x4)) -ne 0 ]; then
+            CPU_THROTTLED="ON"
+            THROTTLE_REASONS="${THROTTLE_REASONS}throttled "
+        fi
+        if [ $((throttle_dec & 0x8)) -ne 0 ]; then
+            CPU_THROTTLED="ON"
+            THROTTLE_REASONS="${THROTTLE_REASONS}soft-temp-limit "
+        fi
+
+        # Historical flags (bits 16-19) — log once when they first appear
+        hist_reasons=""
+        [ $((throttle_dec & 0x10000)) -ne 0 ] && hist_reasons="${hist_reasons}under-voltage "
+        [ $((throttle_dec & 0x20000)) -ne 0 ] && hist_reasons="${hist_reasons}freq-capped "
+        [ $((throttle_dec & 0x40000)) -ne 0 ] && hist_reasons="${hist_reasons}throttled "
+        [ $((throttle_dec & 0x80000)) -ne 0 ] && hist_reasons="${hist_reasons}soft-temp-limit "
+    fi
+
+    # Log throttle state changes
+    if [ "${CPU_THROTTLED}" != "${LAST_REPORTED_THROTTLE}" ]; then
+        if [ "${CPU_THROTTLED}" = "ON" ]; then
+            bashio::log.warning "CPU THROTTLED [${THROTTLE_FLAGS}]: ${THROTTLE_REASONS}| ${CUR_FREQ_MHZ} MHz, ${CPU_UTIL_PCT}% util, ${TEMP_DISP}"
+        elif [ "${LAST_REPORTED_THROTTLE}" = "ON" ]; then
+            bashio::log.info "CPU throttle cleared [${THROTTLE_FLAGS}]: ${CUR_FREQ_MHZ} MHz, ${TEMP_DISP}"
+        fi
+    fi
+    if [ "${CPU_UNDERVOLT}" != "${LAST_REPORTED_UNDERVOLT}" ]; then
+        if [ "${CPU_UNDERVOLT}" = "ON" ]; then
+            bashio::log.warning "UNDERVOLTAGE DETECTED [${THROTTLE_FLAGS}] -- check power supply!"
+        elif [ "${LAST_REPORTED_UNDERVOLT}" = "ON" ]; then
+            bashio::log.info "Undervoltage cleared [${THROTTLE_FLAGS}]"
+        fi
+    fi
+
+    # ── Publish clock speed entity ──
+    if [ -n "${CUR_FREQ_MHZ}" ] && [ "${CUR_FREQ_MHZ}" != "${LAST_REPORTED_FREQ}" ]; then
+        freq_attrs=$(jq -cn \
+            --arg unit "MHz" --argjson max "$((CPU_MAX_FREQ_KHZ / 1000))" --arg gov "${CPU_GOVERNOR}" \
+            --argjson util "${CPU_UTIL_PCT}" \
+            --argjson inst "${FREQ_INSTANT_MHZ:-0}" \
+            --argjson fmin "${FREQ_MIN_MHZ:-0}" --argjson fmax "${FREQ_MAX_MHZ:-0}" \
+            --argjson win "${FREQ_WINDOW}" \
+            '{unit_of_measurement: $unit, icon: "mdi:speedometer", state_class: "measurement",
+              max_frequency_mhz: $max, governor: $gov, cpu_utilization_pct: $util,
+              instantaneous_mhz: $inst, window_min_mhz: $fmin, window_max_mhz: $fmax,
+              averaged_over_samples: $win}')
+        if publish_state "sensor" "cpu_clock_speed" "${CUR_FREQ_MHZ}" "CPU Clock Speed" "${freq_attrs}"; then
+            LAST_REPORTED_FREQ="${CUR_FREQ_MHZ}"
+        fi
+    fi
+
+    # ── Publish CPU utilization entity ──
+    if [ "${CPU_UTIL_PCT}" != "${LAST_REPORTED_UTIL}" ]; then
+        util_attrs=$(jq -cn --arg unit "%" '{unit_of_measurement: $unit, icon: "mdi:cpu-64-bit", state_class: "measurement"}')
+        if publish_state "sensor" "cpu_utilization" "${CPU_UTIL_PCT}" "CPU Utilization" "${util_attrs}"; then
+            LAST_REPORTED_UTIL="${CPU_UTIL_PCT}"
+        fi
+    fi
+
+    # ── Publish throttle + undervoltage entities ──
+    if [ "${CPU_THROTTLED}" != "${LAST_REPORTED_THROTTLE}" ]; then
+        thr_attrs=$(jq -cn \
+            --arg freq "${CUR_FREQ_MHZ} MHz" --arg max "$((CPU_MAX_FREQ_KHZ / 1000)) MHz" \
+            --arg temp "${TEMP_DISPLAY}C" --argjson util "${CPU_UTIL_PCT}" \
+            --arg flags "${THROTTLE_FLAGS}" --arg reasons "${THROTTLE_REASONS}" \
+            '{icon: "mdi:alert-octagon", frequency: $freq, max_frequency: $max, temperature: $temp, cpu_utilization_pct: $util, firmware_flags: $flags, reasons: $reasons}')
+        if publish_state "binary_sensor" "cpu_throttled" "${CPU_THROTTLED}" "CPU Throttled" "${thr_attrs}"; then
+            LAST_REPORTED_THROTTLE="${CPU_THROTTLED}"
+        fi
+    fi
+    if [ "${CPU_UNDERVOLT}" != "${LAST_REPORTED_UNDERVOLT}" ]; then
+        uv_attrs=$(jq -cn --arg flags "${THROTTLE_FLAGS}" \
+            '{icon: "mdi:flash-alert", firmware_flags: $flags}')
+        if publish_state "binary_sensor" "undervoltage" "${CPU_UNDERVOLT}" "Undervoltage" "${uv_attrs}"; then
+            LAST_REPORTED_UNDERVOLT="${CPU_UNDERVOLT}"
+        fi
+    fi
+
+    # ── Publish governor (rarely changes, check each cycle) ──
+    if [ -n "${CPU_GOVERNOR}" ]; then
+        # Ungated (republished every cycle), so tolerate failure explicitly:
+        # publish_state now returns non-zero and `set -e` would kill the daemon.
+        publish_state "sensor" "cpu_governor" "${CPU_GOVERNOR}" "CPU Governor" '{"icon": "mdi:tune"}' || true
+    fi
+
+    # Update temperature + fan entities
+    update_primary_entities "${TEMP_DISPLAY}" "${FAN_STATE}"
+    update_discovered_sensors
+
+    # ── Re-assert availability every cycle ──
+    # A broker restart drops retained messages, so the "online" published at
+    # startup vanishes and every entity goes unavailable in Home Assistant even
+    # while fresh states keep arriving. Caught on a live Yellow by restarting
+    # mosquitto under a running daemon. This is a few bytes retained per poll,
+    # and it makes availability self-heal within one cycle instead of waiting
+    # up to a full keepalive period.
+    if [ "${MQTT_AVAILABLE}" = "true" ]; then
+        mqtt_pub "hay_cm5_fan/status" "online" retain || true
+    fi
+
+    # ── Re-probe MQTT while running in REST fallback ──
+    # The broker may simply have been slower to start than us, or may have been
+    # restarted. Switching over mid-run costs one discovery re-publish and stops
+    # the metrics forking into a second set of entity IDs.
+    if [ "${MQTT_AVAILABLE}" != "true" ]; then
+        MQTT_RECHECK_COUNTER=$((MQTT_RECHECK_COUNTER + 1))
+        if [ "${MQTT_RECHECK_COUNTER}" -ge "${MQTT_RECHECK_CYCLES}" ]; then
+            MQTT_RECHECK_COUNTER=0
+            if setup_mqtt quiet; then
+                bashio::log.info "MQTT became available — switching from REST fallback to MQTT discovery"
+                publish_all_discovery
+                # Force every entity to republish on this pass under the new
+                # transport, rather than waiting for each value to change.
+                FORCE_REPUBLISH=true
+            fi
+        fi
+    fi
+
+    # ── Keepalive: re-publish everything unconditionally every KEEPALIVE_CYCLES ──
+    # On-change gating alone means an HA Core restart leaves entities empty until
+    # a value happens to move. MQTT retained publishes make this nearly free; the
+    # REST path needs it for correctness, since those states are ephemeral.
+    KEEPALIVE_COUNTER=$((KEEPALIVE_COUNTER + 1))
+    if [ "${KEEPALIVE_COUNTER}" -ge "${KEEPALIVE_CYCLES}" ]; then
+        KEEPALIVE_COUNTER=0
+        FORCE_REPUBLISH=true
+    fi
+
+    # Clearing the change-gate caches is what makes the next update_* pass treat
+    # every value as new, so one mechanism drives both the keepalive and the
+    # post-switch republish.
+    if [ "${FORCE_REPUBLISH}" = "true" ]; then
+        FORCE_REPUBLISH=false
+        LAST_REPORTED_STATE=""
+        LAST_REPORTED_CPU_TEMP=""
+        LAST_REPORTED_FREQ=""
+        LAST_REPORTED_THROTTLE=""
+        LAST_REPORTED_UNDERVOLT=""
+        LAST_REPORTED_UTIL=""
+        rm -f "${SENSOR_CACHE_DIR}"/*.last 2>/dev/null || true
+    fi
+
+    # Periodic status report (GPIO + temps)
+    GPIO_SCAN_COUNTER=$((GPIO_SCAN_COUNTER + 1))
+    if [ "${GPIO_SCAN_COUNTER}" -ge "${GPIO_SCAN_INTERVAL}" ]; then
+        print_status_report
+        GPIO_SCAN_COUNTER=0
+    fi
+
+    poll_sleep
+done

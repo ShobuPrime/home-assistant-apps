@@ -1,0 +1,56 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail the app writes to its log. Leave on "info" unless you are
+      troubleshooting, in which case use "debug" or "trace".
+  ssl:
+    name: Use custom SSL certificates
+    description: >-
+      Turn ON to serve the HTTPS interface (port 9443) with your own certificate
+      from /ssl/fullchain.pem and /ssl/privkey.pem. Leave OFF (default) to use
+      Portainer's self-signed certificate. Both HTTP (9000) and HTTPS (9443) are
+      always available either way.
+  agent_secret:
+    name: Edge agent secret
+    description: >-
+      Optional shared secret used to authenticate Portainer Edge agents that
+      connect from remote Docker hosts. Leave blank if you only manage the local
+      environment. Stored as a secret and never written to the log.
+  license_key:
+    name: Enterprise license key
+    description: >-
+      Optional Portainer Business Edition license key. Leave blank to run in the
+      free tier (up to the node limit). Stored as a secret and never written to
+      the log.
+  hide_hassio_containers:
+    name: Hide Home Assistant system containers
+    description: >-
+      When ON (default), hides Supervisor, Core, and app containers (anything
+      with an io.hass.type label) from the Portainer UI to reduce clutter. Note:
+      Portainer caches this setting — switching it OFF later may require manually
+      un-hiding containers in Portainer's Settings.
+  traefik_enable:
+    name: Enable Traefik reverse-proxy route
+    description: >-
+      Advanced. When ON, the app writes a Traefik dynamic-config file that routes
+      an external domain to this app over your existing Traefik instance. Leave
+      OFF unless you run Traefik and want to expose Portainer on its own hostname.
+  traefik_domain:
+    name: Traefik domain
+    description: >-
+      The external hostname Traefik should route to Portainer (for example
+      portainer.example.com). Required when the Traefik route is enabled;
+      otherwise leave blank.
+  traefik_entrypoints:
+    name: Traefik entrypoint
+    description: >-
+      Which Traefik entrypoint the route binds to. Defaults to "websecure" (the
+      standard HTTPS entrypoint). Change only if your Traefik setup names its
+      entrypoints differently.
+  traefik_certresolver:
+    name: Traefik certificate resolver
+    description: >-
+      The Traefik certificate resolver used to obtain a TLS certificate for the
+      domain. Defaults to "cloudflare". Set this to the name of a resolver you
+      have already configured in Traefik.

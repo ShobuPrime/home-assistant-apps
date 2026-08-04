@@ -1,0 +1,44 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      How much detail Dockge writes to its log. Leave on "info" unless you are
+      troubleshooting, in which case use "debug" or "trace".
+  stacks_dir:
+    name: Stacks directory
+    description: >-
+      Where Dockge stores your Docker Compose stacks. Default is "/opt/stacks",
+      which maps to "/data/opt/stacks" on the host so your compose files and
+      volumes are included in Home Assistant backups. Leave the default unless
+      you have a specific reason to change it.
+  hide_hassio_containers:
+    name: Hide Home Assistant containers
+    description: >-
+      When ON (default), hides Home Assistant system containers (supervisor,
+      core, audio, dns, multicast, cli, observer, and add-ons — anything with an
+      "io.hass.type" label) from the Dockge interface so you only see your own
+      stacks. Turn OFF to show every container on the host.
+  traefik_enable:
+    name: Enable Traefik integration
+    description: >-
+      Advanced. Turn ON only if you front this app with a Traefik reverse proxy
+      and want Dockge published under your own domain. Leave OFF for normal use
+      through the Home Assistant sidebar (ingress). When OFF, the options below
+      are ignored.
+  traefik_domain:
+    name: Traefik domain
+    description: >-
+      Only used when Traefik is enabled. The hostname Traefik should route to
+      this app, for example "dockge.example.com". Leave blank if Traefik is off.
+  traefik_entrypoints:
+    name: Traefik entrypoints
+    description: >-
+      Only used when Traefik is enabled. The Traefik entrypoint(s) to expose
+      this app on. Defaults to "websecure" (HTTPS). Change only if your Traefik
+      setup uses differently named entrypoints.
+  traefik_certresolver:
+    name: Traefik certificate resolver
+    description: >-
+      Only used when Traefik is enabled. The name of the Traefik certificate
+      resolver that issues the TLS certificate for the domain above. Defaults to
+      "cloudflare". Must match a resolver defined in your Traefik configuration.

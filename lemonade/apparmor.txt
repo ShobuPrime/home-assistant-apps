@@ -1,0 +1,88 @@
+#include <tunables/global>
+
+profile lemonade flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Capabilities
+  capability,
+  file,
+  network,
+  mount,
+
+  # Signals: BOTH directions, deliberately.
+  #
+  # AppArmor mediates signal *delivery* as well as sending. A profile carrying
+  # only `signal (send) ...` silently denies the confined process the right to
+  # RECEIVE anything — so s6's SIGTERM never reaches lemond on shutdown, the
+  # graceful stop is skipped, and the container is SIGKILLed after the grace
+  # period (exit 137) instead of exiting 0. Verified locally: identical image,
+  # `signal (send) set=(...)` -> 12.7s / exit 137 with no cleanup logged;
+  # `signal (send,receive)` -> 6.9s / exit 0 with the full shutdown sequence.
+  signal (send,receive),
+
+  # S6-Overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /usr/local/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Bashio
+  /usr/lib/bashio/** ix,
+  /tmp/** rwk,
+
+  # Lemonade binaries and data
+  /opt/lemonade/** ix,
+  /opt/memproxy/** ix,
+  /data/** rw,
+
+  # Access to options.json and other app data
+  /data/** rw,
+
+  # llama.cpp (and other backend) binaries are downloaded at runtime into
+  # $HOME/llama/<backend>/ and executed as child processes by lemond.
+  /data/lemonade/llama/** ix,
+  /data/lemonade/.cache/** ix,
+
+  # SSL certificates
+  /ssl/** r,
+
+  # Shared volumes
+  /share/** rw,
+  /media/** rw,
+
+  # DNS resolution
+  /etc/hosts r,
+  /etc/resolv.conf r,
+  /etc/nsswitch.conf r,
+  /etc/passwd r,
+  /etc/group r,
+  /etc/ssl/** r,
+
+  # Device access
+  /dev/null rw,
+  /dev/urandom r,
+  /dev/random r,
+
+  # CPU/GPU capability detection performed by lemond at startup
+  /sys/devices/system/cpu/** r,
+  /sys/class/drm/** r,
+  /sys/bus/pci/devices/** r,
+  /proc/cpuinfo r,
+  /proc/meminfo r,
+
+  # Proc filesystem
+  /proc/*/mountinfo r,
+  /proc/*/stat r,
+  /proc/*/status r,
+
+  # Lemonade specific paths
+  owner /data/lemonade/** rwk,
+}

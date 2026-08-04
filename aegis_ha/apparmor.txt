@@ -1,0 +1,14 @@
+#include <tunables/global>
+
+profile aegis_ha flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  capability,
+  file,
+  # Both directions: AppArmor mediates signal DELIVERY too, so a send-only
+  # rule stops s6's SIGTERM from reaching the app — the graceful shutdown is
+  # skipped and the container is SIGKILLed (exit 137). See "AppArmor Profile
+  # Rules" in the root CLAUDE.md.
+  signal (send,receive),
+  network,
+}

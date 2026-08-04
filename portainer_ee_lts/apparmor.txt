@@ -1,0 +1,94 @@
+#include <tunables/global>
+
+profile portainer_ee flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Capabilities
+  capability,
+  file,
+  # Both directions: AppArmor mediates signal DELIVERY too, so a send-only
+  # rule stops s6's SIGTERM from reaching the app — the graceful shutdown is
+  # skipped and the container is SIGKILLed (exit 137). See "AppArmor Profile
+  # Rules" in the root CLAUDE.md.
+  signal (send,receive),
+  network,
+  mount,
+
+  # S6-Overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  # The Docker socket shim is Alpine's nginx, which lives in /usr/sbin — the
+  # only directory this app executes from that the rules above do not name.
+  # A bare `file,` does grant exec on the kernels tested here, so this rule is
+  # belt-and-braces; it stays because the profile has always listed its exec
+  # paths explicitly and HAOS's kernel has diverged from CI's on AppArmor
+  # before (see "AppArmor Profile Rules" in the root CLAUDE.md).
+  /usr/sbin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Bashio
+  /usr/lib/bashio/** ix,
+  /tmp/** rwk,
+
+  # Portainer binary and data
+  /opt/portainer/** ix,
+  /data/** rw,
+
+  # Access to options.json and other addon data
+  /data/** rw,
+
+  # SSL certificates
+  /ssl/** r,
+
+  # Docker socket access - critical for Portainer
+  # The Supervisor mounts the socket at /run/docker.sock; /var/run is a symlink
+  # to /run in the base image and AppArmor matches RESOLVED paths, so the
+  # /var/run form below never matches on its own. cont-init replaces that
+  # symlink with a real directory whose docker.sock points at the shim's socket
+  # — both ends of which live under /run and are covered by `/run/{,**} rwk`.
+  /var/run/docker.sock rw,
+  /run/docker.sock rw,
+  /{,var/}run/docker.sock rw,
+  /run/docker-shim/docker.sock rw,
+  
+  # Docker runtime access
+  /sys/fs/cgroup/** r,
+  /proc/sys/net/ipv4/ip_forward r,
+  
+  # Shared volumes
+  /share/** rw,
+  
+  # DNS resolution
+  /etc/hosts r,
+  /etc/resolv.conf r,
+  /etc/nsswitch.conf r,
+  /etc/passwd r,
+  /etc/group r,
+  
+  # Device access needed for Docker operations
+  /dev/null rw,
+  /dev/urandom r,
+  /dev/random r,
+  /dev/net/tun rw,
+
+  # Proc filesystem
+  /proc/*/mountinfo r,
+  /proc/*/stat r,
+  /proc/*/status r,
+  
+  # Portainer specific paths
+  owner /data/portainer/** rwk,
+  owner /data/tls/** rwk,
+
+  # Allow process tracing for container management
+  ptrace (read,trace) peer=docker-default,
+  ptrace (read,trace) peer=unconfined,
+}

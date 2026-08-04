@@ -1,0 +1,79 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Arcane Docker Manager
+# Runs Arcane
+# ==============================================================================
+
+bashio::log.info 'Starting Arcane Docker Manager...'
+
+# Load secrets
+SECRETS_FILE="/data/arcane/.secrets"
+if [[ -f "${SECRETS_FILE}" ]]; then
+    source "${SECRETS_FILE}"
+    export ENCRYPTION_KEY
+    export JWT_SECRET
+else
+    bashio::log.error "Secrets file not found! Please restart the app."
+    exit 1
+fi
+
+# Set environment variables
+export GIN_MODE="release"
+export ENVIRONMENT="production"
+export PORT="3552"
+export DOCKER_HOST="unix:///var/run/docker.sock"
+export DATABASE_URL="file:/data/arcane/arcane.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(2500)&_txlock=immediate"
+
+# Configure PUID/PGID
+if bashio::config.has_value 'puid'; then
+    export PUID=$(bashio::config 'puid')
+else
+    export PUID=1000
+fi
+
+if bashio::config.has_value 'pgid'; then
+    export PGID=$(bashio::config 'pgid')
+else
+    export PGID=1000
+fi
+
+# Configure APP_URL
+if bashio::config.has_value 'app_url' && [[ -n "$(bashio::config 'app_url')" ]]; then
+    export APP_URL=$(bashio::config 'app_url')
+    bashio::log.info "APP_URL configured: ${APP_URL}"
+else
+    export APP_URL="http://localhost:3552"
+    bashio::log.info "APP_URL using default: ${APP_URL}"
+fi
+
+# Log level configuration
+if bashio::config.has_value 'log_level'; then
+    case "$(bashio::config 'log_level')" in
+        trace|debug)
+            export LOG_LEVEL="debug"
+            ;;
+        warning|error|fatal)
+            export LOG_LEVEL="error"
+            ;;
+        *)
+            export LOG_LEVEL="info"
+            ;;
+    esac
+fi
+
+# Log configuration
+bashio::log.info "Starting Arcane with configuration:"
+bashio::log.info "  PORT: ${PORT}"
+bashio::log.info "  PUID: ${PUID}"
+bashio::log.info "  PGID: ${PGID}"
+bashio::log.info "  DOCKER_HOST: ${DOCKER_HOST}"
+
+# Arcane >=1.19 drops privileges to PUID:PGID and then creates a
+# `data/` subdirectory relative to CWD (alongside the sqlite DB).
+# /opt/arcane is root-owned so we must cd into the writable data
+# volume before exec — otherwise startup fails with
+# "failed to prepare SQLite directory: mkdir data: permission denied".
+cd /data/arcane
+
+# Run Arcane
+exec /opt/arcane/arcane

@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Lemonade
+# The memory proxy is optional; its exit must never take the app down.
+# ==============================================================================
+if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
+    bashio::log.warning "Memory proxy exited with code ${1}. Respawning..."
+fi

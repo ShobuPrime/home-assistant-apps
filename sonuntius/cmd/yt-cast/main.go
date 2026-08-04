@@ -1,0 +1,412 @@
+// Maps to: N/A — Go-only sonuntius binary.
+//
+// yt-cast is the sonuntius addon's Cast/DIAL receiver service. It runs
+// inside the addon container under S6 supervision; main() reads
+// /data/options.json, dials the ma-bridge IPC socket, builds a
+// PlayerEngine adapter that forwards PlayIntent/Transport/Volume
+// events over IPC, and starts the Go port of yt-cast-receiver
+// (internal/ytcast).
+//
+// Resilience: the service keeps the addon healthy even when its
+// dependencies are not — a missing ma-bridge socket, a failed receiver
+// start, or a network outage should not crash the process. Each
+// reconnect runs through an exponential-backoff loop so a flaky
+// network does not turn into a CPU-burning retry storm.
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/shobuprime/sonuntius/internal/events"
+	"github.com/shobuprime/sonuntius/internal/ipc"
+	"github.com/shobuprime/sonuntius/internal/ytcast"
+	"github.com/shobuprime/sonuntius/internal/ytcast/constants"
+	"github.com/shobuprime/sonuntius/internal/ytcast/datastore"
+	"github.com/shobuprime/sonuntius/internal/ytcast/logger"
+)
+
+const (
+	ipcReconnectFloor = 2 * time.Second
+	ipcReconnectCeil  = 30 * time.Second
+	recvRetryFloor    = 5 * time.Second
+	recvRetryCeil     = 5 * time.Minute
+)
+
+func main() {
+	// Initial logger at info — reconfigured once options load.
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(log)
+
+	log.Info(fmt.Sprintf("yt-cast: starting (yt-cast-receiver port @ %s)", upstreamShort()))
+
+	ctx, stop := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	opts := loadRuntimeOptions(ctx, log)
+	log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: opts.LogLevel}))
+	slog.SetDefault(log)
+
+	log.Info("yt-cast: configuration loaded",
+		"friendly_name", opts.FriendlyName,
+		"data_dir", opts.DataDir,
+		"uuid", opts.UUID,
+		"ma_player_id", opts.AddonOptions.MAPlayerID,
+		"enable_youtube", opts.AddonOptions.EnableYouTube,
+		"upstream_commit", upstreamShort())
+
+	if !opts.AddonOptions.EnableYouTube {
+		log.Info("yt-cast: enable_youtube=false — service idling")
+		<-ctx.Done()
+		log.Info("yt-cast: shutting down")
+		return
+	}
+
+	// --- Build the adapter and connect to the IPC broker. ----------
+	adapt := newAdapter(nil)
+	adapt.setLogger(log.With("component", "player"))
+	conn := newIPCConnector(adapt, log.With("component", "ipc"))
+	conn.run(ctx)
+
+	// --- Build the receiver. The constructor doesn't touch the wire,
+	//     so it's safe to do once even though Start may be retried. -
+	rlogger := &slogAdapter{l: log.With("component", "ytcast"), level: opts.LogLevel}
+	store := datastore.NewFileStore(opts.DataDir)
+	receiver, err := ytcast.NewReceiver(ytcast.Options{
+		Player: adapt,
+		Device: ytcast.DeviceOptions{
+			Name:  opts.FriendlyName,
+			Brand: "ShobuPrime",
+			Model: "Sonuntius",
+		},
+		Dial: ytcast.DialOptions{
+			Port: opts.AddonOptions.EffectiveYTCastDialPort(),
+			UUID: opts.UUID,
+		},
+		DataStore: store,
+		Logger:    rlogger,
+	})
+	if err != nil {
+		log.Error("yt-cast: failed to build receiver — running in idle mode", "err", err)
+		<-ctx.Done()
+		log.Info("yt-cast: shutting down")
+		return
+	}
+
+	// Wire external state updates back into the engine's state event
+	// bus. Whenever the IPC connector caches a fresh PlayerState (i.e.
+	// Music Assistant reported a position / volume / duration change
+	// over HA's WebSocket), the adapter calls this hook and the
+	// engine re-emits its current state to the orchestrator, which
+	// forwards onStateChange / onVolumeChanged / nowPlaying to the
+	// connected sender's Lounge protocol. Without this hook, the
+	// phone only sees state updates on engine-side transitions
+	// (play / pause / stop) and external changes are invisible.
+	adapt.setOnStateChange(func(ctx context.Context) {
+		ps := adapt.snapshotState()
+		// Map MA's state string to the engine's PlayerStatus and
+		// route through NotifyExternalStatus so the engine's own
+		// status tracking updates. Without this the engine keeps
+		// its last status (typically PLAYING from DoPlay) and the
+		// phone never sees a pause/idle from MA's side.
+		status, ok := mapMAStateToPlayerStatus(ps.State)
+		if !ok {
+			if err := receiver.EmitPlayerState(ctx); err != nil {
+				log.Debug("yt-cast: EmitPlayerState failed (likely no active sender)", "err", err)
+			}
+			return
+		}
+		if err := receiver.NotifyExternalStatus(ctx, status); err != nil {
+			log.Debug("yt-cast: NotifyExternalStatus failed (likely no active sender)",
+				"err", err, "status", status)
+		}
+	})
+	// Hand the adapter a way to peek the engine's upcoming video so
+	// DoPlay can pre-load MA's queue with the +1. Cheap and cached
+	// inside the engine — no I/O here.
+	adapt.setPeekNextVideo(receiver.UpcomingVideo)
+
+	// Subscribe to sender connect/disconnect events on the receiver
+	// bus. When every sender has gone away we wipe per-cast state in
+	// the adapter so that the next sender starts from a blank slate
+	// — without this, brief state leak between sessions briefly
+	// surfaces the previous track's title/duration to the new
+	// sender's first state push.
+	go watchSenderLifecycle(ctx, receiver, adapt, log.With("component", "session"))
+
+	// --- Start the receiver with retry-with-backoff. ---------------
+	startReceiverLoop(ctx, receiver, log)
+
+	// --- Wait for shutdown signal. ---------------------------------
+	<-ctx.Done()
+	log.Info("yt-cast: shutting down")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := receiver.Stop(shutdownCtx); err != nil {
+		log.Warn("yt-cast: receiver stop returned error", "err", err)
+	}
+	conn.close()
+	log.Info("yt-cast: stopped")
+}
+
+// mapMAStateToPlayerStatus translates the MA state strings into the
+// engine's PlayerStatus integers. Returns ok=false for empty / unknown
+// strings so the caller falls back to EmitPlayerState (which preserves
+// the engine's current status).
+func mapMAStateToPlayerStatus(state string) (constants.PlayerStatus, bool) {
+	switch state {
+	case "playing":
+		return constants.PlayerStatusPlaying, true
+	case "paused":
+		return constants.PlayerStatusPaused, true
+	case "loading", "buffering":
+		return constants.PlayerStatusLoading, true
+	case "idle":
+		return constants.PlayerStatusIdle, true
+	case "stopped", "off", "unavailable":
+		return constants.PlayerStatusStopped, true
+	}
+	return 0, false
+}
+
+// watchSenderLifecycle subscribes to the receiver's app-event bus and
+// resets adapter state when every sender has disconnected. Cast is
+// single-sender at a time, but a sender that swaps devices (e.g.
+// closing YouTube on phone 1 and opening on phone 2) goes through a
+// disconnect / connect cycle. Without this reset, the second sender
+// briefly sees the first sender's title/duration on the initial
+// state push.
+//
+// Speaker state (volume, muted) is preserved across resets — see
+// adapter.resetSession.
+func watchSenderLifecycle(ctx context.Context, recv *ytcast.Receiver, adapt *adapter, log *slog.Logger) {
+	bus := recv.Bus()
+	if bus == nil {
+		return
+	}
+	sub := bus.Subscribe(8)
+	defer bus.Unsubscribe(sub)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-sub:
+			if !ok {
+				return
+			}
+			switch e := evt.(type) {
+			case ytcast.SenderConnectedEvent:
+				name := ""
+				if e.Sender != nil && e.Sender.Client != nil {
+					name = e.Sender.Client.Name
+				}
+				log.Info("sender connected", "client", name,
+					"remaining", len(recv.ConnectedSenders()))
+			case ytcast.SenderDisconnectedEvent:
+				remaining := len(recv.ConnectedSenders())
+				name := ""
+				if e.Sender != nil && e.Sender.Client != nil {
+					name = e.Sender.Client.Name
+				}
+				log.Info("sender disconnected",
+					"client", name, "implicit", e.Implicit,
+					"remaining", remaining)
+				if remaining == 0 {
+					adapt.resetSession()
+				}
+			}
+		}
+	}
+}
+
+// startReceiverLoop launches a goroutine that calls receiver.Start
+// with exponential backoff on failure. We don't exit on persistent
+// failure because the addon container must stay healthy (S6 would
+// restart us in a loop otherwise).
+func startReceiverLoop(ctx context.Context, receiver *ytcast.Receiver, log *slog.Logger) {
+	go func() {
+		backoff := recvRetryFloor
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			if err := receiver.Start(ctx); err != nil {
+				log.Warn("yt-cast: receiver start failed — retrying", "err", err, "retry_in", backoff)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(backoff):
+				}
+				if backoff < recvRetryCeil {
+					backoff *= 2
+					if backoff > recvRetryCeil {
+						backoff = recvRetryCeil
+					}
+				}
+				continue
+			}
+			log.Info("yt-cast: receiver online",
+				"status", string(receiver.Status()),
+				"upstream", constants.UpstreamCommit)
+			return
+		}
+	}()
+}
+
+// ipcConnector manages the persistent connection to ma-bridge: dials
+// with backoff, reads inbound PlayerState frames to refresh the
+// adapter's cache, and reconnects on read failure.
+type ipcConnector struct {
+	adapter *adapter
+	log     *slog.Logger
+
+	mu     sync.Mutex
+	client *ipc.Client
+	cancel context.CancelFunc
+	doneCh chan struct{}
+}
+
+func newIPCConnector(a *adapter, log *slog.Logger) *ipcConnector {
+	return &ipcConnector{
+		adapter: a,
+		log:     log,
+		doneCh:  make(chan struct{}),
+	}
+}
+
+func (c *ipcConnector) run(ctx context.Context) {
+	rctx, cancel := context.WithCancel(ctx)
+	c.mu.Lock()
+	c.cancel = cancel
+	c.mu.Unlock()
+	go c.loop(rctx)
+}
+
+func (c *ipcConnector) loop(ctx context.Context) {
+	defer close(c.doneCh)
+	backoff := ipcReconnectFloor
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		cli, err := ipc.Dial(ipc.SocketPath())
+		if err != nil {
+			c.log.Debug("yt-cast: ipc dial failed", "err", err, "retry_in", backoff)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if backoff < ipcReconnectCeil {
+				backoff *= 2
+				if backoff > ipcReconnectCeil {
+					backoff = ipcReconnectCeil
+				}
+			}
+			continue
+		}
+		c.log.Info("yt-cast: ipc connected")
+		c.swap(cli)
+		c.adapter.setIPCClient(cli)
+		c.readLoop(ctx, cli)
+		c.log.Info("yt-cast: ipc disconnected — will reconnect")
+		c.adapter.setIPCClient(nil)
+		backoff = ipcReconnectFloor
+	}
+}
+
+func (c *ipcConnector) readLoop(ctx context.Context, cli *ipc.Client) {
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		ev, err := cli.Recv()
+		if err != nil {
+			if !errors.Is(err, context.Canceled) {
+				c.log.Debug("yt-cast: ipc recv error", "err", err)
+			}
+			_ = cli.Close()
+			return
+		}
+		if ps, ok := ev.(*events.PlayerState); ok {
+			c.adapter.updateCachedState(*ps)
+		}
+	}
+}
+
+func (c *ipcConnector) swap(cli *ipc.Client) {
+	c.mu.Lock()
+	if old := c.client; old != nil {
+		_ = old.Close()
+	}
+	c.client = cli
+	c.mu.Unlock()
+}
+
+func (c *ipcConnector) close() {
+	c.mu.Lock()
+	cancel := c.cancel
+	cli := c.client
+	c.client = nil
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if cli != nil {
+		_ = cli.Close()
+	}
+	<-c.doneCh
+}
+
+// slogAdapter implements logger.Logger over an *slog.Logger so the
+// receiver uses the wrapper's structured logger.
+type slogAdapter struct {
+	mu    sync.Mutex
+	l     *slog.Logger
+	level slog.Level
+}
+
+func (a *slogAdapter) Error(msg ...any) { a.log(slog.LevelError, msg) }
+func (a *slogAdapter) Warn(msg ...any)  { a.log(slog.LevelWarn, msg) }
+func (a *slogAdapter) Info(msg ...any)  { a.log(slog.LevelInfo, msg) }
+func (a *slogAdapter) Debug(msg ...any) { a.log(slog.LevelDebug, msg) }
+
+func (a *slogAdapter) SetLevel(value logger.LogLevel) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	switch value {
+	case logger.LogLevelError:
+		a.level = slog.LevelError
+	case logger.LogLevelWarn:
+		a.level = slog.LevelWarn
+	case logger.LogLevelInfo:
+		a.level = slog.LevelInfo
+	case logger.LogLevelDebug:
+		a.level = slog.LevelDebug
+	case logger.LogLevelNone:
+		a.level = slog.LevelError + 1
+	}
+}
+
+func (a *slogAdapter) log(level slog.Level, msg []any) {
+	a.mu.Lock()
+	if level < a.level {
+		a.mu.Unlock()
+		return
+	}
+	l := a.l
+	a.mu.Unlock()
+	l.Log(context.Background(), level, fmt.Sprint(msg...))
+}
+
+// Compile-time assertion that slogAdapter satisfies logger.Logger.
+var _ logger.Logger = (*slogAdapter)(nil)

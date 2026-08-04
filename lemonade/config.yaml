@@ -1,0 +1,130 @@
+name: "Lemonade"
+description: "Local LLM server with an OpenAI- and Ollama-compatible API, for private on-device AI in Home Assistant"
+version: "11.5.1"
+slug: "lemonade"
+init: false
+ingress: true
+ingress_port: 13305
+ingress_stream: true
+# Land the ingress panel on the actual chat application rather than lemond's
+# "Lemonade Server" landing page at /, which links nowhere useful.
+#
+# BOTH slashes matter, and they are not symmetric — this value takes a trailing
+# slash and NO leading slash. Supervisor concatenates it onto a base that
+# already ends in one (apps/app.py: `url = f"/api/hassio_ingress/{token}/"`),
+# then the ingress proxy prepends another when forwarding
+# (api/ingress.py: `f"http://{ip}:{port}/{path}"`, where {path:.*} keeps its
+# leading slash). A leading slash here therefore reaches lemond doubled:
+#
+#   ingress_entry: /web-app/  ->  GET //web-app/                  200
+#                             ->  GET //web-app/renderer.bundle.js 404  <-- blank panel
+#   ingress_entry: web-app/   ->  GET /web-app/renderer.bundle.js  200
+#
+# Verified against the running server: lemond tolerates the doubled slash on
+# the directory route but not on asset paths, so the panel loads its HTML and
+# then renders nothing, with a 404 visible only in the browser console.
+#
+# The trailing slash is equally required: web-app/ references its assets
+# relatively (src="renderer.bundle.js"), so without it the document URL ends in
+# /web-app and the browser resolves the bundle one level too high. lemond
+# serves /web-app and /web-app/ alike and issues no redirect, so it cannot
+# correct either mistake for us.
+ingress_entry: web-app/
+panel_icon: mdi:fruit-citrus
+panel_title: Lemonade
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+# The Supervisor stops this container for every HAOS update and every backup
+# that includes app data, then SIGKILLs it after this many seconds. The default
+# of 10s is not enough: a measured clean stop takes 9-13s, almost all of it
+# fixed waits inside lemond (a 2s "GPU driver cleanup" pause plus a second
+# unload pass) rather than work that scales with model size — evicting the
+# model itself took 0.1s.
+#
+# This is a ceiling, not a delay: a normal stop still finishes in ~9-13s and
+# the Supervisor moves on immediately. 30s leaves headroom for a slower device
+# or a larger model without letting a genuinely hung app stall a backup for
+# long. Must stay above S6_SERVICES_GRACETIME (20s) in the Dockerfile.
+timeout: 30
+watchdog: http://[HOST]:[PORT:13305]/live
+ports:
+  13305/tcp: 13305
+  # Wyoming speech-to-text. null = reachable by Home Assistant on the internal
+  # network but not published to the LAN; nothing outside HA should speak to it.
+  10600/tcp: null
+ports_description:
+  13305/tcp: "Web UI + OpenAI/Ollama/Anthropic-compatible API. Map to 11434 for Ollama client auto-detection."
+  10600/tcp: "Speech-to-text for Home Assistant (Wyoming). Discovered automatically; no need to publish it."
+# Home Assistant discovers speech engines over the Wyoming protocol, not over
+# HTTP. Declaring it here is what makes the Supervisor tell HA "this add-on
+# offers a Wyoming service"; HA then connects, sends `describe`, and registers
+# whatever the bridge advertises. Same path Piper takes to appear in the
+# Text-to-speech dropdown.
+discovery:
+  - wyoming
+host_network: false
+apparmor: true
+hassio_api: true
+# Needed to read Home Assistant's own internal_url/external_url, which are the
+# origins the browser sends when the Web UI is opened through ingress. Without
+# them the Origin allowlist below cannot include the ingress origin and the
+# panel is refused with HTTP 403.
+homeassistant_api: true
+map:
+  - ssl:ro
+  - data:rw
+  - media:rw
+  - share:rw
+options:
+  log_level: info
+  llamacpp_backend: cpu
+  llamacpp_bin: "builtin"
+  model_name: "LFM2.5-230M"
+  model_checkpoint: "LiquidAI/LFM2.5-230M-GGUF:LFM2.5-230M-Q4_K_M.gguf"
+  embedding_model_name: ""
+  embedding_model_checkpoint: "LiquidAI/LFM2.5-Embedding-350M-GGUF:LFM2.5-Embedding-350M-Q8_0.gguf"
+  extra_models_dir: "/share/lemonade_models"
+  preload_model: true
+  ctx_size: 8192
+  max_loaded_models: 1
+  api_key: ""
+  allowed_origins: ""
+  stt_enabled: false
+  stt_model: "Moonshine-Small-Streaming"
+  stt_pinned: true
+  telemetry: false
+  memory_enabled: false
+  memory_url: ""
+  memory_vault: "home_assistant"
+  memory_api_key: ""
+  memory_recall_count: 3
+  memory_recall_tokens: 300
+  memory_timeout_ms: 1000
+schema:
+  log_level: list(trace|debug|info|warning|error|fatal)?
+  llamacpp_backend: list(auto|cpu|vulkan)?
+  llamacpp_bin: str?
+  model_name: str?
+  model_checkpoint: str?
+  embedding_model_name: str?
+  embedding_model_checkpoint: str?
+  extra_models_dir: str?
+  preload_model: bool?
+  ctx_size: int(0,131072)?
+  max_loaded_models: int(1,8)?
+  api_key: password?
+  allowed_origins: str?
+  stt_enabled: bool?
+  stt_model: str?
+  stt_pinned: bool?
+  telemetry: bool?
+  memory_enabled: bool?
+  memory_url: str?
+  memory_vault: str?
+  memory_api_key: password?
+  memory_recall_count: int(1,10)?
+  memory_recall_tokens: int(50,2000)?
+  memory_timeout_ms: int(50,5000)?

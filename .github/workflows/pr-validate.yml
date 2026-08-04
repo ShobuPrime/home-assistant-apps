@@ -1,0 +1,866 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  repository_dispatch:
+    types: [automated-pr-created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+  actions: read
+
+jobs:
+  resolve-context:
+    name: Resolve PR context
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.context.outputs.pr_number }}
+      head_sha: ${{ steps.context.outputs.head_sha }}
+      base_ref: ${{ steps.context.outputs.base_ref }}
+      app: ${{ steps.context.outputs.app }}
+    steps:
+      - name: Resolve context from event
+        id: context
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "pr_number=${{ github.event.client_payload.pull_request_number }}" >> $GITHUB_OUTPUT
+            echo "head_sha=${{ github.event.client_payload.head_sha }}" >> $GITHUB_OUTPUT
+            echo "base_ref=master" >> $GITHUB_OUTPUT
+            echo "app=${{ github.event.client_payload.app }}" >> $GITHUB_OUTPUT
+          else
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "head_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+            echo "base_ref=${{ github.base_ref }}" >> $GITHUB_OUTPUT
+            echo "app=" >> $GITHUB_OUTPUT
+          fi
+
+  validate-structure:
+    name: Validate Repository Structure
+    runs-on: ubuntu-latest
+    needs: resolve-context
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-context.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Get changed apps
+        id: changed
+        run: |
+          BASE_REF="${{ needs.resolve-context.outputs.base_ref }}"
+          git fetch origin "${BASE_REF}"
+          CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+
+          # Find which app directories have changes
+          CHANGED_APPS=""
+          for app_dir in */config.yaml; do
+            app_dir=$(dirname "$app_dir")
+            if echo "$CHANGED_FILES" | grep -q "^${app_dir}/"; then
+              CHANGED_APPS="${CHANGED_APPS} ${app_dir}"
+            fi
+          done
+
+          CHANGED_APPS=$(echo "$CHANGED_APPS" | xargs)
+          echo "changed_apps=${CHANGED_APPS}" >> $GITHUB_OUTPUT
+          echo "Changed apps: ${CHANGED_APPS:-none}"
+
+      - name: Validate app structure
+        id: validate
+        run: |
+          CHANGED_APPS="${{ steps.changed.outputs.changed_apps }}"
+
+          # If no app-specific changes (e.g., workflow-only changes), skip
+          if [ -z "$CHANGED_APPS" ]; then
+            echo "✓ No app-specific changes detected, skipping structure validation"
+            exit 0
+          fi
+
+          EXIT_CODE=0
+          ERRORS=""
+
+          # Only validate changed app directories
+          for app_dir in $CHANGED_APPS; do
+            echo "Validating $app_dir..."
+
+            # Check required files
+            for required_file in config.yaml Dockerfile README.md DOCS.md CHANGELOG.md icon.png; do
+              if [ ! -f "$app_dir/$required_file" ]; then
+                ERRORS="${ERRORS}\n- Missing $required_file in $app_dir"
+                EXIT_CODE=1
+              fi
+            done
+
+            # Validate config.yaml structure
+            if [ -f "$app_dir/config.yaml" ]; then
+              # Check for required fields
+              for field in name version slug description arch; do
+                if ! grep -q "^${field}:" "$app_dir/config.yaml"; then
+                  ERRORS="${ERRORS}\n- Missing required field '$field' in $app_dir/config.yaml"
+                  EXIT_CODE=1
+                fi
+              done
+
+              # Extract version for validation
+              VERSION=$(grep "^version:" "$app_dir/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+
+              # Validate version format (semver, with optional pre-release suffix)
+              if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-][a-zA-Z0-9.]+)*$'; then
+                ERRORS="${ERRORS}\n- Invalid version format in $app_dir/config.yaml: $VERSION (should be X.Y.Z or X.Y.Z-suffix)"
+                EXIT_CODE=1
+              fi
+
+              # Validate `map:` folder-mapping names against Supervisor's
+              # MappingType enum (supervisor/apps/const.py).
+              #
+              # Two distinct hazards, both silent:
+              #   1. An UNRECOGNISED name is skipped, not rejected — Supervisor
+              #      drops the mount and installs the app anyway, so a typo
+              #      costs you a volume with no error anywhere.
+              #   2. The addon-era names still work but log a deprecation
+              #      warning ("uses legacy map type '%s'; use '%s' instead"),
+              #      deprecated as of Supervisor 2026.07.
+              if grep -q "^map:" "$app_dir/config.yaml"; then
+                VALID_MAPS="data config ssl local_apps backup share media"
+                VALID_MAPS="${VALID_MAPS} homeassistant_config all_app_configs app_config"
+                LEGACY_MAPS="addons all_addon_configs addon_config"
+                MAP_NAMES=$(sed -n '/^map:/,/^[^ -]/p' "$app_dir/config.yaml" \
+                  | sed -n 's/^[[:space:]]*-[[:space:]]*\([a-z_]*\).*/\1/p')
+                for m in ${MAP_NAMES}; do
+                  if echo " ${LEGACY_MAPS} " | grep -q " ${m} "; then
+                    ERRORS="${ERRORS}\n- $app_dir/config.yaml uses the legacy map name '${m}'."
+                    ERRORS="${ERRORS} Supervisor deprecated it in 2026.07 and logs a warning; use the app-based name."
+                    EXIT_CODE=1
+                  elif ! echo " ${VALID_MAPS} " | grep -q " ${m} "; then
+                    ERRORS="${ERRORS}\n- $app_dir/config.yaml has an unknown map name '${m}'."
+                    ERRORS="${ERRORS} Supervisor silently SKIPS unrecognised names,"
+                    ERRORS="${ERRORS} so the mount would be dropped without any error."
+                    EXIT_CODE=1
+                  fi
+                done
+              fi
+
+              # Validate ingress_entry slashes.
+              #
+              # Supervisor builds the panel URL as base + entry, where the base
+              # ALREADY ends in a slash (`/api/hassio_ingress/<token>/`), and the
+              # ingress proxy prepends another when forwarding to the app
+              # (`http://<ip>:<port>/{path}`, {path:.*} keeping its leading
+              # slash). A leading slash here reaches the app doubled — which
+              # servers commonly tolerate on a directory route and reject on
+              # asset paths, producing a panel that loads its HTML and then
+              # renders blank, with the 404 visible only in a browser console.
+              # Nothing else in CI can see that, so check it statically.
+              if grep -q "^ingress_entry:" "$app_dir/config.yaml"; then
+                ENTRY=$(grep "^ingress_entry:" "$app_dir/config.yaml" | sed 's/^ingress_entry: *//; s/^["'"'"']//; s/["'"'"']$//')
+                case "$ENTRY" in
+                  /*)
+                    ERRORS="${ERRORS}\n- ingress_entry in $app_dir/config.yaml must NOT start with '/': '$ENTRY' (Supervisor's base URL already ends in one; a leading slash reaches the app doubled and blanks the panel)"
+                    EXIT_CODE=1
+                    ;;
+                esac
+                case "$ENTRY" in
+                  */)
+                    ;;
+                  *)
+                    WARNINGS="${WARNINGS}\n- ingress_entry in $app_dir/config.yaml does not end with '/': '$ENTRY'. If the target page references assets relatively, the browser will resolve them one level too high and the panel will render blank."
+                    ;;
+                esac
+              fi
+            fi
+
+            # Validate Dockerfile
+            if [ -f "$app_dir/Dockerfile" ]; then
+              # Check for FROM instruction
+              if ! grep -q "^FROM" "$app_dir/Dockerfile"; then
+                ERRORS="${ERRORS}\n- Missing FROM instruction in $app_dir/Dockerfile"
+                EXIT_CODE=1
+              fi
+            fi
+          done
+
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✓ All structure validations passed"
+          else
+            echo -e "✗ Validation errors:${ERRORS}"
+          fi
+
+          # Save errors for comment
+          echo "ERRORS<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$ERRORS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          exit $EXIT_CODE
+
+      - name: Comment validation results
+        if: failure()
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const errors = `${{ steps.validate.outputs.ERRORS }}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.resolve-context.outputs.pr_number }},
+              body: `## ❌ Repository Structure Validation Failed\n\n${errors}\n\nPlease fix these issues before merging.`
+            });
+
+  validate-changelog:
+    name: Validate CHANGELOG Updates
+    runs-on: ubuntu-latest
+    needs: resolve-context
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-context.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Check CHANGELOG updates
+        id: check
+        run: |
+          # Get list of changed files
+          BASE_REF="${{ needs.resolve-context.outputs.base_ref }}"
+          git fetch origin "${BASE_REF}"
+          CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+
+          EXIT_CODE=0
+          WARNINGS=""
+
+          # Check if any app files were modified
+          for app_dir in */config.yaml; do
+            app_dir=$(dirname "$app_dir")
+
+            # Check if app files were modified
+            if echo "$CHANGED_FILES" | grep -q "^${app_dir}/"; then
+              # Check if CHANGELOG was updated
+              if ! echo "$CHANGED_FILES" | grep -q "^${app_dir}/CHANGELOG.md"; then
+                WARNINGS="${WARNINGS}\n- $app_dir modified but CHANGELOG.md not updated"
+              else
+                # Verify CHANGELOG has content for this version
+                # Support both "## Version X.Y.Z" and "## [X.Y.Z]" formats
+                VERSION=$(grep "^version:" "$app_dir/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
+                if ! grep -qE "## (Version )?(\[)?${VERSION}(\])?" "$app_dir/CHANGELOG.md"; then
+                  WARNINGS="${WARNINGS}\n- $app_dir/CHANGELOG.md missing entry for version $VERSION"
+                  EXIT_CODE=1
+                fi
+
+                # A maintenance note must sit BELOW the version heading it amends.
+                # Home Assistant renders release notes by slicing from the latest
+                # version's heading down to the installed one, so a note written
+                # above the first heading gets swallowed into whatever version the
+                # next update prepends. That is how lemonade's 11.5.1 entry came to
+                # display five notes dated before 11.5.1 was released.
+                FIRST_HEADING=$(grep -nE "^#+ +[0-9]" "$app_dir/CHANGELOG.md" | head -1 | cut -d: -f1)
+                if [ -n "${FIRST_HEADING}" ] && [ "${FIRST_HEADING}" -gt 1 ]; then
+                  if head -n "$((FIRST_HEADING - 1))" "$app_dir/CHANGELOG.md" | grep -q "_Maintenance ("; then
+                    WARNINGS="${WARNINGS}\n- $app_dir/CHANGELOG.md has a maintenance note ABOVE the first"
+                    WARNINGS="${WARNINGS} version heading. Move it directly below the heading of the version"
+                    WARNINGS="${WARNINGS} it amends, or the next release will absorb it."
+                    EXIT_CODE=1
+                  fi
+                fi
+
+                # The old 'head -c 1000' changelog truncation cut multi-byte UTF-8
+                # characters in half (it left muninndb's file undecodable). The cap
+                # is gone, but assert the result is well-formed so nothing silently
+                # reintroduces it.
+                if ! python3 -c "open('$app_dir/CHANGELOG.md', encoding='utf-8').read()" 2>/dev/null; then
+                  WARNINGS="${WARNINGS}\n- $app_dir/CHANGELOG.md is not valid UTF-8"
+                  WARNINGS="${WARNINGS} (a multi-byte character is probably truncated)"
+                  EXIT_CODE=1
+                fi
+              fi
+            fi
+          done
+
+          if [ -n "$WARNINGS" ]; then
+            echo -e "⚠ Changelog warnings:${WARNINGS}"
+            echo "WARNINGS<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$WARNINGS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "✓ All CHANGELOG validations passed"
+          fi
+
+          exit $EXIT_CODE
+
+      - name: Comment changelog warnings
+        if: failure() || steps.check.outputs.WARNINGS != ''
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const warnings = `${{ steps.check.outputs.WARNINGS }}`;
+            if (warnings) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ needs.resolve-context.outputs.pr_number }},
+                body: `## ⚠️ CHANGELOG Validation Warnings\n\n${warnings}\n\nPlease ensure all changes are documented in CHANGELOG.md.`
+              });
+            }
+
+  validate-apparmor:
+    name: Validate AppArmor Profiles
+    runs-on: ubuntu-latest
+    needs: resolve-context
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-context.outputs.head_sha }}
+
+      - name: Ensure apparmor_parser is available
+        run: |
+          if ! command -v apparmor_parser > /dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq apparmor
+          fi
+
+      - name: Validate AppArmor profiles
+        id: validate
+        run: ./.github/scripts/validate-apparmor.sh
+
+      - name: Comment validation results
+        if: failure()
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const errors = `${{ steps.validate.outputs.ERRORS }}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ needs.resolve-context.outputs.pr_number }},
+              body: `## ❌ AppArmor Profile Validation Failed\n\n${errors}\n\nSee the "AppArmor Profile Rules" section in CLAUDE.md — flat profiles only, resolved-path docker.sock rules, bare \`network,\` for docker-socket apps.`
+            });
+
+  test-go:
+    name: Test Go Modules
+    runs-on: ubuntu-latest
+    needs: resolve-context
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-context.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.5'
+          cache: false
+
+      # Any app may ship Go components (lemonade/memproxy, sonuntius, aegis_ha).
+      # Discover them by go.mod rather than hard-coding a list, so a new one is
+      # covered the day it lands — but only check modules this PR actually
+      # touched, matching how every other job here scopes to changed apps.
+      # Checking untouched modules would fail a PR for pre-existing issues it
+      # had nothing to do with, which is noise rather than signal.
+      - name: Vet and test changed Go modules
+        run: |
+          set -euo pipefail
+          BASE_REF="${{ needs.resolve-context.outputs.base_ref }}"
+          git fetch origin "${BASE_REF}"
+          CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+
+          # Match Go CONTENT, not the module directory. sonuntius and aegis_ha
+          # keep go.mod at the app root, so a prefix match on "${dir}/" pulls
+          # the whole module in when only a Dockerfile or build.yaml changed —
+          # which is how a base-image bump ends up failing on Go formatting.
+          MODULES=()
+          while IFS= read -r dir; do
+            dir="${dir#./}"
+            if echo "${CHANGED_FILES}" | grep -qE "^${dir}/.*\.go$|^${dir}/go\.(mod|sum)$"; then
+              MODULES+=("./${dir}")
+            fi
+          done < <(find . -name go.mod -not -path './.git/*' -printf '%h\n' | sed 's|^\./||' | sort)
+
+          if [ ${#MODULES[@]} -eq 0 ]; then
+            echo "No Go modules changed by this PR — nothing to test"
+            exit 0
+          fi
+          echo "Changed Go modules: ${MODULES[*]}"
+          FAILED=""
+          for dir in "${MODULES[@]}"; do
+            echo "::group::${dir}"
+            if ! gofmt -l "${dir}" | tee /tmp/fmt.out; then :; fi
+            if [ -s /tmp/fmt.out ]; then
+              echo "gofmt reported unformatted files in ${dir}"
+              FAILED="${FAILED} ${dir}(gofmt)"
+            fi
+            go -C "${dir}" vet ./... || FAILED="${FAILED} ${dir}(vet)"
+            # -race matters here: the memory proxy stores exchanges from
+            # background goroutines while relaying the response.
+            go -C "${dir}" test -race -count=1 ./... || FAILED="${FAILED} ${dir}(test)"
+            echo "::endgroup::"
+          done
+          if [ -n "${FAILED}" ]; then
+            echo "Go checks failed for:${FAILED}"
+            exit 1
+          fi
+
+  lint-yaml:
+    name: Lint YAML Files
+    runs-on: ubuntu-latest
+    needs: resolve-context
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-context.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Get changed YAML files
+        id: changed_yaml
+        run: |
+          BASE_REF="${{ needs.resolve-context.outputs.base_ref }}"
+          git fetch origin "${BASE_REF}"
+          CHANGED_YAML=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '\.(yaml|yml)$' || true)
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED_YAML" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "Changed YAML files: ${CHANGED_YAML:-none}"
+
+      - name: Set up Python
+        if: steps.changed_yaml.outputs.files != ''
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install yamllint
+        if: steps.changed_yaml.outputs.files != ''
+        run: pip install yamllint
+
+      - name: Lint changed YAML files
+        run: |
+          CHANGED_YAML="${{ steps.changed_yaml.outputs.files }}"
+
+          if [ -z "$CHANGED_YAML" ]; then
+            echo "✓ No YAML files changed, skipping lint"
+            exit 0
+          fi
+
+          # Create yamllint config
+          cat > .yamllint << 'EOF'
+          extends: default
+          rules:
+            line-length:
+              max: 120
+              level: warning
+            document-start: disable
+            truthy:
+              allowed-values: ['true', 'false', 'yes', 'no']
+            empty-lines:
+              max: 1
+              max-end: 1
+            new-line-at-end-of-file: disable
+          EOF
+
+          # Lint only changed YAML files
+          echo "Linting changed YAML files:"
+          echo "$CHANGED_YAML"
+          yamllint -f parsable $CHANGED_YAML
+
+  summary:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    needs: [resolve-context, validate-structure, validate-changelog, validate-apparmor, test-go, lint-yaml]
+    if: always()
+    steps:
+      - name: Check validation results
+        id: results
+        run: |
+          FAILED=false
+
+          if [ "${{ needs.validate-structure.result }}" != "success" ]; then
+            echo "❌ Structure validation failed"
+            FAILED=true
+          fi
+          if [ "${{ needs.validate-changelog.result }}" != "success" ]; then
+            echo "❌ Changelog validation failed"
+            FAILED=true
+          fi
+          if [ "${{ needs.test-go.result }}" != "success" ]; then
+            echo "❌ Go tests failed"
+            FAILED=true
+          fi
+          if [ "${{ needs.validate-apparmor.result }}" != "success" ]; then
+            echo "❌ AppArmor profile validation failed"
+            FAILED=true
+          fi
+          if [ "${{ needs.lint-yaml.result }}" != "success" ]; then
+            echo "❌ YAML linting failed"
+            FAILED=true
+          fi
+
+          if [ "$FAILED" = "true" ]; then
+            echo "passed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "✅ All validations passed!"
+          echo "passed=true" >> $GITHUB_OUTPUT
+
+      - name: Add success label
+        if: steps.results.outputs.passed == 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber = ${{ needs.resolve-context.outputs.pr_number }};
+
+            // Remove validation-passed label if it exists (to re-add fresh)
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                name: 'validation-passed'
+              });
+            } catch (e) {
+              // Label might not exist, that's fine
+            }
+
+            // Add the label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              labels: ['validation-passed']
+            });
+
+            console.log('Added validation-passed label');
+
+      - name: Remove success label on failure
+        if: steps.results.outputs.passed != 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ needs.resolve-context.outputs.pr_number }},
+                name: 'validation-passed'
+              });
+              console.log('Removed validation-passed label');
+            } catch (e) {
+              // Label might not exist, that's fine
+              console.log('validation-passed label not present');
+            }
+
+  auto-merge:
+    name: Auto-merge if eligible
+    runs-on: ubuntu-latest
+    needs: [resolve-context, validate-structure, validate-changelog, validate-apparmor, lint-yaml, summary]
+    if: |
+      always() &&
+      needs.validate-structure.result == 'success' &&
+      needs.validate-changelog.result == 'success' &&
+      needs.validate-apparmor.result == 'success' &&
+      needs.lint-yaml.result == 'success' &&
+      needs.summary.result == 'success'
+    steps:
+      - name: Check conditions and merge
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber = ${{ needs.resolve-context.outputs.pr_number }};
+            const headSha = '${{ needs.resolve-context.outputs.head_sha }}';
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            console.log('PR Details:', {
+              number: pr.number,
+              state: pr.state,
+              draft: pr.draft,
+              mergeable: pr.mergeable,
+              mergeable_state: pr.mergeable_state,
+              user: pr.user.login
+            });
+
+            // Only auto-merge PRs from github-actions bot
+            if (pr.user.login !== 'github-actions[bot]') {
+              console.log('PR not created by github-actions[bot], skipping auto-merge');
+              return;
+            }
+
+            if (pr.state !== 'open' || pr.draft) {
+              console.log('PR is not open or is a draft');
+              return;
+            }
+
+            // Check for required labels
+            const labels = pr.labels.map(l => l.name);
+            console.log('Labels:', labels);
+
+            if (!labels.includes('automated')) {
+              console.log('Missing "automated" label');
+              return;
+            }
+
+            // Check for blocking labels
+            const blockingLabels = ['do-not-merge', 'needs-review', 'on-hold'];
+            const hasBlockingLabel = labels.some(l => blockingLabels.includes(l));
+            if (hasBlockingLabel) {
+              const found = labels.filter(l => blockingLabels.includes(l));
+              console.log('PR has blocking label(s):', found);
+              return;
+            }
+
+            // Wait for Builder workflow to complete.
+            // For repository_dispatch events, check runs are attached to master's
+            // HEAD (not the PR SHA), so we query workflow runs instead.
+            console.log('Checking Builder workflow status...');
+            const maxAttempts = 60;
+            const pollInterval = 30000; // 30 seconds (60 * 30s = 30 min total)
+            const targetApp = '${{ needs.resolve-context.outputs.app }}';
+            if (targetApp) {
+              console.log(`Scoping Builder lookup to app: ${targetApp}`);
+            }
+
+            // For dispatch events the Builder runs for *every* dispatched
+            // app land on master within the same time window, so we have
+            // to disambiguate by inspecting each candidate run's jobs and
+            // matching against the app name we were dispatched for.
+            // Without this, a failing Arcane Builder run would block the
+            // Dockhand PR's auto-merge (and vice versa).
+            const matchesApp = (jobs, app) => {
+              if (!app) return true;
+              const expected = [`Build ${app} app`, `Smoke test ${app}`];
+              return jobs.some(j => expected.includes(j.name));
+            };
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              let builderFound = false;
+              let builderComplete = false;
+              let builderSuccess = false;
+              let builderDetails = [];
+
+              if (context.eventName === 'repository_dispatch') {
+                // For dispatch events, find Builder workflow runs triggered around
+                // the same time. Check runs are on master's SHA, not the PR SHA.
+                const { data: workflows } = await github.rest.actions.listRepoWorkflows({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                });
+                const builderWorkflow = workflows.workflows.find(w => w.name === 'Builder');
+                if (builderWorkflow) {
+                  const { data: runs } = await github.rest.actions.listWorkflowRuns({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    workflow_id: builderWorkflow.id,
+                    event: 'repository_dispatch',
+                    per_page: 20,
+                  });
+                  // Look across recent dispatch runs and pick the one whose
+                  // jobs actually belong to *our* app.
+                  const recentRuns = runs.workflow_runs.filter(r => {
+                    const runTime = new Date(r.created_at).getTime();
+                    return (Date.now() - runTime) < 20 * 60 * 1000;
+                  });
+                  let matchingRun = null;
+                  for (const run of recentRuns) {
+                    const { data: jobsResp } = await github.rest.actions.listJobsForWorkflowRun({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      run_id: run.id,
+                    });
+                    if (matchesApp(jobsResp.jobs, targetApp)) {
+                      matchingRun = run;
+                      break;
+                    }
+                  }
+                  if (matchingRun) {
+                    builderFound = true;
+                    builderComplete = matchingRun.status === 'completed';
+                    builderSuccess = matchingRun.conclusion === 'success';
+                    builderDetails = [{name: `Builder run #${matchingRun.run_number}`, conclusion: matchingRun.conclusion, url: matchingRun.html_url}];
+                  }
+                }
+              } else {
+                // For PR and push events, check runs are on the correct SHA
+                const { data: checkRuns } = await github.rest.checks.listForRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: headSha,
+                  filter: 'latest'
+                });
+                // Gate on EVERY Builder check, not just the build ones.
+                // "Smoke test <app>" matched neither prefix here, so it was
+                // invisible to this gate: PR #190 was merged at 14:57:08 on the
+                // strength of "Build lemonade app" alone, while "Smoke test
+                // lemonade" was still running — it failed 40 seconds later, on
+                // an already-merged PR. A build that compiles but fails its
+                // smoke test must never auto-merge.
+                //
+                // This is an allow-list of job names: a new job added to
+                // builder.yml is NOT gated until its name matches here.
+                const runs = checkRuns.check_runs.filter(cr =>
+                  cr.name.startsWith('Build ')
+                  || cr.name.startsWith('Smoke test ')
+                  || cr.name === 'Initialize build'
+                );
+                builderFound = runs.length > 0;
+                builderComplete = runs.every(cr => cr.status === 'completed');
+                // "skipped" counts as a pass. A matrix job with nothing to
+                // build reports that (the check keeps its un-expanded
+                // "Build ${{ matrix.app }} app" name), and it means the PR
+                // changed no app — not that a check failed. A job skipped
+                // because an earlier one failed still blocks the merge, since
+                // that earlier job's own conclusion is "failure".
+                builderSuccess = runs.every(cr =>
+                  cr.conclusion === 'success'
+                  || cr.conclusion === 'skipped'
+                  || cr.conclusion === 'neutral'
+                );
+                builderDetails = runs.map(cr => ({name: cr.name, conclusion: cr.conclusion, url: cr.html_url || cr.details_url || ''}));
+              }
+
+              if (!builderFound) {
+                console.log(`Attempt ${attempt}/${maxAttempts}: No Builder checks found yet, waiting...`);
+                if (attempt < maxAttempts) {
+                  await new Promise(resolve => setTimeout(resolve, pollInterval));
+                  continue;
+                }
+                console.log('Builder workflow never appeared - skipping merge');
+                return;
+              }
+
+              if (!builderComplete) {
+                console.log(`Attempt ${attempt}/${maxAttempts}: Builder still running...`);
+                if (attempt < maxAttempts) {
+                  await new Promise(resolve => setTimeout(resolve, pollInterval));
+                  continue;
+                }
+                console.log('Builder did not complete in time - skipping merge');
+                return;
+              }
+
+              if (!builderSuccess) {
+                console.log('Builder checks failed:', builderDetails.map(d => `${d.name}: ${d.conclusion}`));
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body: `⚠️ Auto-merge skipped: Builder workflow failed.\n\nFailed checks:\n${builderDetails.map(d => d.url ? `- [**${d.name}**](${d.url}): ${d.conclusion}` : `- **${d.name}**: ${d.conclusion}`).join('\n')}\n\nPlease investigate and merge manually if appropriate.`
+                });
+                return;
+              }
+
+              console.log('All Builder checks passed');
+              break;
+            }
+
+            // Wait for GitHub to finalize mergeability
+            let mergeablePr = pr;
+            for (let attempt = 1; attempt <= 6; attempt++) {
+              if (mergeablePr.mergeable !== null) break;
+              console.log(`Waiting for mergeability calculation (attempt ${attempt}/6)...`);
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              const { data: refreshed } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              mergeablePr = refreshed;
+            }
+
+            if (!mergeablePr.mergeable) {
+              console.log('PR is not mergeable:', mergeablePr.mergeable_state);
+              return;
+            }
+
+            // All conditions met - merge
+            console.log('All conditions met - merging PR');
+            try {
+              const mergeResult = await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                merge_method: 'squash',
+                commit_title: pr.title,
+                commit_message: `${pr.body || ''}\n\nAuto-merged by GitHub Actions`
+              });
+
+              console.log('PR merged successfully');
+
+              // Validate what we just put on master.
+              //
+              // This merge is performed with GITHUB_TOKEN, and a push made with
+              // GITHUB_TOKEN does not trigger workflows - so builder.yml's
+              // `push: master` never fires for an auto-merged commit and master
+              // lands with nothing having built or smoke-tested it. Human merges
+              // through the UI are unaffected; only auto-merges have this hole.
+              // Lemonade 11.5.1 reached master that way in Jul 2026.
+              //
+              // repository_dispatch IS delivered when fired with GITHUB_TOKEN
+              // (verified: Builder runs with event=repository_dispatch show
+              // triggering_actor=github-actions[bot]), which is already how this
+              // repo starts Builder for bot PRs. `app: 'changed'` tells Builder
+              // to diff the merge commit against its parent and build exactly
+              // what landed, rather than all apps.
+              try {
+                await github.rest.repos.createDispatchEvent({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  event_type: 'master-post-merge',
+                  client_payload: {
+                    head_sha: mergeResult.data.sha,
+                    app: 'changed',
+                    pull_request_number: String(prNumber)
+                  }
+                });
+                console.log(`Dispatched master-post-merge for ${mergeResult.data.sha}`);
+              } catch (e) {
+                console.log(`Could not dispatch post-merge validation: ${e.message}`);
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body: `⚠️ Merged, but the post-merge Builder run could not be dispatched: `
+                        + `${e.message}\n\nmaster is unvalidated for this commit — `
+                        + `run Builder manually against \`master\`.`
+                });
+              }
+
+              // Delete the head branch
+              try {
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${pr.head.ref}`
+                });
+                console.log(`Deleted branch: ${pr.head.ref}`);
+              } catch (e) {
+                console.log(`Could not delete branch ${pr.head.ref}: ${e.message}`);
+              }
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: '✅ All validation and build checks passed. PR has been automatically merged.'
+              });
+            } catch (error) {
+              console.log('Merge failed:', error.message);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `⚠️ Auto-merge failed: ${error.message}\n\nPlease investigate and merge manually if appropriate.`
+              });
+            }
