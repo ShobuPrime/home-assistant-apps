@@ -1,0 +1,48 @@
+# ShobuPrime Home Assistant Apps
+
+![Project Stage][project-stage-shield]
+![Maintenance][maintenance-shield]
+[![License][license-shield]](LICENSE.md)
+
+## About
+
+This repository contains custom Home Assistant apps.
+
+## Installation
+
+1. Navigate in your Home Assistant frontend to **Settings** → **Apps** → **App Store**
+2. Click the menu icon (three dots) in the top right corner
+3. Select **Repositories**
+4. Add the URL of this repository: `https://github.com/shobuprime/home-assistant-apps`
+5. Scroll down to find the apps from this repository
+
+## Apps
+
+| App | Description |
+|-----|-------------|
+| [Arcane](arcane/) | Modern Docker management interface with a clean, intuitive UI |
+| [Dockge](dockge/) | Docker Compose stack-oriented manager with interactive YAML editor |
+| [Dockhand](dockhand/) | Node.js-based Docker management for monitoring and managing containers |
+| [HAY CM5 Fan Controller](hay_cm5_fan/) | GPIO fan control with thermal management for Home Assistant Yellow with CM5 |
+| [Huly](huly/) | All-in-one project management platform — alternative to Linear, Jira, Slack, and Notion |
+| [Lemonade](lemonade/) | Local LLM server with OpenAI/Ollama-compatible APIs — private on-device conversation agent |
+| [MuninnDB](muninndb/) | Local-first AI memory and knowledge base with ONNX embedder |
+| [Portainer EE (LTS)](portainer_ee_lts/) | Docker management with Portainer Enterprise Edition (Long Term Support) |
+| [Portainer EE (STS)](portainer_ee_sts/) | Docker management with Portainer Enterprise Edition (Short Term Support) |
+| [Sonuntius](sonuntius/) | Cast/DIAL to Music Assistant bridge for Sendspin playback |
+
+## Support
+
+Got questions or need help? Please open an issue on GitHub.
+
+## Contributing
+
+This is a personal repository, but suggestions and improvements are welcome.
+
+## License
+
+MIT License - see [LICENSE.md](LICENSE.md) for details.
+
+[project-stage-shield]: https://img.shields.io/badge/project%20stage-development-orange.svg
+[maintenance-shield]: https://img.shields.io/maintenance/yes/2026.svg
+[license-shield]: https://img.shields.io/github/license/shobuprime/home-assistant-apps.svg
