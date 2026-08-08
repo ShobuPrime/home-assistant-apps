@@ -1,5 +1,84 @@
 # Changelog
 
+## 11.5.2
+
+_2026-08-08_
+
+## Headline
+
+- The standalone macOS/Linux `lemonade-tray` client can now connect to servers over HTTPS/TLS.
+- Repeatable llama.cpp custom arguments such as `--override-kv` now preserve every occurrence instead of collapsing to the last value.
+- `lemonade bench` output now includes a hardware section covering CPU, GPU, RAM, OS, and backends.
+- The llama.cpp backend now returns a clear error when an explicit device prefix contradicts the resolved backend.
+- The Windows MSI installer now restores a saved custom per-user install location during upgrades.
+
+## Breaking Changes
+
+## Lemonade Server
+
+| Operating System | Downloads |
+|------------------|-----------|
+| **Windows** | [lemonade.msi](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade.msi) |
+| **Ubuntu 24.04+** | [Launchpad PPA](https://launchpad.net/~lemonade-team/+archive/ubuntu/stable) |
+| **Debian 13 (x86_64)** | [lemonade-server_11.5.2-debian13_amd64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-server_11.5.2-debian13_amd64.deb) |
+| **Debian 13 (ARM64)** | [lemonade-server_11.5.2-debian13_arm64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-server_11.5.2-debian13_arm64.deb) |
+| **Fedora 43 (x86_64)** | [lemonade-server-11.5.2-fc43.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-server-11.5.2-fc43.x86_64.rpm) |
+| **Fedora 43 (ARM64)** | [lemonade-server-11.5.2-fc43.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-server-11.5.2-fc43.aarch64.rpm) |
+| **Fedora 44 (x86_64)** | [lemonade-server-11.5.2-fc44.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-server-11.5.2-fc44.x86_64.rpm) |
+| **Fedora 44 (ARM64)** | [lemonade-server-11.5.2-fc44.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-server-11.5.2-fc44.aarch64.rpm) |
+| **macOS** | [Lemonade-11.5.2-Darwin.pkg](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/Lemonade-11.5.2-Darwin.pkg) |
+
+> **Other platforms?** See our [Installation Options](https://lemonade-server.ai/docs/guide/install/) for [Docker](https://lemonade-server.ai/docs/guide/install/docker/), [Snap](https://lemonade-server.ai/docs/guide/install/ubuntu/#__tabbed_2_3), [Arch](https://lemonade-server.ai/docs/guide/install/arch/), [Debian](https://lemonade-server.ai/docs/guide/install/), and more.
+
+## Embeddable Lemonade
+
+Portable binaries for bundling into your own installer. Run `lemond ./` as a subprocess.
+
+| Platform | Download |
+|----------|----------|
+| **Ubuntu x64** | [lemonade-embeddable-11.5.2-ubuntu-x64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-embeddable-11.5.2-ubuntu-x64.tar.gz) |
+| **Ubuntu arm64** | [lemonade-embeddable-11.5.2-ubuntu-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-embeddable-11.5.2-ubuntu-arm64.tar.gz) |
+| **Windows x64** | [lemonade-embeddable-11.5.2-windows-x64.zip](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-embeddable-11.5.2-windows-x64.zip) |
+| **macOS arm64** | [lemonade-embeddable-11.5.2-macos-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v11.5.2/lemonade-embeddable-11.5.2-macos-arm64.tar.gz) |
+
+---
+
+## What's Changed
+
+Thanks `abn`, `bitgamma`, `ckuethe`, `fl0rianr`, `github-actions`, `jeremyfowers`, `kenvandine`, `meghsat`, `sujikathir` for your awesome contributions to this release!
+
+<details>
+<summary>Click to expand changelog</summary>
+
+* fix(test): stabilize semantic router similarity thresholds by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/2824
+* ci: add and scope concurrency policies across workflows by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/2851
+* feat(tray): support HTTPS server configurations by `abn` in https://github.com/lemonade-sdk/lemonade/pull/2815
+* ci: improve persistent Windows runner hygiene and process lock recovery by `abn` in https://github.com/lemonade-sdk/lemonade/pull/2837
+* fix(build): fix system cpp-httplib detection and HTTPS compilation by `abn` in https://github.com/lemonade-sdk/lemonade/pull/2814
+* fix(custom_args): preserve repeatable flags by `sujikathir` in https://github.com/lemonade-sdk/lemonade/pull/2840
+* fix(installer): remember custom install location by `sujikathir` in https://github.com/lemonade-sdk/lemonade/pull/2855
+* test(ci): wait for server after host rebind by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/2870
+* ci: make C++ test selection merge-friendly by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/2829
+* [bench] Refactor & add hardware info by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/2866
+* fix(llamacpp): validate device-backend compatibility during model load by `abn` in https://github.com/lemonade-sdk/lemonade/pull/2839
+* document multi checkpoint model creation by `ckuethe` in https://github.com/lemonade-sdk/lemonade/pull/2844
+* FIX(ci-test-router): recover semantic routing after transient embed failure by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/2871
+* Moving from Quick Rules/ Advanced Rules to Natural Language Router now gives a warning that the progress will be cleared by `meghsat` in https://github.com/lemonade-sdk/lemonade/pull/2867
+* fix(docs): no support for llama.cpp:cpu, metal is used by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/2881
+* Update llama.cpp to b10241 by `github-actions`[bot] in https://github.com/lemonade-sdk/lemonade/pull/2884
+* Bump project version from 11.5.1 to 11.5.2 by `kenvandine` in https://github.com/lemonade-sdk/lemonade/pull/2894
+
+</details>
+
+**Full Changelog**: https://github.com/lemonade-sdk/lemonade/compare/v11.5.1...v11.5.2
+
+---
+
+> Windows installers are signed. Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). See our [Code Signing Policy](https://github.com/lemonade-sdk/lemonade#code-signing-policy).
+
+---
+
+
 ## 11.5.1
 
 _2026-07-31_

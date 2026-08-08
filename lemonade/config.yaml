@@ -1,6 +1,6 @@
 name: "Lemonade"
 description: "Local LLM server with an OpenAI- and Ollama-compatible API, for private on-device AI in Home Assistant"
-version: "11.5.1"
+version: "11.5.2"
 slug: "lemonade"
 init: false
 ingress: true
