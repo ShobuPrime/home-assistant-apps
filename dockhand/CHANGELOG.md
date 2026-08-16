@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.0.41
+
+_2026-08-16_
+
+### Changed
+- Updated Dockhand to version 1.0.41
+
+Released: 2026-08-09
+
+## What's new in v1.0.41
+
+- ✨ configurable default homepage (#1354)
+- ✨ direct remote environments - remote stacks dir configurable, for putting the whole stack onto the remote
+- ✨ S3 backup destinations take an AWS region with a region quick-pick
+- ✨ registry browser shows tag size and date for self-hosted registries, loaded on expand (#876)
+- 🐛 activity log times now honor the configured timezone (#1183)
+- 🐛 container updates respect the new image's command/entrypoint (#1371)
+- 🐛 deleting a stack shows which folders will be removed, with a choice to keep/delete folders (#675)
+- 🐛 fixed an LDAP filter parsing issue that could break group-based role assignment with some AD DNs
+- 🐛 child containers using network_mode: service/container reconnect when their parent is updated (#570)
+- 🐛 dashboard pending-update count now matches the containers list (#1006)
+- 🐛 more room between settings/editor content and the scrollbar (#1171)
+- 🐛 GitLab and Harbor registries no longer report a misleading auth error when browsing (#873)
+- 🐛 backup volume picker shows every bind mount when two containers share a container path (#1373)
+- 🐛 Google Cloud backup destinations now use a service-account JSON key
+- 🐛 backup and restore helper containers no longer emit a "container died" notification when they finish
+- 🐛 snapshots from another Dockhand instance sharing the repo now appear as restorable orphans (#1351)
+- 🐛 a stack restored to new locations always keeps its compose file and stays internal (#1351)
+- 🐛 improved restic repository operations log (prune, check, repair index etc.)
+- 🐛 Azure Blob destinations no longer fail with 'invalid format' on init
+- 🐛 backup destinations now have separate extra backup and restore flags (#1349)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.41
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.40
 
 _2026-08-01_
