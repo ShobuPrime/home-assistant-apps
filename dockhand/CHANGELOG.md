@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.0.42
+
+_2026-08-20_
+
+### Changed
+- Updated Dockhand to version 1.0.42
+
+Released: 2026-08-16
+
+## What's new in v1.0.42
+
+- ✨ optional indentation guides in the compose/YAML editor (#1410)
+- ✨ support caddy-docker-proxy labels (#1390)
+- 🐛 updating a compose file over the API now saves it, not just deploys it (#1383)
+- 🐛 reopening the MFA setup screen while MFA is enabled no longer wipes the secret and backup codes (#1399)
+- ✨ upload a Docker image .tar through the UI (docker load) for air-gapped hosts (#88, #1389)
+- 🐛 stack deploys no longer leak Dockhand's own DOCKER_HOST into services (#1393)
+- ✨ stack secrets from external providers (1Password, HashiCorp Vault, Infisical and Doppler) (PR#1360, @wintech147, @GooRoo)
+- 🐛 container update no longer fails on Podman when CPU limits are set (#1381)
+- 🐛 container update no longer fails on Podman for containers using userns_mode: keep-id (#1409)
+- 🐛 stack deploy now respects DOCKER_CONFIG when pulling private images (#1376)
+- 🐛 start, stop or restart on Hawser updates its files on the remote host, not only on redeploy (#1240)
+- 🐛 grouped container logs now show one merged timeline sorted by time (#1406)
+- 🐛 multi-arch images no longer show false "update available" (#1367)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.42
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.40
 
 _2026-08-01_
