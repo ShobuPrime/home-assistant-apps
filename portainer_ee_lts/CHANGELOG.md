@@ -1,5 +1,68 @@
 # Changelog
 
+## 2.39.6
+
+_2026-08-21_
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+### Security improvements
+
+- Implemented an SSRF protection mechanism with a configurable allow-list in settings (off / audit / enforce modes)
+- Changed a default setting to enforce server-side EdgeID on first connection
+- Fixed path traversal in the swarm compose deployer, where configs/secrets file paths escaped the project root
+- Upgraded the Go toolchain from 1.25.11 to 1.25.12 to address the following CVEs:
+    - CVE-2026-42505
+    - CVE-2026-39822
+- Upgraded `github.com/go-git/go-git/v5` to 5.19.2 to address the following CVEs:
+    - CVE-2026-71556
+    - CVE-2026-71557
+- Upgraded `oras.land/oras-go/v2` to 2.6.2 to address CVE-2026-50163
+- Upgraded `go.opentelemetry.io/otel` to 1.44.0 to address CVE-2026-41178
+- Upgraded `github.com/klauspost/compress` to 1.18.7 to address GHSA-259r-337f-4rfw
+- Upgraded `golang.org/x/net` to 0.56.0 and `golang.org/x/text` to 0.39.0 in the Portainer updater to address the following CVEs:
+    - CVE-2026-46600
+    - CVE-2026-56852
+- Upgraded `github.com/containerd/containerd` (v1) to 1.7.33 to address the following CVEs:
+    - CVE-2026-53488
+    - CVE-2026-47262
+    - Upgraded `google.golang.org/grpc` to 1.82.1 to address GHSA-hrxh-6v49-42gf
+
+### Bug fixes
+
+- Fixed a user's direct environment access being incorrectly removed when a team they belonged to was deleted
+- Fixed multiple "Cannot read properties of undefined (reading 'message')" error toasts appearing on Kubernetes application pages when an API call failed without a response (e.g. while pods are restarting after a redeploy)
+- Fixed an "Invalid Swarm ID" / `503` error when creating a stack from a Swarm worker node
+- Fixed Kubernetes Ingress service ports always showing `0`
+- Fixed `kubectl port-forward` failing with "error upgrading connection" against Agent 2.35+ on older Kubernetes clusters
+- Fixed "This node is not a swarm manager" errors when starting/stopping a Swarm stack from within the swarm itself
+- Fixed Docker image builds failing with `unauthorized` against private registries referenced in a Dockerfile's `FROM` line (both the UI's "Build a new image" flow and the `/docker/build` API proxy)
+- Fixed Swarm stack deployments failing to re-pull private Docker Hub images on a forced re-pull, even with valid registry credentials configured
+- Fixed request-handler panics being logged as unexpected crashes when a client disconnected mid-request (e.g. a long-poll on a Kubernetes Jobs watch)
+
+## Deprecated and removed features
+
+### Deprecated features
+
+None.
+
+### Removed features
+
+None
+
+---
+
+
 ## 2.39.5
 
 _2026-07-14_
