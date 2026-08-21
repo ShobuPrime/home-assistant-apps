@@ -1,6 +1,6 @@
 # Global ARGs must be declared before the first FROM
 ARG BUILD_FROM
-ARG LEMONADE_VERSION=11.5.1
+ARG LEMONADE_VERSION=11.7.0
 
 # ---------------------------------------------------------------------------
 # Stage 1: Fetch Lemonade and collect the glibc runtime it needs
