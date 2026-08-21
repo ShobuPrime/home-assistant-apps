@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.0.43
+
+_2026-08-21_
+
+### Changed
+- Updated Dockhand to version 1.0.43
+
+Released: 2026-08-20
+
+## What's new in v1.0.43
+
+- 🐛 registry auth survives an http to https token realm redirect behind a TLS proxy (#1428)
+- 🐛 security: update Go to 1.25.13 (8 HIGH stdlib CVEs) and update docker-compose to 5.5.0
+- ✨ Compose validate - a preflight linter & validator for compose files
+- ✨ Bitwarden Secrets Manager as a secret provider via an operator-installed bws client (PR#1416, @StefanSa)
+- ✨ Proton Pass as a secret provider via an operator-installed pass-cli client
+- ✨ Infisical: Universal Auth (Machine Identity) as well as a static token (#1398, @strausmann)
+- ✨ detect newer version tags for pinned images and show them as a badge with release notes (#1176)
+- ✨ OpenAPI spec at /api/docs with a Scalar viewer, opt-in via FEAT_API_DOCS (#814, PR#1342, @strausmann)
+- ✨ Zabbix notification channel via the history.push API (PR#1419, @snesterkov)
+- 🐛 concurrent git syncs sharing an SSH credential no longer fail on a missing temp key (#1413, PR#1143, @HoroTW)
+- 🐛 backup notifications show a real title and message instead of "undefined" (#1414)
+- 🐛 git stacks accept a compose/env path with a leading slash (#1355)
+- 🐛 container update notifications now fire properly (#1424)
+- 🐛 Infisical: the project ID is optional when using a service token - it's taken from the token (#1398)
+- 🐛 API: adopting a stack rejects a compose path not on Dockhand's filesystem (#1375)
+- 🐛 API: validating a stack's env vars no longer drops the environment id (#1423)
+- 🐛 editing a secret provider no longer wipes its stored token (#1432)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.43
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.40
 
 _2026-08-01_
