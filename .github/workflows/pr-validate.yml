@@ -640,6 +640,12 @@ jobs:
             // Dockhand PR's auto-merge (and vice versa).
             const matchesApp = (jobs, app) => {
               if (!app) return true;
+              if (app === 'all') {
+                // Base-image PRs dispatch app="all". No job is named
+                // "Build all app"; the all-apps run is the one with Build
+                // jobs for more than one app, which no single-app run has.
+                return jobs.filter(j => j.name.startsWith('Build ')).length > 1;
+              }
               const expected = [`Build ${app} app`, `Smoke test ${app}`];
               return jobs.some(j => expected.includes(j.name));
             };
