@@ -146,4 +146,4 @@ Got questions or found a bug? Please open an issue on the GitHub repository.
 
 ## Version
 
-Currently running MuninnDB 0.10.0
+Currently running MuninnDB 0.11.0
