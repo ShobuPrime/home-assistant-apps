@@ -1,5 +1,189 @@
 # Changelog
 
+## 0.11.0
+
+_2026-08-21_
+
+The hardening release. Three days after 0.10.0, fifty merges: a systematic audit of the association read/write layer, the cluster subsystem taken from "replicates" to "converges", a cross-tenant isolation fix, and the read path made provably write-free. Nearly every fix landed with a test proven to fail without it.
+
+## ⚠️ Upgrade notes
+
+- **Migrations v5 and v6 run automatically on first start.** A pre-migration binary refuses to start against a migrated data directory — this release's `muninn upgrade` now keeps the outgoing binary as `muninn.<version>.bak` beside the live one, so a rollback is a file rename away.
+- **Entity `mention_count` values will go DOWN.** Migration v6 recomputes them from each vault's own links, replacing an upsert counter that re-enrichment and replay had been inflating.
+- **Cluster operators:** migration v5 relocates the replication keyspace and drops historical log entries — Lobes re-sync via snapshot. And a write sent to a Lobe is now **refused** (REST `421` naming the Cortex, gRPC `FAILED_PRECONDITION`, MCP `-32002`, MBP error `4015`) instead of accepted and silently lost. Repoint any load balancer that lacks leader affinity. Single-node deployments only need the rollback note.
+
+## Security
+
+- **Entity records were global across vaults** (#683): a cross-tenant read oracle over another vault's entity vocabulary AND a cross-tenant write (`SetEntityState` took no vault at all). Records are now vault-keyed; migration v6 relocates existing ones.
+- CLI cluster commands now authenticate (#632); enrichment and embed errors no longer carry memory content into logs (#641, #790); `muninn upgrade` renders release notes inertly on the terminal (#857); `muninn_state` is correctly classified as mutating, so observe-mode credentials can no longer transition lifecycle state (#731).
+
+## Highlights
+
+- **UPSERT write mode** (#556): a caller-supplied `op_id` pins to a head engram — key miss creates, identical content no-ops, changed content evolves with declared supersession, atomically.
+- **`muninn_update_tags`** (#720): in-place retagging that preserves the ULID, lineage, and access history.
+- **The association layer, audited end to end**: a symmetric association now boosts recall from both endpoints (#800 — measured, the same link scored 0.7150 from one side and 0.3862 from the other); failed reads are never written back as fabricated defaults (#809); cache-returned engrams are read-only and writers clone (#858); laundered reads, unevicted caches, and an aliased slice closed (#804/#808/#818/#820).
+- **A `read_only` recall is now provably write-free** (#846): no archive restores, no cache recency stamps, no reinforcement — a scoring pass is not a user access.
+- **Cluster convergence**: the evolve batch path replicates (#686), decay is leader-gated (#760), the replication log is pruned and bounded (#724/#725 — measured ~10 GB/day of unbounded growth before), role flaps no longer crash the process (#629), node identity survives hostname changes (#630), and a stale Lobe can no longer rejoin silently blind (#631).
+- **Consolidation declares supersession** (#779): a query phrased in a merged source's wording now finds the merged memory instead of nothing.
+- **Recall-health and MCP auth-source metrics** (#606/#648), per-vault embed status (#802), SIGHUP log rotation (#850), and a self-`upgrade` that is safe to run and to undo (#600/#749).
+
+The full record — including what was deliberately *not* shipped and the measured negatives — is in [CHANGELOG.md](https://github.com/scrypster/muninndb/blob/develop/CHANGELOG.md).
+
+
+## What's Changed
+* feat(auth): add working plasticity preset (RFC #597) by `madeinoz67` in https://github.com/scrypster/muninndb/pull/599
+* ci: rename stale 'minilm-v2' embed-asset cache keys to bge-small-en-v1.5 (#601) by `johanneshauer` in https://github.com/scrypster/muninndb/pull/603
+* fix(storage): serialize DeleteEngram with CompareAndSet's stripe lock by `ad-astra-bot` in https://github.com/scrypster/muninndb/pull/594
+* fix(activation): preserve explicit search threshold under RRF + expose Search Scoring setting by `gitssie` in https://github.com/scrypster/muninndb/pull/590
+* feat(mcp): capability tokens + muninn_create_workflow_vault (RFC #597) by `madeinoz67` in https://github.com/scrypster/muninndb/pull/612
+* feat(mcp): toolset profiles for tools/list — env default + per-connection header override (#588) by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/604
+* docs: AI-agent working guide, internals reference, and code-review agent by `scrypster` in https://github.com/scrypster/muninndb/pull/623
+* fix(hnsw): late inserts born with zero in-edges stay permanently unreachable — protect the fresh back-edge in prune, repair orphans on load by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/621
+* fix(mcp): SSE mk_ re-validation + vault-exists test + session.go removal (RFC #597 inc 3) by `madeinoz67` in https://github.com/scrypster/muninndb/pull/617
+* fix(storage/auth): relocate auth prefixes + prefix registry + v3 migration (#611) by `madeinoz67` in https://github.com/scrypster/muninndb/pull/618
+* fix(recall): seed tag-index candidates for tags_all/tags_any recall (#607) by `ad-astra-bot` in https://github.com/scrypster/muninndb/pull/619
+* feat(storage,engine): persist per-recall surfaced sets as recall events by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/574
+* docs: add the review rubric that makes AI code review dependable by `scrypster` in https://github.com/scrypster/muninndb/pull/624
+* fix(mcp): expose stored memory type on read/recall/where_left_off/find_by_entity by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/616
+* feat(cli): `muninn remember` — REST write verb with `--content-file` (#610) by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/613
+* docs: sync internals after #617, #618, #619 merged by `scrypster` in https://github.com/scrypster/muninndb/pull/633
+* docs(changelog): reconcile 0.8.0 + add 0.9.0 (closes #602) by `scrypster` in https://github.com/scrypster/muninndb/pull/635
+* chore: reconcile main into develop (close the changelog merge-back gap) by `scrypster` in https://github.com/scrypster/muninndb/pull/637
+* chore(deps): bump golang.org/x/text to v0.39.0 (GO-2026-5970) by `scrypster` in https://github.com/scrypster/muninndb/pull/649
+* fix(enrich): preserve transient provider failures by `dpearson2699` in https://github.com/scrypster/muninndb/pull/643
+* feat(grpc,engine): AdjustConfidence RPC with contradiction signaling (#559) by `madeinoz67` in https://github.com/scrypster/muninndb/pull/625
+* Close three documented gaps: upgrade checksums (#600), Windows CI model drift, and drift guards that never ran by `scrypster` in https://github.com/scrypster/muninndb/pull/666
+* build(deps): bump golang.org/x/crypto from 0.50.0 to 0.52.0 by `dependabot`[bot] in https://github.com/scrypster/muninndb/pull/667
+* chore(deps): bump esbuild, vite and vitest in /web by `dependabot`[bot] in https://github.com/scrypster/muninndb/pull/664
+* chore(deps-dev): bump vitest from 3.2.4 to 3.2.6 in /sdk/node by `dependabot`[bot] in https://github.com/scrypster/muninndb/pull/665
+* build(deps-dev): bump picomatch from 4.0.3 to 4.0.5 in /sdk/node by `dependabot`[bot] in https://github.com/scrypster/muninndb/pull/670
+* build(deps): bump google.golang.org/grpc from 1.79.3 to 1.82.1 by `dependabot`[bot] in https://github.com/scrypster/muninndb/pull/668
+* build(deps): bump golang.org/x/net from 0.54.0 to 0.55.0 by `dependabot`[bot] in https://github.com/scrypster/muninndb/pull/669
+* Migrate Tailwind v3 → v4, unblocking #662 by `scrypster` in https://github.com/scrypster/muninndb/pull/671
+* Clear the last 9 Dependabot alerts, and gate the Node SDK in CI by `scrypster` in https://github.com/scrypster/muninndb/pull/672
+* Ignore the third maintainer-private skill directory by `scrypster` in https://github.com/scrypster/muninndb/pull/673
+* Move GitHub Actions to their Node 24 runtimes by `scrypster` in https://github.com/scrypster/muninndb/pull/674
+* fix(fts): Stop() must drain the queue even before workers are scheduled by `scrypster` in https://github.com/scrypster/muninndb/pull/675
+* Add Worker.Flush and make awaitFTS actually await by `scrypster` in https://github.com/scrypster/muninndb/pull/676
+* Correct two stale code comments; close out fixed drift entries by `scrypster` in https://github.com/scrypster/muninndb/pull/677
+* Pin plasticity preset names across Go and the web console by `scrypster` in https://github.com/scrypster/muninndb/pull/678
+* fix(engine): inherit MemoryType and TypeLabel across evolve by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/655
+* docs: fix Title Case heading capitalization in CONTRIBUTING.md by `amir-rezaei` in https://github.com/scrypster/muninndb/pull/652
+* Run the web console's vitest suite in CI by `scrypster` in https://github.com/scrypster/muninndb/pull/679
+* fix(engine): carry entity links and relationships across evolve, funding the mention ledgers by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/646
+* feat(reflex): session-start orientation primitives — reinforcement, reminders, trust tiering (S0-S8) by `scrypster` in https://github.com/scrypster/muninndb/pull/685
+* Land reflex stack: append-mode, tag_filter, dedup-guard, supersedes-aware recall, valid-time by `scrypster` in https://github.com/scrypster/muninndb/pull/688
+* fix(engine): rarity-weight entity boost, cap accumulation, gate injection on threshold by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/570
+* feat(cognition): importance dimension + pruning protection by `scrypster` in https://github.com/scrypster/muninndb/pull/689
+* feat(mcp,engine): optional inline entities on evolve, replacing the carried set by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/680
+* fix(engine,storage): startup repair for evolve-stripped successors — atomic, funded, watermarked by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/681
+* docs(skill): /increment — the repeatable build loop by `scrypster` in https://github.com/scrypster/muninndb/pull/690
+* test(engine): entity-boost lease-fail-closed coverage (#570 follow-up) by `scrypster` in https://github.com/scrypster/muninndb/pull/691
+* feat(prospective): THE PUSH increment 1 — armed intentions + notices over MCP by `scrypster` in https://github.com/scrypster/muninndb/pull/694
+* fix(trigger): carry the full 8-byte vault prefix on trigger events (#692) by `scrypster` in https://github.com/scrypster/muninndb/pull/697
+* fix(recall): deterministic top-N ordering — ULID tie-break at equal scores (#698) by `scrypster` in https://github.com/scrypster/muninndb/pull/699
+* fix(prospective): exclude an intention's own engram from its focality (#693) by `scrypster` in https://github.com/scrypster/muninndb/pull/703
+* fix(recall): RRF vaults no longer return silently-empty default recall (ranking-honesty R1) by `scrypster` in https://github.com/scrypster/muninndb/pull/705
+* fix(contradict): stop fabricating contradictions from same-relation-type/different-target shape (ranking-honesty R2) by `scrypster` in https://github.com/scrypster/muninndb/pull/707
+* fix(recall): calibrated FTS relevance → recall can abstain (reliable-colleague #711) by `scrypster` in https://github.com/scrypster/muninndb/pull/715
+* fix(recall): recall-mode presets no longer bypass the rrf mode-aware threshold default (#704) by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/710
+* fix(engine): shared visibility gate for post-pipeline injections; supersession substitutes atomically under the caller's view by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/701
+* docs: calibration is per-vault and self-derived, never hardcoded (principle #11) by `scrypster` in https://github.com/scrypster/muninndb/pull/717
+* feat(recall): semantic-abstention floor — anisotropy-calibrated cosine (COG-26) by `scrypster` in https://github.com/scrypster/muninndb/pull/718
+* docs(guide): use muninn_evolve, not repeated remember, for superseding facts by `scrypster` in https://github.com/scrypster/muninndb/pull/723
+* fix(recall): restore post-load cosine — GetEngrams omits ERF v2 embeddings (#714) by `scrypster` in https://github.com/scrypster/muninndb/pull/722
+* docs(internals): test hermeticity guide — drain async before asserting by `scrypster` in https://github.com/scrypster/muninndb/pull/727
+* chore(test,docs): use neutral fixtures, remove vault-specific identifiers by `scrypster` in https://github.com/scrypster/muninndb/pull/734
+* feat(recall): per-vault exclude-tags knob (#713) by `scrypster` in https://github.com/scrypster/muninndb/pull/735
+* feat(recall): advisory version-cluster annotation — currency (#712, COG-25) by `scrypster` in https://github.com/scrypster/muninndb/pull/738
+* feat(provenance): record the real write verb instead of hardcoded "create" by `scrypster` in https://github.com/scrypster/muninndb/pull/739
+* fix(recall): degrade loudly on embedding failure (semantic_degraded) by `scrypster` in https://github.com/scrypster/muninndb/pull/740
+* feat(guide): curator reflex — treat MuninnDB as living memory, reconcile at write by `scrypster` in https://github.com/scrypster/muninndb/pull/741
+* test(engine): stop TestCurrencyAnnotation_Latency flaking on CI runner noise by `scrypster` in https://github.com/scrypster/muninndb/pull/744
+* fix(mcp): never silently swallow an unrecognized memory type by `scrypster` in https://github.com/scrypster/muninndb/pull/742
+* fix(mcp): drop the entity-type enum from the write paths (it cost 64pp of entity coverage) by `scrypster` in https://github.com/scrypster/muninndb/pull/743
+* fix(mcp): never silently discard an unrecognized link relation by `scrypster` in https://github.com/scrypster/muninndb/pull/745
+* fix: agent-experience hardening — six silent-substitution defects found by hands-on AI evaluation by `scrypster` in https://github.com/scrypster/muninndb/pull/746
+* fix(engine): declaring a contradiction no longer destroys both memories by `scrypster` in https://github.com/scrypster/muninndb/pull/747
+* fix(cli): handle stale PID file in 'muninn stop' by `ad-astra-bot` in https://github.com/scrypster/muninndb/pull/650
+* docs(decision-record): associative surprise — killed, refuted at its premise by `scrypster` in https://github.com/scrypster/muninndb/pull/751
+* test(engine): stop TestStartImport_OrphanedVaultCleanup misreporting a timeout as a cleanup bug by `scrypster` in https://github.com/scrypster/muninndb/pull/753
+* fix: solid ground — consolidate data loss, inverted abstention, contradictions surface, and the write-effort cliff by `scrypster` in https://github.com/scrypster/muninndb/pull/754
+* fix: full-confidence weight destruction, evolve provenance, and the measured recall ceiling by `scrypster` in https://github.com/scrypster/muninndb/pull/757
+* fix(engine): currency advisory precision — universal marker gate + declared-chain suppression by `scrypster` in https://github.com/scrypster/muninndb/pull/758
+* fix(storage,engine): startup repair for pre-#757 full-weight association keys (#756) by `scrypster` in https://github.com/scrypster/muninndb/pull/759
+* fix(storage,auth,engine): time-normalize association decay — 13.5-minute half-life becomes a real forgetting curve (#762) by `scrypster` in https://github.com/scrypster/muninndb/pull/766
+* feat(engine,activation,mbp): resolve declared version chains to their head before ranking (#763) by `scrypster` in https://github.com/scrypster/muninndb/pull/767
+* fix(cognitive,engine,mcp,mbp,rest): declaring a contradiction changes what recall returns (#764) by `scrypster` in https://github.com/scrypster/muninndb/pull/772
+* chore(privacy): deep-review triage, vault-naming rule, and the increment-skill scrub by `scrypster` in https://github.com/scrypster/muninndb/pull/775
+* feat(engine,mcp,mbp,rest): a first-class relevance band — recall stops dressing weak matches as certainties (#773) by `scrypster` in https://github.com/scrypster/muninndb/pull/778
+* test: drain the activation log before the saturating-arm recall by `scrypster` in https://github.com/scrypster/muninndb/pull/782
+* docs(changelog): 0.10.0 — the trust release by `scrypster` in https://github.com/scrypster/muninndb/pull/781
+* test: drain write-time workers before the currency zero-writes snapshots (#777) by `scrypster` in https://github.com/scrypster/muninndb/pull/784
+* chore(agents): purpose-built designer, builder, and vault-measurer agents by `scrypster` in https://github.com/scrypster/muninndb/pull/791
+* chore(gitignore): keep the contributor PR vetter maintainer-private by `scrypster` in https://github.com/scrypster/muninndb/pull/793
+* fix(enrich): parse errors carry a category, never the model's output (#641) by `johanneshauer` in https://github.com/scrypster/muninndb/pull/750
+* fix(cli): refuse to self-update when a service manager owns the daemon (#600) by `johanneshauer` in https://github.com/scrypster/muninndb/pull/749
+* fix(web): report authoritative cognitive worker state by `dpearson2699` in https://github.com/scrypster/muninndb/pull/645
+* chore(agents,skills): mechanism-critic, adversary, and the panel protocol by `scrypster` in https://github.com/scrypster/muninndb/pull/795
+* feat(memory): proposal ledger and drain — findings stop dying in transcripts by `scrypster` in https://github.com/scrypster/muninndb/pull/796
+* fix(storage,cognitive): a failed association read is no longer written back as fabricated defaults by `scrypster` in https://github.com/scrypster/muninndb/pull/809
+* fix(storage,engine): a symmetric association is now readable from both endpoints during ranking (#800) by `scrypster` in https://github.com/scrypster/muninndb/pull/824
+* fix(storage,engine): association edges to deleted engrams — three leaks, and the guard that closes them (#803) by `scrypster` in https://github.com/scrypster/muninndb/pull/828
+* fix(memory): the drain pipeline — three defects that made wiring it harmful, then the wiring (#825) by `scrypster` in https://github.com/scrypster/muninndb/pull/829
+* docs,ci: claim discipline — two green runs that measured nothing (#812, #814) by `scrypster` in https://github.com/scrypster/muninndb/pull/830
+* docs(decision-record): three measured negatives (#706, #716, #786) by `scrypster` in https://github.com/scrypster/muninndb/pull/837
+* fix: six small defects — shadow gate, chain-depth warn, annotation visibility, export reinforcement, stale constant, hard delete (#776, #794, #700, #733, #821, #807) by `scrypster` in https://github.com/scrypster/muninndb/pull/836
+* fix(keys): two opposite prefix-bound defects, and the third copy neither issue named (#816, #819) by `scrypster` in https://github.com/scrypster/muninndb/pull/834
+* fix(storage): four association-layer defects — read laundering, unchecked iterators, stale caches, aliasing (#804, #808, #818, #820) by `scrypster` in https://github.com/scrypster/muninndb/pull/833
+* docs: associative traversal has never fired, and no threshold repairs it (#801) by `scrypster` in https://github.com/scrypster/muninndb/pull/831
+* fix(mcp): classify muninn_state as mutating so observe-mode credentials cannot write (#731) by `timharsch` in https://github.com/scrypster/muninndb/pull/732
+* docs: trim SEC-6 to the declared format, move its narrative to the decision record by `scrypster` in https://github.com/scrypster/muninndb/pull/839
+* fix(cluster): a panic that took the process down, hostname-derived node identity, and CLI cluster auth (#629, #630, #632) by `scrypster` in https://github.com/scrypster/muninndb/pull/840
+* fix(storage): a cloned vault's LastAccess decoded to 1754, and the census that was supposed to catch it (#810) by `scrypster` in https://github.com/scrypster/muninndb/pull/835
+* feat(cognition): the Phase-1 trial harness, and the three production changes that make it measurable (#797) by `scrypster` in https://github.com/scrypster/muninndb/pull/838
+* fix(replication): relocate the log off the idempotency prefix, and stop shipping it to every lobe (#726, #826) by `scrypster` in https://github.com/scrypster/muninndb/pull/841
+* fix(cluster): a fixed deadline on a variable-size transfer, and a runtime-enabled node that replicated nothing (#627, #628) by `scrypster` in https://github.com/scrypster/muninndb/pull/842
+* fix(cluster): a follower accepted client writes and lost them silently, and a resnapshotted node skipped everything after it (#596, #631) by `scrypster` in https://github.com/scrypster/muninndb/pull/843
+* fix(replication): prune the Pebble replication log, bounded by a backlog ceiling (#724, #725) by `likesjx` in https://github.com/scrypster/muninndb/pull/737
+* test(engine): drain the reinforcement goroutine instead of racing a 15s budget (#813) by `scrypster` in https://github.com/scrypster/muninndb/pull/844
+* ci: a leak guard contributors actually have, and fix the private one skipping in worktrees by `scrypster` in https://github.com/scrypster/muninndb/pull/845
+* fix(storage,cluster): batch commits never replicated, role-blind decay, RelType collision, repair-watermark reset (#686, #760, #771, #761) by `scrypster` in https://github.com/scrypster/muninndb/pull/848
+* fix(engine): read_only must suppress every write side effect, not just the activation log (#598) by `scrypster` in https://github.com/scrypster/muninndb/pull/846
+* docs,test(activation): CGDN has never executed — label it INERT and build the census for the class (#768, #805) by `scrypster` in https://github.com/scrypster/muninndb/pull/849
+* fix: provider error leaks, false upgrade success, silent dangling relationships, NUL-invisible source, blind where_left_off (#790, #792, #817, #827, #811) by `scrypster` in https://github.com/scrypster/muninndb/pull/847
+* fix(cli,rest): log reopen on SIGHUP, an independent access-log toggle, and honest muninn logs (#850, #851, #852) by `scrypster` in https://github.com/scrypster/muninndb/pull/853
+* fix(plugin,engine): a transient embed failure recorded as permanent, a breaker tripped by callers, and an unreachable BM25 fallback (#605, #642, #658) by `scrypster` in https://github.com/scrypster/muninndb/pull/854
+* fix(storage,engine,mcp): entity records were global — a cross-tenant read oracle AND a cross-tenant write (#683) by `scrypster` in https://github.com/scrypster/muninndb/pull/855
+* feat(mcp): add muninn_update_tags for in-place retagging; evolve rejects tags (#720) by `timharsch` in https://github.com/scrypster/muninndb/pull/730
+* fix(consolidation,engine): consolidation now declares supersession — the one content-replacing verb that did not (#779, #769, #780) by `scrypster` in https://github.com/scrypster/muninndb/pull/856
+* fix(cli): keep the outgoing binary and surface the release's upgrade note (#600) by `johanneshauer` in https://github.com/scrypster/muninndb/pull/748
+* feat(embed): canonical corpus + reproducible anisotropy baseline (#719) by `johanneshauer` in https://github.com/scrypster/muninndb/pull/752
+* fix(cli): render the upgrade note inertly on the terminal by `scrypster` in https://github.com/scrypster/muninndb/pull/857
+* feat: UPSERT write mode for Write/BatchWrite (#556) by `madeinoz67` in https://github.com/scrypster/muninndb/pull/659
+* fix(activation,rest): a time constant named half-life, and a vault param accepted then ignored (#799, #802) by `scrypster` in https://github.com/scrypster/muninndb/pull/859
+* fix(storage,consolidation,trigger): symmetric archive restore, a hard dedup cap, and a collision estimate off by 1000x (#806, #728, #696) by `scrypster` in https://github.com/scrypster/muninndb/pull/860
+* fix(cli): a vault switch that could not persist said it had (#634) by `scrypster` in https://github.com/scrypster/muninndb/pull/861
+* fix(engine,mcp): recall-health and auth-source metrics, and a Push fixture that proved nothing (#606, #648, #702) by `scrypster` in https://github.com/scrypster/muninndb/pull/862
+* fix(storage): seven writers mutate the shared cached engram, not one — and #815 does not reproduce (#858, #815) by `scrypster` in https://github.com/scrypster/muninndb/pull/863
+* docs(invariants): COG-22 amendment label — #763 is COG-28, not COG-27 by `isaac-ranger` in https://github.com/scrypster/muninndb/pull/832
+* docs(decision-record): the claim-discipline pattern, found eleven more times in a day by `scrypster` in https://github.com/scrypster/muninndb/pull/864
+* test(cognition): the null moves to SHIP, K4 dies as a clause, and zeros stop reading as a measured KILL (#798, refs #797) by `scrypster` in https://github.com/scrypster/muninndb/pull/865
+* fix(activation,storage): read-only recalls restored archived edges and freshened cache recency (refs #846, #712) by `scrypster` in https://github.com/scrypster/muninndb/pull/866
+* docs(changelog): the 0.11.0 entry — fifty merges since 0.10.0 by `scrypster` in https://github.com/scrypster/muninndb/pull/867
+
+## New Contributors
+* `madeinoz67` made their first contribution in https://github.com/scrypster/muninndb/pull/599
+* `gitssie` made their first contribution in https://github.com/scrypster/muninndb/pull/590
+* `dependabot`[bot] made their first contribution in https://github.com/scrypster/muninndb/pull/667
+* `amir-rezaei` made their first contribution in https://github.com/scrypster/muninndb/pull/652
+* `likesjx` made their first contribution in https://github.com/scrypster/muninndb/pull/737
+
+**Full Changelog**: https://github.com/scrypster/muninndb/compare/v0.8.0...v0.11.0
+
+---
+
+
 ## 0.10.0
 
 _2026-08-02_
