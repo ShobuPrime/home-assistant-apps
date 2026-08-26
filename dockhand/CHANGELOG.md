@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.0.44
+
+_2026-08-26_
+
+### Changed
+- Updated Dockhand to version 1.0.44
+
+Released: 2026-08-25
+
+## What's new in v1.0.44
+
+- ✨ generate a compose file from any container - save as new or append to existing stack (#489)
+- ✨ MQTT notification channel - publish events to a broker (#280)
+- ✨ TLS backup repositories with a private CA and optional mutual TLS (#1451)
+- ✨ custom stack and container icons, plus automatic container icons (#31)
+- ✨ Azure Key Vault as a secret provider (bulk pull or inline azurekv:// references)
+- ✨ Proton Pass inline references accept vault and item names, not just ids (pass://vault/item/field) (#1449)
+- ✨ branch selector on git stack, with per-stack branch override (#649, PR#1343, @brx19)
+- ✨ click the update icon in the image column to update a container (#1435)
+- ✨ Pushover notifications can target specific devices (#1411)
+- ✨ keep specific images from being pruned with a dockhand.prune=false label (#1391)
+- 🐛 Infisical secret references now resolve to their value instead of the raw reference (#1447)
+- 🐛 the version-update dialog no longer duplicates the old tag when the running image is digest-pinned (#1437)
+- 🐛 a compose stack with a restarting container now shows a Stop action instead of Start (#1438)
+- 🐛 optimize 1Password API calls on deploy (#1436)
+- 🐛 direct-remote staging pulls the alpine helper image instead of failing when it's missing (#1442)
+- 🐛 Proton Pass secrets now resolve on headless hosts with no system keyring (#1440)
+- 🐛 fix switching an Infisical provider back to a static token (#1448)
+- 🐛 fix backpressure in Docker streaming responses (PR#1445, @StefanSa)
+- 🐛 sort IPv6 subnets and addresses numerically instead of randomly (#1453)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.44
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.43
 
 _2026-08-21_
