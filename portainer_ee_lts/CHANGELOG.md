@@ -1,5 +1,102 @@
 # Changelog
 
+## 2.45.0
+
+_2026-08-27_
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+### New and improved features
+
+- Added advanced Kubernetes node drain options with agent failover
+- Added native Portainer APIs for writing Kubernetes secrets, configmaps, deployments and persistent volume claims, replacing direct kube-apiserver proxy calls
+- Added a generic Kubernetes manifest dry-run API
+- Edge Compute settings can now be configured during initial setup and via cli flags
+- Authentication events now record the real client IP from X-Forwarded-For when the request comes through a trusted proxy
+- The namespace YAML tab now shows every resource quota in the namespace
+- Added GetCharts() support to the async Edge agent, so chart data syncs on agent startup
+- Edge agent connectivity checks now report progress while probing, and wait longer before failing
+- Creating a git source now skips the source type selection step
+- The source form now explains git polling versus webhook triggers, and exposes the polling interval setting that was missing from the UI
+- Removed the redundant single-tab handle from the workflow details view
+- Reworded the registry creation tooltip to make the default behaviour obvious
+- Clarified that Portainer supports Podman through its Docker-compatible API only
+
+### Security improvements
+
+- Fixed a critical Docker proxy authorization bypass. Unrecognised API version prefixes like /v1.47.0/ or /v01.47/ skipped access control entirely, letting non-admin users reach the Docker API directly
+- Closed a remaining gap in the CVE-2026-44849 (GHSA-5fxq-qcf3-244w) fix and broadened bind-mount restrictions for non-admin users, now including Compose and Swarm stack deployments
+- Single-namespace Kubernetes endpoints now check the caller’s namespace authorization instead of running as admin
+- Read-only and Helpdesk users can no longer view Kubernetes secret data
+- Standard users can no longer manage registry access
+- Kubernetes authorization denials now return HTTP 403 instead of 500
+- Fixed a Kubernetes shell authorization flaw. Caller-supplied query parameters could override the server's pod target, letting a standard user run commands in any pod on Agent-managed Kubernetes environments
+- Updated the Go toolchain to 1.26.6, fixing CVE-2026-39821 (Critical, 9.6), an IDNA validation bypass of hostname-based access controls, along with CVE-2026-42505, CVE-2026-39822, CVE-2026-56862, CVE-2026-56860, CVE-2026-56859, CVE-2026-56858, CVE-2026-56853, CVE-2026-46600 and CVE-2026-33818
+- Updated oras.land/oras-go/v2 to 2.6.2, fixing CVE-2026-50163
+- Updated github.com/go-git/go-git/v5 to 5.19.2, fixing CVE-2026-71556 and CVE-2026-71557
+- Updated go.opentelemetry.io/otel to 1.44.0, fixing CVE-2026-41178
+- Updated github.com/klauspost/compress to 1.18.7, fixing GHSA-259r-337f-4rfw
+- Upgraded libcurl to 8.21.0-r0 in the kubectl-shell image to address the following CVEs: CVE-2026-11856, CVE-2026-10536, CVE-2026-11564, CVE-2026-12064, CVE-2026-11586, CVE-2026-11352, CVE-2026-9547, CVE-2026-9546, CVE-2026-9545, CVE-2026-9080, CVE-2026-9079, CVE-2026-8932, CVE-2026-8927, CVE-2026-8926, CVE-2026-8925, CVE-2026-8924, CVE-2026-8458, and CVE-2026-8286.
+- Upgraded c-ares to 1.34.8-r0 in the kubectl-shell image to address CVE-2026-33630
+
+### Bug fixes
+
+- Removing a stack now uninstalls the underlying Helm release, which used to be left running
+- Fixed Edge stack workloads staying up after deletion on Kubernetes. The entry file and namespace are now sent on removal
+- Fixed collisions during Edge stack removal and reassignment. The old stack is now removed before the new one deploys
+- Fixed `Lstat /data/edge_stacks/<id>/v1: no such file or directory` on Kubernetes async agents by persisting the artifact commit hash before creating the Edge stack
+- Fixed Azure Blob backup settings not saving, by resolving redacted credentials on write
+- Fixed manual team-membership sync diverging from login-time sync by sharing a single implementation
+- Fixed server-managed API key metadata fields being wiped on policy update
+- Fixed spaces in setup policy names causing Kubernetes label errors
+- Fixed the Policies card on the Kubernetes dashboard not counting all applied policy types
+- Policy operations now return a meaningful error when the policy isn’t found, instead of a bare 404
+- Fixed the Edit button being disabled for a Helm chart stack deployed from GitHub
+- Fixed the browser title bar staying stuck on “Loading” after a page refresh
+- Fixed multiple error toasts appearing for a metrics time range over 31 days, and stopped the request over-retrying
+- Fixed alert modal validation desyncing from the input
+- Fixed the “Open in OneUptime” navigation using an incorrect URL
+- Fixed the Uninstall button being enabled in the add-on list but disabled in the detail view while an install was running
+- The Restart button is no longer shown for failed add-on installs
+
+## Deprecated and removed features
+
+### Deprecated features
+
+None.
+
+### Removed features
+
+None
+
+## Community contributions since 2.39.0 LTS
+
+A huge thank you to all our community contributors.
+This LTS release rolls up work from the 2.40 to 2.44 STS releases, including fixes and improvements contributed by these community members:
+
+- Nguyen Quang Minh ([`minhng99`](https://github.com/minhng99)) - corrected the OAuth scope placeholder format
+- Zach ([`zacxihu`](https://github.com/zacxihu)) - relative env_file: paths now resolve against the compose file's directory, fixing Git sub-directory stacks
+- Rian Moraes ([`rshmdev`](https://github.com/rshmdev)) - env var descriptions now shown as tooltips in application templates
+- Siddam Vinay ([`siddamvinay2001`](https://github.com/siddamvinay2001)) - truncated published-port lists with a show-more badge, and made early async Swarm deploy failures surface instead of reporting success
+- Immanuel Tikhonov ([`immanuwell`](https://github.com/immanuwell)) - fixed a registry cache type mismatch that meant the cache never hit
+- [`ferreiraborgesaxel-design`](https://github.com/ferreiraborgesaxel-design) - fixed reversed markdown link syntax in the contributing docs
+- Ion Jaureguialzo Sarasola ([`ijaureguialzo`](https://github.com/ijaureguialzo)) - fixed a Kubernetes crash on malformed web-editor manifests
+- Du Feilong ([`dfldylan`](https://github.com/dfldylan)) and Jerry ([`jerry-yuan`](https://github.com/jerry-yuan)) - added Docker --security-opt support and Swarm cluster self-heal after manager reap
+- SRIKANTH K ([`srikanth-karthi`](https://github.com/srikanth-karthi)) - Portainer now tolerates malformed OAuth Content-Type headers from resource endpoints
+
+---
+
+
 ## 2.39.6
 
 _2026-08-21_
