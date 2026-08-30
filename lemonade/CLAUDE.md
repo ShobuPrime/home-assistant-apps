@@ -301,6 +301,14 @@ Two things that look like they should work a certain way, and don't:
 
 ### Configuration Handling
 
+`config.json` lives at `$HOME/.config/lemonade/config.json` — lemond 11.8.0
+moved the config dir out of `.cache/lemonade` (XDG split; resolution order
+`STATE_DIRECTORY` → `$XDG_CONFIG_HOME/lemonade` → `$HOME/.config/lemonade`).
+lemond migrates legacy files only when the new path is missing, and cont-init
+runs before lemond, so cont-init moves the legacy `config.json` itself before
+writing anything. The cache dir (`.cache/lemonade`, downloaded backends) and
+the HF model cache (`.cache/huggingface`) did not move.
+
 App options are the source of truth. `cont-init.d/lemonade.sh` **merges** them
 into `config.json` with `jq`, asserting only the keys the app exposes
 (`host`, `port`, `log_level`, `ctx_size`, `max_loaded_models`,

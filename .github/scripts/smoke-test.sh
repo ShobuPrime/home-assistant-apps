@@ -549,11 +549,21 @@ case "${SLUG}" in
         # generic one — a wrong key name is silently ignored and the app just
         # keeps running the builtin build.
         if docker exec "${CONTAINER_NAME}" sh -c \
-            'jq -e ".llamacpp.cpu_bin == \"builtin\"" /data/lemonade/.cache/lemonade/config.json' >/dev/null 2>&1; then
+            'jq -e ".llamacpp.cpu_bin == \"builtin\"" /data/lemonade/.config/lemonade/config.json' >/dev/null 2>&1; then
             pass "llamacpp_bin written to config.json as cpu_bin"
         else
-            docker exec "${CONTAINER_NAME}" sh -c 'jq ".llamacpp" /data/lemonade/.cache/lemonade/config.json' 2>/dev/null | head -8
+            docker exec "${CONTAINER_NAME}" sh -c 'jq ".llamacpp" /data/lemonade/.config/lemonade/config.json' 2>/dev/null | head -8
             fail "llamacpp_bin did not reach config.json as .llamacpp.cpu_bin"
+        fi
+
+        # lemond 11.8.0 moved its config dir to .config/lemonade and reads the
+        # legacy .cache path only once, to migrate it. A config.json sitting
+        # there after boot means something is still writing options where
+        # lemond no longer looks — they would apply once, then never again.
+        if docker exec "${CONTAINER_NAME}" test -f /data/lemonade/.cache/lemonade/config.json 2>/dev/null; then
+            fail "config.json present at legacy .cache/lemonade path — options are being written where lemond 11.8.0+ does not read"
+        else
+            pass "No config.json at the legacy .cache/lemonade path"
         fi
 
         # The two patches applied to upstream's web app in the Dockerfile. The

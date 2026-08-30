@@ -5,20 +5,35 @@
 # ==============================================================================
 
 # Everything Lemonade persists hangs off $HOME:
-#   $HOME/.cache/lemonade/config.json  - server configuration
-#   $HOME/.cache/lemonade/            - user_models.json, recipe_options.json
-#   $HOME/.cache/huggingface/         - downloaded GGUF weights
-#   $HOME/llama/<backend>/            - llama.cpp binaries fetched at runtime
+#   $HOME/.config/lemonade/config.json - server configuration (also
+#                                        user_models.json, recipe_options.json)
+#   $HOME/.cache/lemonade/             - downloaded llama.cpp backends
+#   $HOME/.cache/huggingface/          - downloaded GGUF weights
+#   $HOME/llama/<backend>/             - llama.cpp binaries fetched at runtime
 # Pointing HOME at /data keeps all of it inside Home Assistant backups.
 LEMONADE_HOME="/data/lemonade"
-CONFIG_FILE="${LEMONADE_HOME}/.cache/lemonade/config.json"
+CONFIG_DIR="${LEMONADE_HOME}/.config/lemonade"
+CONFIG_FILE="${CONFIG_DIR}/config.json"
+LEGACY_CONFIG_FILE="${LEMONADE_HOME}/.cache/lemonade/config.json"
 
 bashio::log.info "Preparing Lemonade data directories..."
 mkdir -p \
+    "${CONFIG_DIR}" \
     "${LEMONADE_HOME}/.cache/lemonade" \
     "${LEMONADE_HOME}/.cache/huggingface" \
     "${LEMONADE_HOME}/llama"
 chmod 755 "${LEMONADE_HOME}"
+
+# lemond 11.8.0 split config out of the cache dir (.cache/lemonade ->
+# .config/lemonade). Its migration only moves the legacy file when the new
+# path is missing, and this script runs first — so move it here. Creating a
+# fresh file at the new path instead would make lemond skip its migration and
+# silently orphan the user's existing config (installed backends, UI-set
+# options). lemond still migrates user_models.json and friends itself.
+if [[ -f "${LEGACY_CONFIG_FILE}" && ! -f "${CONFIG_FILE}" ]]; then
+    mv "${LEGACY_CONFIG_FILE}" "${CONFIG_FILE}"
+    bashio::log.info "Migrated config.json to .config/lemonade (11.8.0 layout)"
+fi
 
 # Private runtime dir for lemond's get_runtime_dir()
 mkdir -p /run/lemonade

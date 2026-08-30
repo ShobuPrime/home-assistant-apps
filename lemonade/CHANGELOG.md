@@ -1,5 +1,64 @@
 # Changelog
 
+## 11.8.1
+
+_2026-08-30_
+
+> _App note:_ Lemonade 11.8.0 moved its config dir from `~/.cache/lemonade` to
+> `~/.config/lemonade`. The app now writes options to the new path and moves
+> your existing `config.json` there on first start — settings, installed
+> backends and registered models all carry over. Downloaded models stay where
+> they were.
+
+## Headline
+
+- Systemd upgrades now recover config and downloaded backends and keep already-downloaded models in place, fixing the 11.8.0 FHS-split regression that misplaced them.
+
+For any users that tried to recover from breakage; please see https://github.com/lemonade-sdk/lemonade/wiki/Migration#v117x--v1180---v1181 for guidance.
+
+## Breaking Changes
+
+- The systemd `HF_HOME=/var/cache/huggingface` redirect was removed, so HuggingFace models now resolve under `/var/lib/lemonade/.cache/huggingface` (HOME-based) instead of `/var/cache/huggingface`.
+- Ubuntu 25.10 packaging was dropped now that it is EOL and is no longer a supported package target.
+
+## Lemonade Server
+
+| Operating System | Downloads |
+|------------------|-----------|
+| **Windows** | [lemonade.msi](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade.msi) |
+| **Ubuntu 24.04+** | [Launchpad PPA](https://launchpad.net/~lemonade-team/+archive/ubuntu/stable) |
+| **Debian 13 (x86_64)** | [lemonade-server_11.8.1-debian13_amd64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-server_11.8.1-debian13_amd64.deb) |
+| **Debian 13 (ARM64)** | [lemonade-server_11.8.1-debian13_arm64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-server_11.8.1-debian13_arm64.deb) |
+| **Fedora 43 (x86_64)** | [lemonade-server-11.8.1-fc43.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-server-11.8.1-fc43.x86_64.rpm) |
+| **Fedora 43 (ARM64)** | [lemonade-server-11.8.1-fc43.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-server-11.8.1-fc43.aarch64.rpm) |
+| **Fedora 44 (x86_64)** | [lemonade-server-11.8.1-fc44.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-server-11.8.1-fc44.x86_64.rpm) |
+| **Fedora 44 (ARM64)** | [lemonade-server-11.8.1-fc44.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-server-11.8.1-fc44.aarch64.rpm) |
+| **macOS** | [Lemonade-11.8.1-Darwin.pkg](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/Lemonade-11.8.1-Darwin.pkg) |
+
+> **Other platforms?** See our [Installation Options](https://lemonade-server.ai/docs/guide/install/) for [Docker](https://lemonade-server.ai/docs/guide/install/docker/), [Snap](https://lemonade-server.ai/docs/guide/install/ubuntu/#__tabbed_2_3), [Arch](https://lemonade-server.ai/docs/guide/install/arch/), [Debian](https://lemonade-server.ai/docs/guide/install/), and more.
+
+## Embeddable Lemonade
+
+Portable binaries for bundling into your own installer. Run `lemond ./` as a subprocess.
+
+| Platform | Download |
+|----------|----------|
+| **Ubuntu x64** | [lemonade-embeddable-11.8.1-ubuntu-x64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-embeddable-11.8.1-ubuntu-x64.tar.gz) |
+| **Ubuntu arm64** | [lemonade-embeddable-11.8.1-ubuntu-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-embeddable-11.8.1-ubuntu-arm64.tar.gz) |
+| **Windows x64** | [lemonade-embeddable-11.8.1-windows-x64.zip](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-embeddable-11.8.1-windows-x64.zip) |
+| **macOS arm64** | [lemonade-embeddable-11.8.1-macos-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v11.8.1/lemonade-embeddable-11.8.1-macos-arm64.tar.gz) |
+
+---
+
+**Full Changelog**: https://github.com/lemonade-sdk/lemonade/compare/v11.8.0...v11.8.1
+
+---
+
+> Windows installers are signed. Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). See our [Code Signing Policy](https://github.com/lemonade-sdk/lemonade#code-signing-policy).
+
+---
+
+
 ## 11.7.0
 
 _2026-08-21_
