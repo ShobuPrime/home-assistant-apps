@@ -19,6 +19,8 @@ jobs:
       current_version: ${{ steps.check.outputs.current_version }}
       latest_version: ${{ steps.check.outputs.latest_version }}
       changelog: ${{ steps.check.outputs.changelog }}
+      migration_flagged: ${{ steps.migration.outputs.flagged }}
+      migration_note: ${{ steps.migration.outputs.note }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -60,6 +62,41 @@ jobs:
             echo "$changelog"
             echo "${delim}"
           } >> "$GITHUB_OUTPUT"
+
+      # The smoke test only sees a fresh container, so a data-layout change
+      # that bites devices with existing state can pass CI (how 11.8.0's
+      # config-dir move would have shipped if the config assertion hadn't
+      # happened to catch it). Upstream documents such changes on the wiki's
+      # Migration page — when it mentions the version being shipped, block
+      # auto-merge for a human/Claude pass. Fetch failure also blocks: the
+      # unattended path only proceeds on a positively clean check.
+      - name: Check upstream migration page
+        id: migration
+        if: steps.check.outputs.update_available == 'true'
+        run: |
+          latest="${{ steps.check.outputs.latest_version }}"
+          url="https://github.com/lemonade-sdk/lemonade/wiki/Migration"
+          page="$(curl -fsSL --retry 3 \
+            https://raw.githubusercontent.com/wiki/lemonade-sdk/lemonade/Migration.md || true)"
+
+          if [ -z "${page}" ]; then
+            echo "flagged=true" >> "$GITHUB_OUTPUT"
+            echo "note=⚠️ The [migration page](${url}) could not be fetched, so this release was NOT checked for migration steps. Auto-merge is blocked with \`needs-review\`; check the page manually before merging." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Match both the exact version (v11.8.1) and upstream's wildcard
+          # style for the patch series (v11.7.x), with boundaries so 11.8.1
+          # does not match 11.8.10.
+          exact="$(printf '%s' "${latest}" | sed 's/\./\\./g')"
+          series="$(printf '%s' "${latest%.*}" | sed 's/\./\\./g')\\.x"
+          if printf '%s' "${page}" | grep -qE "(^|[^0-9.])v?(${exact})([^0-9.]|\$)|(^|[^0-9.])v?(${series})([^0-9a-z]|\$)"; then
+            echo "flagged=true" >> "$GITHUB_OUTPUT"
+            echo "note=⚠️ **The [migration page](${url}) mentions v${latest}** — upstream documents migration steps for this release. Auto-merge is blocked with \`needs-review\`. The page describes the systemd packaging, not this container; translate it per lemonade/CLAUDE.md \"Version Updates\" before merging." >> "$GITHUB_OUTPUT"
+          else
+            echo "flagged=false" >> "$GITHUB_OUTPUT"
+            echo "note=The [migration page](${url}) does not mention v${latest}. (It has under-reported container impact before — the smoke test remains the backstop.)" >> "$GITHUB_OUTPUT"
+          fi
 
   update-version:
     needs: check-update
@@ -120,14 +157,13 @@ jobs:
             If this release adds a new shared-library dependency, the smoke test
             will surface it as `error while loading shared libraries`.
 
+            ### Migration check
+
+            ${{ needs.check-update.outputs.migration_note }}
+
             ### Release Notes
 
             Full release notes: https://github.com/lemonade-sdk/lemonade/releases/tag/v${{ needs.check-update.outputs.latest_version }}
-
-            Check the [migration page](https://github.com/lemonade-sdk/lemonade/wiki/Migration)
-            for path/layout changes — its scope notes describe the systemd
-            packaging, not this container, so verify against lemond's path
-            resolution source (see lemonade/CLAUDE.md "Version Updates").
 
             ---
 
@@ -137,6 +173,18 @@ jobs:
             lemonade
             update
           draft: false
+
+      # Must run BEFORE the downstream dispatch: pr-validate's auto-merge gate
+      # reads labels when it starts, and needs-review is one of its blocking
+      # labels. The REST endpoint auto-creates the label if it doesn't exist.
+      - name: Block auto-merge (migration page flagged this version)
+        if: steps.create-pr.outputs.pull-request-number && needs.check-update.outputs.migration_flagged == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            "repos/${{ github.repository }}/issues/${{ steps.create-pr.outputs.pull-request-number }}/labels" \
+            -f "labels[]=needs-review"
 
       - name: Trigger downstream workflows
         if: steps.create-pr.outputs.pull-request-number
