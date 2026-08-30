@@ -4,6 +4,12 @@
 
 _2026-08-30_
 
+> _App note:_ Lemonade 11.8.0 moved its config dir from `~/.cache/lemonade` to
+> `~/.config/lemonade`. The app now writes options to the new path and moves
+> your existing `config.json` there on first start — settings, installed
+> backends and registered models all carry over. Downloaded models stay where
+> they were.
+
 ## Headline
 
 - Systemd upgrades now recover config and downloaded backends and keep already-downloaded models in place, fixing the 11.8.0 FHS-split regression that misplaced them.
