@@ -67,36 +67,38 @@ jobs:
       # that bites devices with existing state can pass CI (how 11.8.0's
       # config-dir move would have shipped if the config assertion hadn't
       # happened to catch it). Upstream documents such changes on the wiki's
-      # Migration page — when it mentions the version being shipped, block
-      # auto-merge for a human/Claude pass. Fetch failure also blocks: the
-      # unattended path only proceeds on a positively clean check.
+      # Migration page — the script flags when the page documents a migration
+      # anywhere in the range (current, target], not just at the target: a PR
+      # that skips releases (e.g. 11.7.0 -> 11.8.2 while the pipeline was
+      # down) still crosses the 11.8.0 boundary. Fetch failure also blocks:
+      # the unattended path only proceeds on a positively clean check.
       - name: Check upstream migration page
         id: migration
         if: steps.check.outputs.update_available == 'true'
         run: |
+          current="${{ steps.check.outputs.current_version }}"
           latest="${{ steps.check.outputs.latest_version }}"
           url="https://github.com/lemonade-sdk/lemonade/wiki/Migration"
-          page="$(curl -fsSL --retry 3 \
-            https://raw.githubusercontent.com/wiki/lemonade-sdk/lemonade/Migration.md || true)"
 
-          if [ -z "${page}" ]; then
-            echo "flagged=true" >> "$GITHUB_OUTPUT"
-            echo "note=⚠️ The [migration page](${url}) could not be fetched, so this release was NOT checked for migration steps. Auto-merge is blocked with \`needs-review\`; check the page manually before merging." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          set +e
+          hits="$(bash .github/scripts/check-lemonade-migration.sh "${current}" "${latest}")"
+          rc=$?
+          set -e
 
-          # Match both the exact version (v11.8.1) and upstream's wildcard
-          # style for the patch series (v11.7.x), with boundaries so 11.8.1
-          # does not match 11.8.10.
-          exact="$(printf '%s' "${latest}" | sed 's/\./\\./g')"
-          series="$(printf '%s' "${latest%.*}" | sed 's/\./\\./g')\\.x"
-          if printf '%s' "${page}" | grep -qE "(^|[^0-9.])v?(${exact})([^0-9.]|\$)|(^|[^0-9.])v?(${series})([^0-9a-z]|\$)"; then
-            echo "flagged=true" >> "$GITHUB_OUTPUT"
-            echo "note=⚠️ **The [migration page](${url}) mentions v${latest}** — upstream documents migration steps for this release. Auto-merge is blocked with \`needs-review\`. The page describes the systemd packaging, not this container; translate it per lemonade/CLAUDE.md \"Version Updates\" before merging." >> "$GITHUB_OUTPUT"
-          else
-            echo "flagged=false" >> "$GITHUB_OUTPUT"
-            echo "note=The [migration page](${url}) does not mention v${latest}. (It has under-reported container impact before — the smoke test remains the backstop.)" >> "$GITHUB_OUTPUT"
-          fi
+          case "${rc}" in
+            0)
+              echo "flagged=false" >> "$GITHUB_OUTPUT"
+              echo "note=The [migration page](${url}) documents no migration crossed by ${current} → ${latest}. (It has under-reported container impact before — the smoke test remains the backstop.)" >> "$GITHUB_OUTPUT"
+              ;;
+            1)
+              echo "flagged=true" >> "$GITHUB_OUTPUT"
+              echo "note=⚠️ **The [migration page](${url}) documents migration steps crossed by ${current} → ${latest}** (matched: ${hits}). Auto-merge is blocked with \`needs-review\`. The page describes the systemd packaging, not this container; translate it per lemonade/CLAUDE.md \"Version Updates\" before merging." >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "flagged=true" >> "$GITHUB_OUTPUT"
+              echo "note=⚠️ The [migration page](${url}) could not be fetched, so the ${current} → ${latest} upgrade was NOT checked for migration steps. Auto-merge is blocked with \`needs-review\`; check the page manually before merging." >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
   update-version:
     needs: check-update
