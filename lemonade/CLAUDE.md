@@ -330,6 +330,16 @@ Watch for upstream renaming release assets — the app installs
 `lemonade-embeddable-<version>-ubuntu-{arm64,x64}.tar.gz`, and the update
 script verifies that asset exists before proposing a bump.
 
+Check upstream's migration page on every version bump:
+https://github.com/lemonade-sdk/lemonade/wiki/Migration. It documents breaking
+path/layout changes per release — but from the systemd packaging's point of
+view, so translate to this container (HOME=/data/lemonade, no CACHE_DIRECTORY/
+STATE_DIRECTORY/HF_HOME) and verify against lemond's path resolution source
+(`src/cpp/server/utils/platform/path_linux.cpp`, `path_utils.cpp`) rather than
+trusting its scope claims: its "embedded installs are unaffected" note on the
+11.8.0 config-dir move was wrong for Linux — the XDG split applies to any
+Linux process, and the smoke test caught the add-on's options being orphaned.
+
 ### Testing Checklist
 - Build completes successfully
 - `lemond --version` runs in the build (proves glibc closure is complete)
