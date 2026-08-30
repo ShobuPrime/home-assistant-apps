@@ -332,10 +332,14 @@ script verifies that asset exists before proposing a bump.
 
 Upstream documents breaking path/layout changes per release on the migration
 page: https://github.com/lemonade-sdk/lemonade/wiki/Migration. The update
-workflow checks it automatically on every bump — when the page mentions the
-new version (or its `vX.Y.x` series, or the page cannot be fetched), the PR
-gets `needs-review`, which blocks auto-merge until someone translates the
-page for this container. When that happens:
+workflow checks it automatically on every bump via
+`.github/scripts/check-lemonade-migration.sh`: the PR gets `needs-review`
+(blocking auto-merge) when the page documents a migration anywhere in the
+range **(current, target]** — not just at the target, because a PR that skips
+releases still crosses the boundaries in between — or when the page cannot be
+fetched. Series mentions (`v11.7.x`) count as their whole interval, which
+over-flags the "from" side of a heading; that bias is deliberate (a spurious
+review costs a glance, a missed migration costs a device). When it fires:
 
 - The page describes the **systemd packaging's** point of view. Translate to
   this container: HOME=/data/lemonade, no CACHE_DIRECTORY / STATE_DIRECTORY /
