@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.10.1
+
+_2026-09-02_
+
+> [!NOTE]
+> This release fixes browser session cookie size issues and missing sidebar usernames.
+> It also updates the gopsutil and zod dependencies.
+
+### Fixes
+
+- Issue compact browser session cookies instead of the larger ML-DSA access JWT — `df7c24c85e9d4fa9d380532db928ecc3aa13dc17` (`kmendell`); `e874390f6b4ca611a4b5f733868cca1e01138aca` / #3813 (`kmendell`).
+- Fall back to the username when the display name is unset in the sidebar user menu — `0c7174f1089079d79535563ac2d54b032ea6914a` (`kmendell`).
+
+### Dependencies
+
+- Bump `github.com/shirou/gopsutil/v4`, including 4.26.7 to 4.26.8 — `c9ad2e6f9f9751764e5608128b7e55abf9349b88` (`dependabot`[bot]); `dd02c011c575c298dbd3f3167e4ba291edc06c59` / #3798 (`kmendell`).
+- Bump `zod` from 4.4.3 to 4.5.4 — `d95764cf15a2867e2ac573f8cf6f78654da597d7` / #3812 (`dependabot`[bot]).
+
+---
+
+
 ## 2.10.0
 
 _2026-09-01_
