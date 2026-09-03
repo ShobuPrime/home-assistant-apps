@@ -88,28 +88,28 @@ TELEMETRY="$(bashio::config 'telemetry' 'false')"
 # Hugging Face cache. A file `my-model.gguf` is offered as `my-model`, and is
 # read-only to Lemonade (it refuses to delete files it did not download).
 #
-# Note: upstream's Extra-Models-Dir-Spec.md documents an `extra.` name prefix.
-# As of 11.5.0 that prefix is NOT applied to the listed name — verified on a
-# real drop-in: the model lists as `my-custom-model` / `my-custom-model:latest`
-# (the `extra.` form does still resolve as an alias). Don't "correct" the log
-# message below to match the spec without re-checking the running server.
+# Since 11.9.0 the top-level folder a file sits in selects how it runs: `chat/`,
+# `embeddings/` and `reranking/` are reserved (files inside are listed one by
+# one with that type); the root and any other folder mean chat. The three are
+# created empty so the convention is visible over Samba. An empty folder is
+# not listed as a model.
 #
 # Defaulting this under /share means you can drop a .gguf in via Samba, the File
-# editor or `scp` and have it show up after a restart — no CLI, no Hugging Face
-# round trip, and the file stays put when the app is updated or reinstalled.
+# editor or `scp` and have it listed within seconds — no restart, no CLI, no
+# Hugging Face round trip, and the file stays put across updates.
 # ------------------------------------------------------------------------------
 EXTRA_MODELS_DIR=""
 if bashio::config.has_value 'extra_models_dir'; then
     EXTRA_MODELS_DIR="$(bashio::config 'extra_models_dir')"
 
-    if mkdir -p "${EXTRA_MODELS_DIR}" 2>/dev/null; then
+    if mkdir -p "${EXTRA_MODELS_DIR}"/{chat,embeddings,reranking} 2>/dev/null; then
         bashio::log.info "Extra models directory: ${EXTRA_MODELS_DIR}"
         # Count only what Lemonade would actually pick up.
         GGUF_COUNT="$(find "${EXTRA_MODELS_DIR}" -type f -name '*.gguf' 2>/dev/null | wc -l)"
         if [[ "${GGUF_COUNT}" -gt 0 ]]; then
             bashio::log.info "  Found ${GGUF_COUNT} .gguf file(s) — listed under their filename without the extension"
         else
-            bashio::log.info "  No .gguf files yet — drop one in and restart to use it"
+            bashio::log.info "  No .gguf files yet — drop one in; chat/, embeddings/ or reranking/ sets its type, no restart needed"
         fi
     else
         # A bad path shouldn't stop the server from serving models it already has.
@@ -138,6 +138,13 @@ if ! jq empty "${CONFIG_FILE}" > /dev/null 2>&1; then
     echo '{}' > "${CONFIG_FILE}"
 fi
 
+# `allowed_origins` is the wildcard on purpose. lemond is bound to loopback
+# behind the bridge, which is the browser-Origin gate; the wildcard is what
+# makes lemond echo an allowed origin in its CORS headers instead of refusing
+# it a second time. Written here because lemond 11.9.0 deprecated the
+# LEMONADE_ALLOWED_ORIGINS environment variable in favour of this key (and
+# copies the variable into config.json itself, with a warning, if it is set).
+# See lemonade/CLAUDE.md "The origin gate".
 MERGED="$(jq \
     --argjson ctx_size "${CTX_SIZE}" \
     --argjson max_loaded "${MAX_LOADED}" \
@@ -154,6 +161,7 @@ MERGED="$(jq \
     | .ctx_size = $ctx_size
     | .max_loaded_models = $max_loaded
     | .extra_models_dir = $extra_models_dir
+    | .allowed_origins = "*"
     | .llamacpp = (($existing.llamacpp // {}) + {backend: $backend}
                    + {("\($backend)_bin"): $bin})
     | .telemetry = (($existing.telemetry // {}) + {enabled: $telemetry})

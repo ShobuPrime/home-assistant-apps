@@ -99,6 +99,31 @@ restriction, so it reliably triggers both PR Validation and Builder workflows.
 
 **What it does:** Checks the latest `home-assistant/operating-system` release and opens a per-release tracking issue (label `haos-update`) with an on-device verification checklist. CI runners do not run the HAOS kernel, so kernel/AppArmor/Docker behavior changes can only be caught on the device — HAOS 18.1 broke the Huly add-on's Docker socket access while all CI was green. Deduped by issue title, so each release gets exactly one issue.
 
+### Lemonade review gates
+
+**File:** [`.github/workflows/update-lemonade.yml`](workflows/update-lemonade.yml)
+
+Lemonade releases often and lists breaking changes on nearly every release, so
+its update PRs carry two extra checks. Either one adds `needs-review`, which
+blocks auto-merge; the PR body says which fired and why.
+
+1. **Migration page** (`.github/scripts/check-lemonade-migration.sh`): flags
+   when [upstream's Migration wiki page](https://github.com/lemonade-sdk/lemonade/wiki/Migration)
+   documents a migration anywhere in the crossed version range, or cannot be
+   fetched.
+2. **Breaking Changes section** (`.github/scripts/check-lemonade-breaking.sh`):
+   flags when a backtick-quoted identifier in the release's "Breaking Changes"
+   section — an env var, config key, path or flag — occurs verbatim in the
+   app's code (`config.yaml`, `rootfs/`, `Dockerfile`, `apparmor.txt`, the
+   bridge, the smoke test). Docs are not searched. Each hit shows the
+   identifier, the files and upstream's sentence. Added after 11.9.0
+   deprecated `LEMONADE_ALLOWED_ORIGINS` with no Migration-page entry and
+   auto-merged.
+
+To merge a flagged PR: read the hits, translate them to the container
+(`lemonade/CLAUDE.md`, "Version Updates"), fix what needs fixing on the PR
+branch, then merge it.
+
 ## Preventing Auto-merge
 
 To prevent a PR from being auto-merged, add one of these labels:

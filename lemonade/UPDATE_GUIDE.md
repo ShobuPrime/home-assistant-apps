@@ -127,10 +127,13 @@ The origin your browser sends must appear **exactly** — scheme required, port
 significant, no path, no wildcards. Note `http` and `ws` normalise to port 80,
 `https`/`wss` to 443, so `https://host` and `https://host:443` are equivalent.
 
-There is **no same-origin exemption** — `lemond` never inspects `Host` — which
-is why ingress needs an entry even though the UI and API share an origin. If
-your origin is missing (a VPN hostname, a second domain), add it to the
-`allowed_origins` option. Verify the boundary still holds afterwards:
+The bridge has **no same-origin exemption** — it matches the `Origin` header
+exactly against its list — which is why ingress needs an entry even though the
+page and the API share an origin there. (Lemonade 11.9.0 gained a zero-config
+same-origin rule of its own, but `lemond` sits behind the bridge with a
+wildcard, so it never decides.) If your origin is missing (a VPN hostname, a
+second domain), add it to the `allowed_origins` option. Verify the boundary
+still holds afterwards:
 
 ```bash
 # must stay 403

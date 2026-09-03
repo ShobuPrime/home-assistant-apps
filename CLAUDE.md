@@ -56,6 +56,7 @@ The repository includes comprehensive automation for managing pull requests:
 ### Automatic Version Updates
 - Daily checks for new Portainer releases (LTS and STS), Arcane, and Dockhand
 - Automatically creates PRs with version updates and changelogs
+- Lemonade bumps additionally get `needs-review` when upstream's Migration page covers the crossed range or the release's Breaking Changes section names something the app's code uses (`.github/scripts/check-lemonade-migration.sh`, `check-lemonade-breaking.sh`; see `lemonade/CLAUDE.md` "Version Updates")
 - **IMPORTANT:** Portainer version detection is based on GitHub release **names** containing "LTS" or "STS"
   - Do NOT use version number patterns (odd/even) - Portainer does not follow a consistent mathematical pattern
   - The script filters releases by searching for "LTS" or "STS" in the release name via GitHub API

@@ -130,20 +130,29 @@ two APIs spell them differently:
 Both forms are accepted by `/api/chat`. Documentation should quote the Ollama
 form when talking about the Home Assistant integration.
 
-Models discovered from `extra_models_dir` behave differently: each file is
-listed under its **own filename without the extension**, and a subdirectory is
-listed under the directory name. Verified with four drop-ins at once:
-`alpha-7b-q4.gguf` → `alpha-7b-q4`, `beta-tiny-instruct.gguf` →
-`beta-tiny-instruct`, `gamma-vision-Q8_0.gguf` → `gamma-vision-Q8_0`,
-`delta-sharded/model-00001-of-00001.gguf` → `delta-sharded` (all also
-`<name>:latest` over the Ollama API). Document this with a multi-file example —
-a single placeholder like `my-model.gguf` reads as though every discovered
-model gets one fixed name.
-Upstream's `src/cpp/Extra-Models-Dir-Spec.md` documents an `extra.` prefix on
-the listed name; that is **not** what 11.5.0 does — verified with a real
-drop-in. The `extra.`-prefixed form still resolves as an alias, so both work
-for inference, but the model list and the HA Ollama dropdown show the bare
-name. Re-verify against a running server before changing this claim.
+Models discovered from `extra_models_dir` are listed under their **bare file
+name without the extension** — `embeddings/embed-one.gguf` → `embed-one`
+(`embed-one:latest` over the Ollama API). The `extra.` prefix in upstream's
+`Extra-Models-Dir-Spec.md` is the canonical id: `extra.embed-one` and
+`embed-one` both resolve, but the model list and the HA Ollama dropdown show
+the bare name. Verified on 11.9.0 with eight drop-ins; the smoke test asserts
+it.
+
+Since 11.9.0 the top-level folder sets the type: files directly in `chat/`,
+`embeddings/` or `reranking/` are listed one per file with that label; a
+folder nested inside one of them inherits the type and is listed as one model
+named after the folder (`embeddings/nested/deep.gguf` → `nested`, label
+`embeddings`); the root and any other folder mean chat (`Embedding/`, wrong
+case, is an ordinary folder). Any other folder holding GGUF files is one model
+named after the folder, which is how sharded and multimodal models work. The
+pre-11.9.0 folder id still resolves as a hidden alias (`extra.embeddings` and
+`embeddings` both 200).
+
+Files added after boot are picked up by lemond's directory watcher without a
+restart (verified: listed within 15 s). cont-init creates the three reserved
+folders empty so the convention is visible over Samba; an empty folder is not
+listed. Document this with a multi-file example — a single placeholder like
+`my-model.gguf` reads as though every discovered model gets one fixed name.
 
 ### The memory proxy (`ha-lemonade-bridge/`)
 
@@ -201,12 +210,22 @@ addresses grants nothing to anyone not already serving from Home Assistant.
 - **Rejections log the origin.** Their absence is what made this slow to
   diagnose on a live device.
 
-**lemond gets `LEMONADE_ALLOWED_ORIGINS=*`** and is bound to loopback. Safe
-because the bridge is its only client and gates first — and the wildcard is
-what keeps CORS correct: with `*`, lemond 11.5.1 echoes the request origin in
-`Access-Control-Allow-Origin` rather than a literal `*`, so cross-origin
-clients keep working with no CORS code here. The smoke test asserts wildcard
-and loopback together; either alone is a hole.
+**lemond runs with `allowed_origins: "*"` in its config.json** and is bound to
+loopback. Safe because the bridge is its only client and gates first — and the
+wildcard is what keeps CORS correct: with `*`, lemond echoes the request origin
+in `Access-Control-Allow-Origin` rather than a literal `*` (verified on
+11.9.0), so cross-origin clients keep working with no CORS code here. The
+smoke test asserts wildcard and loopback together; either alone is a hole.
+
+The wildcard is written by cont-init's config.json merge, not the environment:
+lemond 11.9.0 deprecated `LEMONADE_ALLOWED_ORIGINS`, copies it into
+config.json itself if set, and warns on every start until it is unset. The
+smoke test fails if the variable is in lemond's environment or the warning is
+logged. 11.9.0 also added a zero-config same-origin rule (Origin equal to
+`Host`, when `Host` is one of lemond's own interface addresses); it never
+applies here — lemond's own addresses are the container's, not the device's,
+and an explicit allowlist disables the rule anyway — so the bridge stays the
+only gate.
 
 **GETs are not exempt** — a comment claimed so for months. `GET /api/v1/health`
 with a disallowed origin returns 403. The Web UI renders anyway because
@@ -312,12 +331,19 @@ the HF model cache (`.cache/huggingface`) did not move.
 App options are the source of truth. `cont-init.d/lemonade.sh` **merges** them
 into `config.json` with `jq`, asserting only the keys the app exposes
 (`host`, `port`, `log_level`, `ctx_size`, `max_loaded_models`,
-`llamacpp.backend`, `telemetry.enabled`) and preserving everything else the
-user or Lemonade wrote there. Do not overwrite the file wholesale — that would
-discard installed backends and per-model recipe options on every restart.
+`extra_models_dir`, `llamacpp.backend`, `llamacpp.<backend>_bin`,
+`telemetry.enabled`) plus `allowed_origins: "*"` (see "The origin gate"), and
+preserving everything else the user or Lemonade wrote there. Do not overwrite
+the file wholesale — that would discard installed backends and per-model
+recipe options on every restart.
 
-`lemond` only accepts `--host`, `--port` and `--version` on the command line;
-everything else must go through `config.json`.
+`lemond`'s command line is `--host`, `--port`, `--version`, the 11.9.0 logging
+flags (`--log-file`, `--log-max-size-mb`, `--log-max-files`),
+`--[no-]broadcast` and positional cache/config dirs; everything else goes
+through `config.json`. Leave `log_file` at its default `auto`: since 11.9.0
+that means stdout/stderr only, where 11.8.x also appended an unrotated
+`lemonade-server.log` under `/run/lemonade/lemonade/` in the container's
+writable layer.
 
 ### Version Updates
 When updating version:
@@ -350,8 +376,21 @@ review costs a glance, a missed migration costs a device). When it fires:
   was wrong for Linux: the XDG split applies to any Linux process, and the
   smoke test caught the add-on's options being orphaned.
 
-The tripwire only covers what upstream chooses to document; the smoke test
-remains the backstop for undocumented breakage.
+A second gate reads the release's own **Breaking Changes** section
+(`.github/scripts/check-lemonade-breaking.sh`): the backtick-quoted
+identifiers in it — env vars, config keys, paths, flags — are searched for,
+verbatim and whole-word, in the files that depend on lemond's behaviour
+(`config.yaml`, `rootfs/`, `Dockerfile`, `apparmor.txt`, the bridge, the smoke
+test; not the docs, which mention far more than the app relies on). A hit adds
+`needs-review`, with the identifier, the files and upstream's sentence in the
+PR body. Added after 11.9.0 deprecated `LEMONADE_ALLOWED_ORIGINS` — set here on
+every boot — with nothing on the Migration page, so the PR body carried the
+breaking change and auto-merged. Upstream lists breaking changes on every
+release and about five bumps in six name something this app uses, so expect a
+glance most times; that is the same trade the migration check makes.
+
+Both gates only cover what upstream writes down and names; the smoke test
+remains the backstop for the rest.
 
 ### Testing Checklist
 - Build completes successfully

@@ -19,30 +19,23 @@ fi
 # Where to bind is decided once, in cont-init.d/lemonade.sh: always loopback
 # :13306, with the bridge owning the public :13305 in front.
 #
-# Falling back to serving 13305 directly if that file is missing keeps a failed
-# init from turning into a crash loop: better to serve unproxied than not to
-# serve at all.
-if [[ -f /run/lemonade/runtime.env ]]; then
-    # shellcheck source=/dev/null
-    . /run/lemonade/runtime.env
-else
-    bashio::log.warning "runtime.env missing — serving 13305 directly, unproxied"
+# The file cannot be missing on a booted container — the base halts the
+# container when cont-init fails (S6_BEHAVIOUR_IF_STAGE2_FAILS=2). Should it
+# be anyway, idle rather than serve 13305 unproxied: config.json carries a
+# wildcard allowed_origins that is only safe behind the bridge. Idle, not
+# exit — a legacy service that exits during startup wedges S6 shutdown.
+if [[ ! -f /run/lemonade/runtime.env ]]; then
+    bashio::log.error "runtime.env missing — cont-init did not complete; not starting lemond"
+    exec sleep infinity
 fi
-LEMOND_BIND_HOST="${LEMOND_BIND_HOST:-0.0.0.0}"
-LEMOND_PORT="${LEMOND_PORT:-13305}"
+# shellcheck source=/dev/null
+. /run/lemonade/runtime.env
+LEMOND_BIND_HOST="${LEMOND_BIND_HOST:-127.0.0.1}"
+LEMOND_PORT="${LEMOND_PORT:-13306}"
 
-# The bridge enforces browser origins, not lemond — so lemond accepts any.
-# Safe only because it is on loopback behind the bridge, which is why this is
-# tied to the bind host rather than set unconditionally. The wildcard also
-# keeps lemond emitting correct CORS headers. See lemonade/CLAUDE.md.
-if [[ "${LEMOND_BIND_HOST}" == "127.0.0.1" ]]; then
-    export LEMONADE_ALLOWED_ORIGINS="*"
-else
-    bashio::log.warning "lemond is not behind the bridge — keeping its own Origin allowlist"
-    if [[ -n "${BRIDGE_ALLOWED_ORIGINS:-}" ]]; then
-        export LEMONADE_ALLOWED_ORIGINS="${BRIDGE_ALLOWED_ORIGINS}"
-    fi
-fi
+# Browser origins are enforced by the bridge. lemond's own allowlist is the
+# wildcard, written to config.json by cont-init; nothing is passed in the
+# environment (LEMONADE_ALLOWED_ORIGINS is deprecated since 11.9.0).
 
 bashio::log.info "  Binding ${LEMOND_BIND_HOST}:${LEMOND_PORT}"
 

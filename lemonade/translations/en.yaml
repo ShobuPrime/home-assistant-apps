@@ -58,11 +58,11 @@ configuration:
       A folder Home Assistant shares with you that Lemonade also scans for
       GGUF model files, in addition to the ones it downloads itself. Defaults
       to /share/lemonade_models, which is reachable over Samba or the File
-      editor. Copy in as many .gguf files as you like and restart the app —
-      each is listed separately under its own filename without the extension,
-      and a subfolder counts as one model named after the folder. Models placed
-      here are never deleted by Lemonade and survive reinstalling the app.
-      Leave blank to turn this off.
+      editor. Copy in as many .gguf files as you like — each is listed under
+      its own filename without the extension, and new files appear without a
+      restart. Put embedding models in the embeddings/ subfolder and rerankers
+      in reranking/ so they run as that type; any other subfolder counts as
+      one model named after the folder. Leave blank to disable.
   preload_model:
     name: Load model at startup
     description: >-

@@ -9,8 +9,8 @@ package main
 // start: Supervisor starts this add-on before Core, and a host address can
 // change under DHCP.
 //
-// lemond is bound to loopback with LEMONADE_ALLOWED_ORIGINS=* and never gates
-// anything itself. See lemonade/CLAUDE.md for why.
+// lemond is bound to loopback with allowed_origins "*" in its config.json and
+// never gates anything itself. See lemonade/CLAUDE.md for why.
 
 import (
 	"context"
