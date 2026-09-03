@@ -21,6 +21,8 @@ jobs:
       changelog: ${{ steps.check.outputs.changelog }}
       migration_flagged: ${{ steps.migration.outputs.flagged }}
       migration_note: ${{ steps.migration.outputs.note }}
+      breaking_flagged: ${{ steps.breaking.outputs.flagged }}
+      breaking_note: ${{ steps.breaking.outputs.note }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -40,6 +42,8 @@ jobs:
           echo "update_available=$update_available" >> $GITHUB_OUTPUT
           echo "current_version=$current" >> $GITHUB_OUTPUT
           echo "latest_version=$latest" >> $GITHUB_OUTPUT
+          # Unclamped copy for the breaking-changes check below.
+          printf '%s\n' "$changelog" > "${RUNNER_TEMP}/release-notes.md"
           # CHANGELOG.md gets the release notes in full — the update script
           # writes that file itself and no longer truncates. This copy feeds the
           # PR body, which GitHub hard-caps at 65,536 characters; exceeding it
@@ -97,6 +101,53 @@ jobs:
             *)
               echo "flagged=true" >> "$GITHUB_OUTPUT"
               echo "note=⚠️ The [migration page](${url}) could not be fetched, so the ${current} → ${latest} upgrade was NOT checked for migration steps. Auto-merge is blocked with \`needs-review\`; check the page manually before merging." >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      # The Migration page only carries what upstream chooses to write up —
+      # 11.9.0 deprecated LEMONADE_ALLOWED_ORIGINS, which this app set on every
+      # boot, with nothing there, and the PR auto-merged. This reads the
+      # release's own "Breaking Changes" section and flags the identifiers in
+      # it that the app's CODE uses (config keys, env vars, paths, flags).
+      # Docs are not searched: they mention far more than the app relies on.
+      # Upstream lists breaking changes on every release and about five bumps
+      # in six name something here, so this asks for a glance often; each hit
+      # carries the files and upstream's sentence to keep the glance short.
+      - name: Check release notes for breaking changes this app depends on
+        id: breaking
+        if: steps.check.outputs.update_available == 'true'
+        run: |
+          latest="${{ steps.check.outputs.latest_version }}"
+
+          set +e
+          hits="$(bash .github/scripts/check-lemonade-breaking.sh "${RUNNER_TEMP}/release-notes.md" \
+              lemonade/config.yaml lemonade/build.yaml lemonade/Dockerfile lemonade/apparmor.txt \
+              lemonade/rootfs lemonade/ha-lemonade-bridge \
+              .github/scripts/smoke-test.sh .github/scripts/mock-supervisor.py)"
+          rc=$?
+          set -e
+
+          case "${rc}" in
+            0)
+              echo "flagged=false" >> "$GITHUB_OUTPUT"
+              echo "note=The release's Breaking Changes section names nothing this app's code uses." >> "$GITHUB_OUTPUT"
+              ;;
+            1)
+              echo "flagged=true" >> "$GITHUB_OUTPUT"
+              delim="BREAKING_EOF_$(date +%s%N)_$RANDOM"
+              {
+                echo "note<<${delim}"
+                echo "⚠️ **The release's Breaking Changes section names things this app's code uses.** Auto-merge is blocked with \`needs-review\`. Each line: the identifier, where the app uses it, and upstream's sentence."
+                echo
+                echo '```'
+                echo "${hits}"
+                echo '```'
+                echo "${delim}"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "flagged=true" >> "$GITHUB_OUTPUT"
+              echo "note=⚠️ The release notes could not be read, so ${latest} was NOT checked for breaking changes. Auto-merge is blocked with \`needs-review\`; read them manually before merging." >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -163,6 +214,10 @@ jobs:
 
             ${{ needs.check-update.outputs.migration_note }}
 
+            ### Breaking changes check
+
+            ${{ needs.check-update.outputs.breaking_note }}
+
             ### Release Notes
 
             Full release notes: https://github.com/lemonade-sdk/lemonade/releases/tag/v${{ needs.check-update.outputs.latest_version }}
@@ -179,8 +234,8 @@ jobs:
       # Must run BEFORE the downstream dispatch: pr-validate's auto-merge gate
       # reads labels when it starts, and needs-review is one of its blocking
       # labels. The REST endpoint auto-creates the label if it doesn't exist.
-      - name: Block auto-merge (migration page flagged this version)
-        if: steps.create-pr.outputs.pull-request-number && needs.check-update.outputs.migration_flagged == 'true'
+      - name: Block auto-merge (upstream flagged this version)
+        if: steps.create-pr.outputs.pull-request-number && (needs.check-update.outputs.migration_flagged == 'true' || needs.check-update.outputs.breaking_flagged == 'true')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

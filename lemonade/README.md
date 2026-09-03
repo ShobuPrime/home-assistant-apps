@@ -119,12 +119,14 @@ model. Point MuninnDB's `ollama_url` at
 
 A folder Lemonade also scans for GGUF files, defaulting to
 `/share/lemonade_models` (created on start). Copy as many `.gguf` files in as
-you like over Samba or the File editor and restart the app — each is listed
-separately under its own filename minus the extension, so
-`alpha-7b-q4.gguf` and `beta-tiny-instruct.gguf` become `alpha-7b-q4` and
-`beta-tiny-instruct` (and `…:latest` in the Ollama integration's model list). A
-subdirectory is treated as one model named after the folder, which is how
-sharded and multimodal models work. Leave blank to disable.
+you like over Samba or the File editor — each is listed separately under its
+own filename minus the extension, so `alpha-7b-q4.gguf` and
+`beta-tiny-instruct.gguf` become `alpha-7b-q4` and `beta-tiny-instruct` (and
+`…:latest` in the Ollama integration's model list), and new files show up
+without a restart. Put embedding models in the `embeddings/` subfolder and
+rerankers in `reranking/` so they run as that type; any other subfolder is
+treated as one model named after the folder, which is how sharded and
+multimodal models work. Leave blank to disable.
 
 ### Option: `preload_model`
 

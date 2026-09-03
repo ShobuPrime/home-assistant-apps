@@ -8,12 +8,12 @@
 # optional because it is also the browser-Origin gate.
 # ==============================================================================
 
-# No runtime.env means init failed and lemond is serving 13305 itself, so
-# binding it here would collide and restart-loop. Idle instead — sleeping, not
-# exiting: a legacy service that exits during startup wedges S6 shutdown.
+# The file cannot be missing on a booted container — the base halts the
+# container when cont-init fails (S6_BEHAVIOUR_IF_STAGE2_FAILS=2). Should it
+# be anyway, idle: lemond is not started either (see services.d/lemonade/run),
+# and a legacy service that exits during startup wedges S6 shutdown.
 if [[ ! -f /run/lemonade/runtime.env ]]; then
-    bashio::log.warning "runtime.env missing — lemond is serving 13305 itself; idling to avoid a port conflict"
-    bashio::log.warning "  Browser-origin enforcement is lemond's own in this state, and the ingress panel may 403."
+    bashio::log.error "runtime.env missing — cont-init did not complete; not starting the bridge"
     exec sleep infinity
 fi
 # shellcheck source=/dev/null

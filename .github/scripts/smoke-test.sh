@@ -453,12 +453,27 @@ case "${SLUG}" in
         fi
 
         # Wildcard and loopback must hold together; either alone is a hole.
+        # The wildcard travels in config.json: lemond 11.9.0 deprecated the
+        # LEMONADE_ALLOWED_ORIGINS variable, copies it into config.json itself
+        # and warns on every start while it is set.
         if docker exec "${CONTAINER_NAME}" sh -c \
-            'tr "\0" "\n" < /proc/$(pgrep -f "^/opt/lemonade/lemond" | head -1)/environ | grep -q "^LEMONADE_ALLOWED_ORIGINS=\*$"'; then
-            pass "lemond runs with a wildcard allowlist, reachable only through the gate"
+            'jq -e ".allowed_origins == \"*\"" /data/lemonade/.config/lemonade/config.json' >/dev/null 2>&1; then
+            pass "lemond runs with a wildcard allowlist (config.json), reachable only through the gate"
         else
-            fail "lemond's LEMONADE_ALLOWED_ORIGINS is not '*' — the bridge and lemond would both enforce, and CORS headers would be dropped for allowed cross-origin clients"
+            docker exec "${CONTAINER_NAME}" sh -c 'jq ".allowed_origins" /data/lemonade/.config/lemonade/config.json' 2>&1 | sed 's/^/    /'
+            fail "config.json allowed_origins is not '*' — the bridge and lemond would both enforce, and CORS headers would be dropped for allowed cross-origin clients"
         fi
+        if docker exec "${CONTAINER_NAME}" sh -c \
+            'tr "\0" "\n" < /proc/$(pgrep -f "^/opt/lemonade/lemond" | head -1)/environ | grep -q "^LEMONADE_ALLOWED_ORIGINS="'; then
+            fail "lemond still has LEMONADE_ALLOWED_ORIGINS in its environment — deprecated in 11.9.0; the value belongs in config.json"
+        else
+            pass "No LEMONADE_ALLOWED_ORIGINS in lemond's environment"
+        fi
+        if echo "${LOGS}" | grep -q "LEMONADE_ALLOWED_ORIGINS"; then
+            echo "${LOGS}" | grep -m2 "LEMONADE_ALLOWED_ORIGINS" | sed 's/^/    /'
+            fail "lemond logged a LEMONADE_ALLOWED_ORIGINS deprecation warning"
+        fi
+        pass "No origin-variable deprecation warning from lemond"
 
         # The Web UI is what ingress serves, and it ships separately from the
         # binaries — the embeddable archive has no UI at all. A missing UI is
@@ -645,6 +660,34 @@ case "${SLUG}" in
             # Distinguish "our packaging is broken" (hard failure above) from
             # "Hugging Face was unreachable on this runner" (not our bug).
             info "Model did not finish downloading — likely a transient upstream/network issue, not a packaging fault"
+        fi
+
+        # extra_models_dir naming and typing, as DOCS.md promises. lemond
+        # 11.9.0 reserves chat/ embeddings/ reranking/ to set a file's type,
+        # and lists every extra model under its bare file name (the `extra.`
+        # prefix is an alias, not the listed id) — the name Home Assistant's
+        # Ollama dropdown shows. A 24-byte GGUF header is enough to be
+        # discovered, and lemond's directory watcher picks it up without a
+        # restart, so this needs neither a download nor a reboot.
+        docker exec "${CONTAINER_NAME}" sh -c '
+            for f in /share/lemonade_models/embeddings/smoke-embed.gguf /share/lemonade_models/smoke-root.gguf; do
+                mkdir -p "$(dirname "$f")"
+                printf "GGUF\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000" > "$f"
+            done' 2>/dev/null
+        EXTRA_JSON=""
+        for _ in $(seq 1 15); do
+            EXTRA_JSON=$(docker exec "${CONTAINER_NAME}" \
+                curl -sf --max-time 10 "http://127.0.0.1:${HEALTH_PORT}/api/v1/models" 2>/dev/null || true)
+            echo "${EXTRA_JSON}" | jq -e '[.data[].id] | (index("smoke-embed") != null) and (index("smoke-root") != null)' > /dev/null 2>&1 && break
+            sleep 2
+        done
+        if echo "${EXTRA_JSON}" | jq -e '
+                ([.data[] | select(.id == "smoke-embed") | .labels | index("embeddings")] | any(. != null))
+                and ([.data[] | select(.id == "smoke-root") | .labels | index("chat")] | any(. != null))' > /dev/null 2>&1; then
+            pass "Extra models listed under bare names with folder-derived types (embeddings/smoke-embed.gguf → smoke-embed [embeddings], smoke-root.gguf → smoke-root [chat])"
+        else
+            echo "${EXTRA_JSON}" | jq -r '.data[] | select(.id | test("smoke|extra")) | "    \(.id)  labels=\(.labels)"' 2>/dev/null
+            fail "extra_models_dir discovery changed — files added after boot were not listed as smoke-embed [embeddings] and smoke-root [chat] within 30s"
         fi
         ;;
 

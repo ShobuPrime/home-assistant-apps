@@ -4,6 +4,29 @@
 
 _2026-09-03_
 
+> _Maintenance (2026-09-03):_ adapted to this release's breaking changes,
+> verified against a running 11.9.0 server.
+>
+> - **Browser origins:** the app now writes `allowed_origins` into
+>   `config.json` instead of setting the deprecated `LEMONADE_ALLOWED_ORIGINS`
+>   variable, so the start-up warning this release added is gone. The app's
+>   own origin check (the `allowed_origins` option, your Home Assistant
+>   address, this device's addresses) is unchanged.
+> - **Extra models folder:** files in `chat/`, `embeddings/` and `reranking/`
+>   under `/share/lemonade_models` are now listed one per file with that type;
+>   the old folder name still resolves. The app creates the three folders, and
+>   the docs now cover this plus two things that were already true: models are
+>   listed under their bare file name, and new files appear without a restart.
+>
+> Also in this release: `lemond` no longer appends an unrotated log file inside
+> the container, and slow prompt processing times out after 600 s instead of
+> 120 s.
+>
+> This update auto-merged because the migration check reads only upstream's
+> Migration wiki page, which has no 11.9.0 entry. A second check now reads the
+> release's Breaking Changes section and blocks auto-merge when it names
+> something this app's code uses.
+
 ## Headline
 
 - This quality release fixes two top bugs: `allowed_origins` no longer blocks remote use, and the fixed 120s prefill timeout is now a 600s default that is configurable via `global_timeout`.

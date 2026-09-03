@@ -115,14 +115,19 @@ outside the app's own `/data`.
 
 How discovery works:
 
-- The directory is scanned **recursively** for `.gguf` files on startup, so new
-  files need an app restart to appear.
+- The folder is scanned **recursively** for `.gguf` files, and new files are
+  picked up while the app runs — no restart needed.
 - **Every file keeps its own name.** A model is named after its file, minus the
   `.gguf` extension — put as many in as you like and each is listed separately.
-- A **subdirectory is treated as one model**, named after the directory. This
-  is how multi-shard models (`*-00001-of-00006.gguf`) and multimodal models
-  work. If any file in the directory has `mmproj` in its name it is used as the
-  projector and the model is labelled `vision`.
+- **The top-level folder sets the model type.** Files in `embeddings/` serve
+  embeddings, files in `reranking/` rerank, and files in `chat/` or at the top
+  level chat. The three folders are created for you; the names must match
+  exactly (`Embedding/` is just an ordinary folder).
+- **Any other folder is one model**, named after the folder. This is how
+  multi-shard models (`*-00001-of-00006.gguf`) and multimodal models work. If
+  any file in the folder has `mmproj` in its name it is used as the projector
+  and the model is labelled `vision`. A folder inside `embeddings/` or
+  `reranking/` takes that type.
 - These models are **read-only to Lemonade** — it will refuse to delete them
   and tell you the path to remove by hand instead.
 
@@ -133,18 +138,25 @@ Given this folder:
 ├── alpha-7b-q4.gguf
 ├── beta-tiny-instruct.gguf
 ├── gamma-vision-Q8_0.gguf
-└── delta-sharded/
-    └── model-00001-of-00001.gguf
+├── delta-sharded/
+│   └── model-00001-of-00001.gguf
+└── embeddings/
+    └── nomic-embed-text-v2.gguf
 ```
 
-you get four independently selectable models:
+you get five independently selectable models:
 
-| File or folder | Model name | Name in the Ollama integration |
-|----------------|------------|-------------------------------|
-| `alpha-7b-q4.gguf` | `alpha-7b-q4` | `alpha-7b-q4:latest` |
-| `beta-tiny-instruct.gguf` | `beta-tiny-instruct` | `beta-tiny-instruct:latest` |
-| `gamma-vision-Q8_0.gguf` | `gamma-vision-Q8_0` | `gamma-vision-Q8_0:latest` |
-| `delta-sharded/` | `delta-sharded` | `delta-sharded:latest` |
+| File or folder | Model name | Name in the Ollama integration | Type |
+|----------------|------------|-------------------------------|------|
+| `alpha-7b-q4.gguf` | `alpha-7b-q4` | `alpha-7b-q4:latest` | chat |
+| `beta-tiny-instruct.gguf` | `beta-tiny-instruct` | `beta-tiny-instruct:latest` | chat |
+| `gamma-vision-Q8_0.gguf` | `gamma-vision-Q8_0` | `gamma-vision-Q8_0:latest` | chat |
+| `delta-sharded/` | `delta-sharded` | `delta-sharded:latest` | chat |
+| `embeddings/nomic-embed-text-v2.gguf` | `nomic-embed-text-v2` | `nomic-embed-text-v2:latest` | embeddings |
+
+Before Lemonade 11.9.0 an `embeddings/` folder was listed as one chat model
+named `embeddings`. That name still works as an alias for the first file in the
+folder, alphabetically, so existing automations keep running.
 
 They sit alongside downloaded models such as `LFM2.5-230M`, so you can switch
 between any of them from Home Assistant.
