@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.0.46
+
+_2026-09-03_
+
+### Changed
+- Updated Dockhand to version 1.0.46
+
+Released: 2026-09-02
+
+## What's new in v1.0.46
+
+- ✨ restart a stack in depends_on order, keeping the same containers (#1480)
+- ✨ allow secret-less git webhooks via the ALLOW_WEBHOOKS_WITHOUT_SECRET env var
+- ✨ optional STACKS_DIR flat layout for local stacks (#514, #778, PR#1482, @xd003)
+- 🐛 faster incremental backups when multiple stacks share one repository (#1494)
+- 🐛 "disable build cache" no longer errors on deploy (#1479, PR#1020, @He-Is-HaZaRdOuS)
+- 🐛 test connection on a saved environment without re-entering the token (#1483)
+- 🐛 populate environment variables again finds the repo's .env file (#1495)
+- 🐛 POST /api/stacks honors the target environment in the body (#1491)
+- 🐛 large image scans no longer fail when the scanner log rotates (#1496)
+- 🐛 Compose Validate no longer false-flags a valid env_file (#1497)
+- 🐛 cache app icons in one request so the containers and stacks pages load faster
+- 🐛 upgrade svelte to 5.56.10 (#1476, PR#1477, @ThanatosDi)
+- 🐛 refresh the bundled docker-compose (5.5.0-r2)
+- 🐛 stricter per-environment access and permission checks across the API
+- 🐛 redact secret values from compose command output and restrict backup restore targets
+- 🐛 local-path backup destinations now reject a host path that isn't a Dockhand bind mount (#1506)
+- 🐛 escape $ in env values when generating a compose file from a container (#1507)
+- 🐛 clearer git permission errors that match the credential type (token vs SSH key) (#1509)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.46
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.45
 
 _2026-08-27_
