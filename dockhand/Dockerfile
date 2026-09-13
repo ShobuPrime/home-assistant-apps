@@ -1,5 +1,5 @@
 # Global ARGs must be declared before any FROM
-ARG DOCKHAND_VERSION=1.0.46
+ARG DOCKHAND_VERSION=1.0.47
 ARG BUILD_FROM
 
 # Stage 1: Extract Dockhand from official image
