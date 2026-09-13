@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.0.47
+
+_2026-09-13_
+
+### Changed
+- Updated Dockhand to version 1.0.47
+
+Released: 2026-09-12
+
+## What's new in v1.0.47
+
+- ✨ live compose output during deploys, plus a per-stack deploy history tab (#506, #1292, #1540, PR#1499, @strausmann)
+- 🐛 back up stacks whose folder is bind-mounted over the data volume (#1533)
+- 🐛 backup restore preview now works for view-only roles (#1534)
+- ✨ warn before saving a stack whose compose file location won't survive a container recreate (#1524)
+- 🐛 OpenAPI spec accuracy fixes (#1531, #1530, PR#1532, @strausmann)
+- 🐛 "always redeploy" git stacks now force-recreate so config changes take effect (#1523)
+- 🐛 resolve secret references (op://, keepass://, ...) pasted with surrounding quotes (#1521)
+- 🐛 deleting a secret provider now warns which stacks it unbinds (#1522)
+- 🐛 deploy a 1:1-mounted local stack by file so its compose path label is preserved (#1514)
+- 🐛 store the compose path when a stack is created via the API without one (#1515)
+- 🐛 Microsoft Teams (via Workflows) accepts the new Power Automate webhook URL format (#1512)
+- 🐛 container shell sessions each keep their own live terminal when you switch between them (#1516)
+- 🐛 sort container uptimes under a minute correctly instead of tying them (PR#1395, @wrlee)
+- 🐛 load the web manifest through a Cloudflare tunnel by sending credentials (PR#1513, @Macleykun)
+- 🐛 copy the restic password over plain HTTP (#1488)
+- 🐛 scope stack backup snapshots to their own environment (#1546)
+- 🐛 theme defaults in General settings now save and display correctly when auth is on (#1547)
+- ✨ warn when a host's kernel has cgroup memory accounting disabled (#1549)
+- 🐛 self-update no longer fails at the updater step on baseline (old x86_64) images (#1500)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.47
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.46
 
 _2026-09-03_
