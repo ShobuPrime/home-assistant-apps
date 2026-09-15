@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.0.48
+
+_2026-09-15_
+
+### Changed
+- Updated Dockhand to version 1.0.48
+
+Released: 2026-09-14
+
+## What's new in v1.0.48
+
+- ✨ bulk-delete snapshots, and optionally forget a config's snapshots when you delete it (#1556)
+- ✨ option to choose which stack operations show the full log (#1558)
+- ✨ show the stack icon and name in stack action popups (#1526)
+- 🐛 log in to registries over TLS on remote HTTPS environments (#1557)
+- 🐛 vulnerability scans and alerts show the image tag, not just its digest (#1528)
+- 🐛 resolve secret provider references when restoring a stack from a backup (#1521)
+- 🐛 stop password managers from offering to save stack secret env-var fields (#1517)
+- 🐛 repository stats no longer fail on the backups screen (#1561)
+- 🐛 dashboard image disk usage no longer counts shared layers multiple times (PR#1461, @omggga)
+- ✨ add a docker attach terminal mode (#1078, PR#1377, @ivanjx)
+- 🐛 stack action buttons show for stopped and freshly created stacks, regression (#1565)
+- 🐛 the update dialog no longer shows an unreleased version as the target (#1566)
+- 🐛 update Go 1.26.8, docker-compose 5.5.0-r5, nodemailer 9.1.0, js-yaml 4.3.2 for security fixes
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.48
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.47
 
 _2026-09-13_
