@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.12.0
+
+_2026-09-16_
+
+> [!NOTE]
+> This release adds more flexible Git-based backups, improved vulnerability scanning, and expanded container and network visibility. It also fixes several authentication, permissions, deployment, and agent-related issues.
+
+## Backups and Git sync
+
+- Added **Back up to Git** sync mode and the ability to link existing projects to syncs — `dadf87f93d9214dcd741c7ed503dfbf504c9df54` (#3932) (`kmendell`)
+- Added configurable Git identity for pushes — `372f168940702645d63d34d0d6d80b742a7cb8da` (#3935) (`kmendell`)
+- Added an explicit environment-backup switch with a warning for project backups — `9ba395d5272ee5a3506682e61b9d1e06c4752f16` (#3937) (`kmendell`)
+- Added support for binary files in Git backups and reused the editor file tree in the sync dialog — `b80880fab4146572c02f071126d44751391031b9` (#3946) (`kmendell`)
+- Preserved pre-deploy hooks and deployment options when importing GitOps syncs — `da22a65fac881f7b6ff6048bae91399608d2eeab` (#3952) (`kmendell`)
+- Added S3 backup discovery and re-keyed volume backups to the recovery key — `02208f5cd24e028dfb0e2221305febbf3ee58837` (#3885) (`neurekadev`)
+
+## Security and vulnerability scanning
+
+- Added CSV export to the security vulnerabilities table — `af5538dde929bcc0e94053fd9ad4f3d263820da7` (#3936) (`kmendell`)
+- Added a **Fix available** filter to the security vulnerabilities table — `bf48ce6eebebca249607b02dcebb7df37079ab90` (#3944) (`kmendell`)
+- Added vulnerability-count sorting to the images table — `9f89ceefbfcd6dd16581cf520b40d4b201d41801` (#3945) (`kmendell`)
+- Added Trivy configuration and ignore-file settings for vulnerability scans — `eff16eb5688e981b36847f55995d92990d02d30c` (#3949) (`kmendell`)
+- Added support for decimal CPU limits in Trivy scans — `02225a2d03529ef14ec7e4009f6f4b746feca2b6` (#3972) (`kmendell`)
+
+## Containers and networks
+
+- Added subnet and gateway columns to the networks table — `146b4b9658d163c1290453203172b3cd286bdf3f` (#3942) (`kmendell`)
+- Added IPv6 addresses for containers and network members — `8345e5669ac2580a0b67385fbb9868ab6468e97e` (#3957) (`kmendell`)
+- Added optional IP ranges when creating networks — `38d3ed8c19faea20e4d9457395519196f074ce6a` (#3959) (`kmendell`)
+- Linked container overview volume and network counts to their respective tabs — `f9988528d1a94e3440d2d295bfcd1c658aff1798` (#3958) (`kmendell`)
+- Added support for downloading container logs — `9a83c5ac02944dc72c3fc4a39691eb8a1a832403` (#3960) (`kmendell`)
+
+## Interface and settings
+
+- Added Shift-select range support to selectable tables — `472b01f5855c642afe192be448fe6339f6a6f74c` (#3943) (`kmendell`)
+- Clarified ntfy token authentication, required Matrix credentials, and cleaned up test menu labels — `e68ab5ab4b8e3df7528b6f365846c383a49d381e` (#3951) (`kmendell`)
+- Updated theme colors and added support for inheriting theme colors — `eee8a84bd5d467ca5f1f6dac4ca20768a377dcf4` (#3965) (`kmendell`)
+
+## Authentication, permissions, and reliability
+
+- Surfaced OIDC and settings errors, allowed clearing the OIDC secret, and required it while OIDC is enabled — `70cf8a2596d32f2fd84685e5827bc79f95e2a3b7` (#3954) (`kmendell`)
+- Hid the Automations tab and stopped job polling without `jobs:manage` permission — `94d6d79d533cd941d46d2cacaba391167d570c96` (#3963) (`kmendell`)
+- Updated the legacy `users.roles` backfill to run only once — `a4ae1a0f20463c7dc018f7bae4996e3cab2e34ac` (#3964) (`kmendell`)
+
+## Agents and edge tunnel
+
+- Fixed Docker snippets to use the port number from the agent address input — `2c34ade39db5f8686f73e7f76bb8df691f39cebc` (#3955) (`tinkrynite`)
+- Added missing job commands to the edge tunnel — `6af4589a12376f7fe40a9f1d8778fbbe6e5afbf4` (`kmendell`)
+
+---
+
+
 ## 2.11.1
 
 _2026-09-14_
