@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.13.0
+
+_2026-09-20_
+
+> [!NOTE]
+> This release adds richer log controls, Telegram topic destinations, bulk container updates, retained logs, and project editor preferences.
+> It also improves update workflows, registry handling, UI behavior, and performance across projects, activity, and image updates.
+
+## Features
+
+- Added a stream label toggle for distinguishing STDOUT and STDERR in logs. (#3976, `4f10dee49f7a3c4b32a695cc9f05584403ea674d`) — `kmendell`
+- Added Telegram topic destinations for notifications. (#3978, `e47164421a22b8a9f12714a923be566889d2cbe1`) — `kmendell`
+- Added a timestamp toggle to the log viewer controls. (#3979, `9fa57c867b1085a7142d7e755f87ddd9318b1a1d`) — `kmendell`
+- Added personal defaults for the project editor layout. (#3986, `67b34b9c032d8f56379ed60322839d39dc5af855`) — `kmendell`
+- Added bulk updates for selected containers. (#3971, `0365c6861d50ef5fc5aaf7f816e370955eadc398`) — `mewajda`
+- Added retained log viewing for stopped projects. (#4097, `b350d394cd19027e90bb8dd581474de54745c434`) — `kmendell`
+
+## Fixes and UI improvements
+
+- Nested Compose services and networks under their respective sections in the outline. (#3985, `f4573188664d88d6d3a8ac0427c34611211dcb72`) — `angst911`
+- Let the backend generate run IDs for manually submitted jobs. (#3987, `af96a6e99b3fdc0b64cd8b26552e624be7732e54`) — `kmendell`
+- Added a separate tag-listing timeout for large registries. (#3990, `5262d2f33af966b856a10b8572c061bf7ba8fc18`) — `kmendell`
+- Updated the sidebar update item. (#4003, `476d8b17fc4f695e90a2758740fa77acf8ab42aa`) — `kmendell`
+- Sorted containers globally by live CPU and memory usage. (#4099, `18e4e3f5b1b2d8abf3999008cf3a0934bae6d4f3`) — `kmendell`
+- Surfaced Update All startup errors and adopted already-running jobs. (#4104, `dc89ea0b1920f4f2d6eefb92f2cafb9b528822ca`) — `kmendell`
+- Sorted network subnet and gateway columns numerically. (#4119, `324adf3585ece4ecd1f4f3317875521398028ea7`) — `kmendell`
+- Prevented header actions from overlapping badges and added per-device layout modes. (#4121, `9454ce57db6763263e4628cc58a4c2e1c169183d`) — `kmendell`
+- Included container image references in update discovery. (#4126, `e0357ec8468fadb8a8daba7804ec20594092d3b0`) — `kmendell`
+- Displayed project-scoped versions instead of image digests. (#4127, `ddead64b8b96e0929a0e79acd8d1a4f350e2f5a3`) — `kmendell`
+
+## Performance
+
+- Skipped repeated per-message visibility reads and source lookups on the local activity stream. (#4105, `423cd549b74271f8a4b3992cf04e5920d6a06dc5`) — `kmendell`
+- Resolved GitOps Compose paths once per project list request. (#4106, `f5d6f37dba1c9cab72271d6e9d183cbe1f7fd79e`) — `kmendell`
+- Enriched filtered project lists after pagination. (#4108, `92349aa97949e54ee2409a1c4a3c35758df60e8a`) — `kmendell`
+- Deduplicated and parallelized container tag checks. (#4109, `57812f8f0511e9f2d3f6b6fa17242da6db98d592`) — `kmendell`
+- Replaced repeated update-record scans with indexed lookups. (#4110, `109f22402d059167b079f735b19b72e4029ca4ef`) — `kmendell`
+
+---
+
+
 ## 2.12.0
 
 _2026-09-16_
