@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.0.49
+
+_2026-09-24_
+
+### Changed
+- Updated Dockhand to version 1.0.49
+
+Released: 2026-09-23
+
+## What's new in v1.0.49
+
+- 🐛 select-all checkbox shows a partial state, not a full tick, for a partial selection (#1605)
+- 🐛 a long backup no longer crashes the app when its log stream goes quiet (#1610)
+- ✨ tag containers and stacks, then filter and group the grid by tag (#781, #870)
+- 🐛 removing all of a stack's environment variables no longer leaves stale entries (#1598)
+- 🐛 templates with duplicate names no longer stop the templates page from rendering
+- 🐛 the container toolbar no longer clips its buttons on mobile (#1586)
+- 🐛 use webp or png for selfh.st icons that have no svg (#1596)
+- 🐛 don't report a newer version tag that resolves to the image you already run (#1572)
+- 🐛 fix vulnerability scans failing on the containerd image store (#1569, #1350)
+- 🐛 show CPU and memory for containers on Windows Docker hosts (#1574)
+- 🐛 don't send container died/killed notifications for a container being updated (#68)
+- 🐛 stop, start, restart and remove stacks that use secret providers, e.g. stop-during-backup (#1579)
+- 🐛 check for image updates on a plain-HTTP registry (#1580)
+- 🐛 send you to the login page when your session expires (#1577)
+- 🐛 skip hidden folders like .snapshots when scanning for stacks to adopt (#1251)
+- 🐛 updating a Podman container managed by a systemd Quadlet unit now works (#1529, #1559)
+- 🐛 option to skip bind mounts when scheduling backups for a whole environment (#1570)
+- 🐛 git stack env vars stay visible in the editor after saving (#1112)
+- ✨ search and filter containers by label (#1372)
+- ✨ editor themes: select from 40 themes with live preview (#1309)
+- ✨ command palette searches stacks and containers across all hosts (#670)
+- ✨ clear a search field with the X button in it (#1321)
+- 🐛 clearing a container's command now reverts it to the image default (#1489)
+- ✨ one-shot container exec API returning stdout, stderr and exit code (#1380)
+- ✨ set and change file ownership in the container file browser (#224)
+- 🐛 cut backup read transactions on S3/B2 by caching the restic index between runs (#1600)
+- 🐛 dashboard no longer flashes zero running containers on a remote host (#1608)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.49
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.48
 
 _2026-09-15_
