@@ -198,4 +198,4 @@ Got questions or found a bug? Please open an issue on the GitHub repository.
 
 ## Version
 
-Currently running Lemonade 11.9.0
+Currently running Lemonade 2026.39.1
