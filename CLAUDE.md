@@ -56,7 +56,9 @@ The repository includes comprehensive automation for managing pull requests:
 ### Automatic Version Updates
 - Daily checks for new Portainer releases (LTS and STS), Arcane, and Dockhand
 - Automatically creates PRs with version updates and changelogs
-- Lemonade bumps additionally get `needs-review` when upstream's Migration page covers the crossed range or the release's Breaking Changes section names something the app's code uses (`.github/scripts/check-lemonade-migration.sh`, `check-lemonade-breaking.sh`; see `lemonade/CLAUDE.md` "Version Updates")
+- Lemonade bumps additionally get `needs-review` when upstream's Migration page covers the crossed range, the release's Breaking Changes section names something the app's code uses, or the leading version component jumps by more than one (`.github/scripts/check-lemonade-migration.sh`, `check-lemonade-breaking.sh`, and an inline scheme check; see `lemonade/CLAUDE.md` "Version Updates"). Lemonade numbers releases `YYYY.WW.N` since 2026.39 and ships weekly; candidates are `candidate-v*` prereleases that `releases/latest` ignores
+- Every `api.github.com` call in an update script goes through `gh_api` in `.github/scripts/upstream-lib.sh` (a flat file on purpose: `.gitignore` has `lib/`, so a helper under `.github/scripts/lib/` never reaches the repo and every script dies on its `source` line in CI): authenticated with `GITHUB_TOKEN` (the anonymous 60 req/h budget is per runner IP and shared), retried, and never silent — the 2026-09-20 Portainer LTS check died with no output because `set -e` fired on `LATEST_VERSION=$(get_latest_version)` before the error branch. The scripts also refuse to propose a version that sorts below the one shipping (`ver_lt`); Portainer picks the highest LTS/STS-named release, since two LTS lines are patched at once
+- **Every bot PR leaves two red zero-job `pull_request` runs** (PR Validation + Builder). GitHub creates them for a `GITHUB_TOKEN`-created PR, parks them as `action_required`, and marks them `failure` the second the PR merges. They never ran and mean nothing; the `repository_dispatch` pair is the real gate. A red run *with jobs* is the one to read
 - **IMPORTANT:** Portainer version detection is based on GitHub release **names** containing "LTS" or "STS"
   - Do NOT use version number patterns (odd/even) - Portainer does not follow a consistent mathematical pattern
   - The script filters releases by searching for "LTS" or "STS" in the release name via GitHub API
@@ -87,6 +89,7 @@ The repository includes comprehensive automation for managing pull requests:
 - Automatically merges PRs created by github-actions[bot] that pass all validations
 - Requires `automated` and `validation-passed` labels
 - Blocked by `do-not-merge`, `needs-review`, or `on-hold` labels
+- A bot PR that the pipeline parks with `needs-review` (a Lemonade gate, a base-image major bump) also requests the repo owner's review when it opens. The label alone notifies no one: Lemonade 2026.39.1 sat three days unnoticed in #38
 - Uses squash merge method
 
 ### Managing Auto-merge

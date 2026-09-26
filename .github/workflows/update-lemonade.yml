@@ -23,15 +23,26 @@ jobs:
       migration_note: ${{ steps.migration.outputs.note }}
       breaking_flagged: ${{ steps.breaking.outputs.flagged }}
       breaking_note: ${{ steps.breaking.outputs.note }}
+      scheme_flagged: ${{ steps.scheme.outputs.flagged }}
+      scheme_note: ${{ steps.scheme.outputs.note }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
       - name: Check for updates
         id: check
+        # The update script reads GITHUB_TOKEN so its api.github.com calls are
+        # authenticated (1,000 req/h per repo) rather than sharing the anonymous
+        # 60 req/h budget of this runner's egress IP — see scripts/upstream-lib.sh.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd lemonade
-          result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-lemonade.sh)
+          if ! result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-lemonade.sh); then
+            # The script has already put the upstream response on stderr (see the log above).
+            echo "::error::Update check failed: $(echo "$result" | jq -r '.error // "no result"' 2>/dev/null)"
+            exit 1
+          fi
           echo "Result: $result"
 
           update_available=$(echo "$result" | jq -r '.update_available')
@@ -151,6 +162,44 @@ jobs:
               ;;
           esac
 
+      # Upstream replaced X.Y.Z with YYYY.WW.N (ISO year.week.build) after
+      # 11.9.0, so the next stable bump reads 11.9.0 -> 2026.NN.N. The two gates
+      # above happen to catch that release — its notes name `--version`, which
+      # the Dockerfile uses — but a gate that depends on upstream's wording is
+      # not a gate. Flag any jump of more than one in the leading component:
+      # a numbering change or a skipped major, either of which deserves a
+      # human reading the whole range rather than one release's notes.
+      # Steady-state calver (2026.39 -> 2026.40, 2026.52 -> 2027.1) never fires.
+      - name: Check for a version-scheme change
+        id: scheme
+        if: steps.check.outputs.update_available == 'true'
+        run: |
+          current="${{ steps.check.outputs.current_version }}"
+          latest="${{ steps.check.outputs.latest_version }}"
+          cur_major="${current%%.*}"
+          new_major="${latest%%.*}"
+
+          if ! [[ "${cur_major}" =~ ^[0-9]+$ && "${new_major}" =~ ^[0-9]+$ ]]; then
+            echo "flagged=true" >> "$GITHUB_OUTPUT"
+            echo "note=⚠️ Could not compare the leading version components of ${current} and ${latest}. Auto-merge is blocked with \`needs-review\`; check the numbering by hand." >> "$GITHUB_OUTPUT"
+          elif [ "$((10#${new_major} - 10#${cur_major}))" -gt 1 ]; then
+            echo "flagged=true" >> "$GITHUB_OUTPUT"
+            delim="SCHEME_EOF_$(date +%s%N)_$RANDOM"
+            {
+              echo "note<<${delim}"
+              echo "⚠️ **The leading version component jumped ${cur_major} → ${new_major}** — upstream changed its numbering scheme (Lemonade moved from \`X.Y.Z\` to \`YYYY.WW.N\` after 11.9.0) or skipped a major. Auto-merge is blocked with \`needs-review\`. Before merging:"
+              echo
+              echo "1. Read the release notes for the whole range, not just this release's Breaking Changes."
+              echo "2. Confirm Home Assistant orders \`${latest}\` above \`${current}\` (AwesomeVersion; \`11.9.0 < 2026.39.1\` was verified on 2026-09-20)."
+              echo "3. Confirm the Dockerfile's download URL, ghcr tag and asset names still match upstream's layout — the packaging check above covers the archives and the image tag for this release."
+              echo "4. Update lemonade/CLAUDE.md \"Lemonade Version Scheme\" if the scheme changed."
+              echo "${delim}"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "flagged=false" >> "$GITHUB_OUTPUT"
+            echo "note=The leading version component moved ${cur_major} → ${new_major}; no numbering-scheme change." >> "$GITHUB_OUTPUT"
+          fi
+
   update-version:
     needs: check-update
     if: needs.check-update.outputs.update_available == 'true'
@@ -166,6 +215,8 @@ jobs:
 
       - name: Update Lemonade
         id: update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd lemonade
           APP_PATH=. CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-lemonade.sh
@@ -218,6 +269,10 @@ jobs:
 
             ${{ needs.check-update.outputs.breaking_note }}
 
+            ### Version scheme check
+
+            ${{ needs.check-update.outputs.scheme_note }}
+
             ### Release Notes
 
             Full release notes: https://github.com/lemonade-sdk/lemonade/releases/tag/v${{ needs.check-update.outputs.latest_version }}
@@ -235,13 +290,25 @@ jobs:
       # reads labels when it starts, and needs-review is one of its blocking
       # labels. The REST endpoint auto-creates the label if it doesn't exist.
       - name: Block auto-merge (upstream flagged this version)
-        if: steps.create-pr.outputs.pull-request-number && (needs.check-update.outputs.migration_flagged == 'true' || needs.check-update.outputs.breaking_flagged == 'true')
+        if: steps.create-pr.outputs.pull-request-number && (needs.check-update.outputs.migration_flagged == 'true' || needs.check-update.outputs.breaking_flagged == 'true' || needs.check-update.outputs.scheme_flagged == 'true')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh api \
             "repos/${{ github.repository }}/issues/${{ steps.create-pr.outputs.pull-request-number }}/labels" \
             -f "labels[]=needs-review"
+
+      # needs-review blocks the merge but notifies no one (Lemonade 2026.39.1
+      # sat three days in #38). A review request does. Once, on creation; non-fatal.
+      - name: Ask the owner to review
+        if: steps.create-pr.outputs.pull-request-operation == 'created' && (needs.check-update.outputs.migration_flagged == 'true' || needs.check-update.outputs.breaking_flagged == 'true' || needs.check-update.outputs.scheme_flagged == 'true')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method POST \
+            "repos/${{ github.repository }}/pulls/${{ steps.create-pr.outputs.pull-request-number }}/requested_reviewers" \
+            -f "reviewers[]=${{ github.repository_owner }}" > /dev/null \
+            || echo "::warning::Could not request a review from ${{ github.repository_owner }}; the PR is still parked by needs-review."
 
       - name: Trigger downstream workflows
         if: steps.create-pr.outputs.pull-request-number
