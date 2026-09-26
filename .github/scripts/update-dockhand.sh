@@ -7,6 +7,9 @@
 
 set -e
 
+# gh_api (authenticated, retried, one diagnostic line on failure) and ver_lt.
+source "$(dirname "${BASH_SOURCE[0]}")/upstream-lib.sh"
+
 # Configuration
 APP_PATH="${APP_PATH:-.}"
 CHECK_ONLY="${CHECK_ONLY:-false}"
@@ -79,8 +82,7 @@ get_changelog() {
 
     # Try GitHub release notes first (has security advisories, detailed descriptions)
     local gh_release
-    gh_release=$(curl -s --connect-timeout 10 \
-        "https://api.github.com/repos/Finsys/dockhand/releases/tags/v${version}" 2>/dev/null)
+    gh_release=$(gh_api "https://api.github.com/repos/Finsys/dockhand/releases/tags/v${version}") || gh_release=""
 
     if [ -n "$gh_release" ] && echo "$gh_release" | jq -e '.body' >/dev/null 2>&1; then
         changelog=$(echo "$gh_release" | jq -r '.body // empty' 2>/dev/null)
@@ -232,7 +234,7 @@ main() {
 
     # Get latest version from changelog.json
     log "Checking for latest release from changelog.json..."
-    LATEST_VERSION=$(get_latest_version)
+    LATEST_VERSION=$(get_latest_version) || LATEST_VERSION=""
 
     if [ -z "$LATEST_VERSION" ]; then
         if [ "$JSON_OUTPUT" = "true" ]; then
@@ -253,6 +255,15 @@ main() {
             log "${GREEN}✓ Already on latest version!${NC}"
         fi
         exit 0
+    fi
+
+    # Never propose a version below the one shipping — see ver_lt in upstream-lib.sh.
+    if ver_lt "$LATEST_VERSION" "$CURRENT_VERSION"; then
+        echo "Refusing downgrade: upstream's newest release is $LATEST_VERSION, this app ships $CURRENT_VERSION" >&2
+        if [ "$JSON_OUTPUT" = "true" ]; then
+            echo "{\"current\": \"$CURRENT_VERSION\", \"latest\": \"$LATEST_VERSION\", \"update_available\": false, \"error\": \"upstream's newest release $LATEST_VERSION is older than $CURRENT_VERSION\"}"
+        fi
+        exit 1
     fi
 
     # Get changelog

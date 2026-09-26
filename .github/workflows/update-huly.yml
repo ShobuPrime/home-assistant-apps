@@ -25,9 +25,18 @@ jobs:
 
       - name: Check for updates
         id: check
+        # The update script reads GITHUB_TOKEN so its api.github.com calls are
+        # authenticated (1,000 req/h per repo) rather than sharing the anonymous
+        # 60 req/h budget of this runner's egress IP — see scripts/upstream-lib.sh.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd huly
-          result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-huly.sh)
+          if ! result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-huly.sh); then
+            # The script has already put the upstream response on stderr (see the log above).
+            echo "::error::Update check failed: $(echo "$result" | jq -r '.error // "no result"' 2>/dev/null)"
+            exit 1
+          fi
           echo "Result: $result"
 
           update_available=$(echo "$result" | jq -r '.update_available')
@@ -76,6 +85,8 @@ jobs:
 
       - name: Update Huly
         id: update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd huly
           APP_PATH=. CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-huly.sh

@@ -13,7 +13,11 @@ This repository uses GitHub Actions to automate app updates, validation, and mer
 **Trigger:** Daily at 2 AM UTC (or manual via workflow_dispatch)
 
 **What it does:**
-1. Checks for new Portainer releases via GitHub API
+1. Checks for new Portainer releases via GitHub API — LTS/STS is read from the
+   release *name*, and the **highest** matching version wins, not the most
+   recently published one: Portainer patches two LTS lines at once (2.39.8 LTS
+   went out two hours before 2.45.1 LTS on 2026-09-16), so publish order would
+   have proposed a downgrade
 2. Compares with current version in `config.yaml`
 3. If update available:
    - Updates version in `config.yaml`, `build.yaml`, `Dockerfile`
@@ -103,9 +107,12 @@ restriction, so it reliably triggers both PR Validation and Builder workflows.
 
 **File:** [`.github/workflows/update-lemonade.yml`](workflows/update-lemonade.yml)
 
-Lemonade releases often and lists breaking changes on nearly every release, so
-its update PRs carry two extra checks. Either one adds `needs-review`, which
-blocks auto-merge; the PR body says which fired and why.
+Lemonade releases weekly (a candidate is cut each Wednesday and promoted to
+stable the following week: 2026.39.1 was a candidate on 09-16, stable on 09-23)
+and lists breaking changes on nearly every release, so its update PRs carry
+three extra checks. Any one adds `needs-review`, which blocks auto-merge, and
+requests the repo owner's review so GitHub notifies you. The PR body says
+which check fired and why.
 
 1. **Migration page** (`.github/scripts/check-lemonade-migration.sh`): flags
    when [upstream's Migration wiki page](https://github.com/lemonade-sdk/lemonade/wiki/Migration)
@@ -119,6 +126,14 @@ blocks auto-merge; the PR body says which fired and why.
    identifier, the files and upstream's sentence. Added after 11.9.0
    deprecated `LEMONADE_ALLOWED_ORIGINS` with no Migration-page entry and
    auto-merged.
+3. **Version scheme** (inline in the workflow): flags when the leading version
+   component jumps by more than one — a numbering change or a skipped major.
+   Upstream replaced `X.Y.Z` with `YYYY.WW.N` after 11.9.0, so the first
+   calver bump reads `11.9.0 → 2026.NN.N`; the PR body then carries a
+   checklist (whole-range notes, HA ordering, Dockerfile URL/tag layout,
+   `lemonade/CLAUDE.md`). Steady-state calver (`2026.52 → 2027.1`) never
+   fires. Candidate builds are GitHub *prereleases* under `candidate-v*` tags,
+   which `releases/latest` ignores, so they are never proposed.
 
 To merge a flagged PR: read the hits, translate them to the container
 (`lemonade/CLAUDE.md`, "Version Updates"), fix what needs fixing on the PR
@@ -208,10 +223,31 @@ If PRs are not being merged:
 
 ### Update Script Issues
 
-If the update script fails:
-1. Check GitHub API rate limits
-2. Verify network connectivity in Actions
-3. Check script logs in workflow run details
+The `Check for updates` step fails with a `::error::` annotation and one
+`GET <url>: HTTP <status> <message>` line per attempt in the log — e.g.
+`HTTP 403 API rate limit exceeded for 13.105.x.x`. Every `api.github.com`
+call goes through `gh_api` in [`scripts/upstream-lib.sh`](scripts/upstream-lib.sh),
+which the workflows authenticate with `GITHUB_TOKEN` (1,000 req/h per repo);
+the anonymous budget is 60 req/h per IP, shared by every GitHub-hosted runner
+on that address, and exhausting it is what failed the Portainer LTS check on
+2026-09-20 — silently, because `set -e` killed the script before its error
+branch. A failed check is not retried until the next scheduled run; re-run
+the workflow by hand if it matters today.
+
+`Refusing downgrade` means upstream's newest matching release sorts below the
+version this app ships (a yanked release, or a selection bug). The script
+exits 1 rather than opening a PR that would move devices backwards.
+
+### Two red `pull_request` runs on every bot PR
+
+Every automated PR shows a failed `PR Validation` and a failed `Builder` run
+with **zero jobs**, both triggered by `pull_request`. These never ran:
+GitHub creates the run object for a `GITHUB_TOKEN`-created PR but parks it
+as `action_required`, and flips it to `failure` the second the PR is merged
+(run `updated_at` == PR `merged_at`, every time since #15). The real gating
+is the `repository_dispatch` pair, which the update workflow fires itself.
+Nothing is broken when you see these; a red run **with jobs** is the one to
+read.
 
 ## Security Considerations
 

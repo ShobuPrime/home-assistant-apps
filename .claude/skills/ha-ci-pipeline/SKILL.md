@@ -113,6 +113,8 @@ The `pull_request` path's allow-list is `Build ` / `Smoke test ` prefixes plus `
 |----------------|-----------------|
 | `automated` | `do-not-merge`, `needs-review`, `on-hold` |
 
+When the pipeline itself adds `needs-review` (Lemonade gates, base-image major bump), it also requests the repo owner's review on the PR's creation — the label notifies no one, which is how Lemonade 2026.39.1 sat parked three days in #38. A parked PR needs a human merge; its `pull_request` runs are placeholders, so review it against the dispatch runs.
+
 ## Troubleshooting: PR Not Auto-Merging
 
 When an automated PR has `validation-passed` but isn't merging, check these causes in order:
@@ -176,6 +178,8 @@ A PR opened by `github-actions[bot]` with `GITHUB_TOKEN` does not trigger `pull_
 
 That is *why* every `update-*.yml` fires a `repository_dispatch` after creating its PR. It is not redundancy.
 
+**Those parked runs turn red when the PR merges.** The moment the PR closes, GitHub flips each `action_required` run to `failure` — run `updated_at` equals PR `merged_at` for every bot PR since #15 — so every auto-merged PR leaves a failed `PR Validation` and a failed `Builder` run with **zero jobs** in the Actions tab. `gh run view` guesses "This run likely failed because of a workflow file issue"; it is wrong, that is its generic text for a jobless failure. Tell them apart from a real failure by the job count: a red run with no jobs never ran. Runs superseded by a later push to the same branch stay `action_required` forever instead. There is no trigger filter that prevents them (`pull_request.branches` matches the *base* branch), and the API cannot cancel a run that is already `completed`; the only clean-up would be `DELETE /repos/{o}/{r}/actions/runs/{id}` from the auto-merge job, which the repo has chosen not to do so far.
+
 **If someone approves those blocked runs**, they execute against the commit the run was *created* with — which may be long stale. Approving #190's blocked run replayed a commit from seven hours earlier, so it ran a `smoke-test.sh` from before the fix that had since landed on master.
 
 ### 2. Auto-merged commits get no `push` run
@@ -235,6 +239,10 @@ New apps should use unoccupied slots: 4:00, 4:30, 5:00 AM UTC, etc.
         }
       }'
 ```
+
+## Update Workflow Failures
+
+The `Check for updates` step of an `update-*.yml` run fails with a `::error::` annotation and, in the log, one line per attempt of the form `GET https://api.github.com/...: HTTP 403 API rate limit exceeded for 13.105.x.x`. All `api.github.com` calls go through `gh_api` in `.github/scripts/upstream-lib.sh`, authenticated with `GITHUB_TOKEN` (1,000 req/h per repo); before that, on 2026-09-20, the Portainer LTS check used the anonymous budget (60 req/h per IP, shared by every GitHub-hosted runner on that address), exhausted it, and exited 1 with **no output at all** — `set -e` fired on `LATEST_VERSION=$(get_latest_version)` before the `if [ -z ... ]` error branch could run. That branch is now reachable (`|| LATEST_VERSION=""`), and a `Refusing downgrade` line means upstream's newest matching release sorts below what the app ships. A failed check simply runs again tomorrow; `gh workflow run update-<app>.yml` re-runs it now.
 
 ## Debugging Checklist
 
