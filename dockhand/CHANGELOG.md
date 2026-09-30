@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.0.50
+
+_2026-09-30_
+
+### Changed
+- Updated Dockhand to version 1.0.50
+
+Released: 2026-09-30
+
+## What's new in v1.0.50
+
+- ✨ update a container straight from its details view when a newer image is available (#1588)
+- ✨ duplicate a backup schedule to reuse its settings for another destination (#1578)
+- ✨ mark a secret provider as default so new stacks start with it selected (#1609)
+- ✨ optionally skip the login form, and sign out at the identity provider (#563, #562, #1318)
+- ✨ dashboard disk usage segments link straight to images, volumes or containers (#1314)
+- ✨ the container file browser opens at the container's working directory (#1285)
+- ✨ mattermost notifications arrive as colour-coded cards, like the discord ones (#1607)
+- ✨ container icons fall back to the image namespace when the name has none (#1624)
+- ✨ tag groups are ordered alphabetically by tag name (#1625)
+- 🐛 oidc sign-in survives a restart and works across multiple replicas (#1601)
+- 🐛 cleaner image scan logs, and the real registry error (#1486, #1628, #1629)
+- 🐛 compose validate no longer flags variables a secret provider supplies (#1621)
+- 🐛 updating a container through the API keeps its secondary networks and their aliases
+- 🐛 recreating a container no longer reuses its old auto-assigned MAC address (#1618)
+- 🐛 podman's default bridge is no longer shown as an extra network on containers (#1619)
+- 🐛 a scheduled container update clears its pending row, so update all no longer fails on it (#1632)
+- 🐛 image prune no longer times out after 30s when filters are set (#1630)
+- 🐛 exporting an image whose name contains a slash no longer fails (#1635)
+- 🐛 percentage disk warnings are marked as unusable on hosts that report no total (#1631)
+- 🐛 https now starts with certificates that have no subject, like newer let's encrypt ones (#1622)
+- 🐛 dashboard keeps its top containers and recent events after a container event (#1608)
+- 🐛 the secret provider selector is no longer lost on save in the env text view (#1620)
+- 🐛 a git stack .env value can be quoted and refer to another variable (#1018)
+- 🐛 update docker-compose 5.5.1-r1, devalue 5.9.2 and nodemailer 9.1.1 for security fixes
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.50
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.49
 
 _2026-09-24_
