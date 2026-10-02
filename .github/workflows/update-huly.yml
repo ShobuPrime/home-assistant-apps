@@ -70,6 +70,53 @@ jobs:
             echo "${delim}"
           } >> "$GITHUB_OUTPUT"
 
+  # The version check only watches HULY_VERSION. Upstream also edits
+  # compose.yml between versions — 2026-09-29 (#336) replaced minio/minio,
+  # which had left Docker Hub — and this repo's template is a copy that
+  # nothing compared. Every upstream commit to compose.yml after the reviewed
+  # one in .github/upstream/huly-compose.ref opens an issue assigned to the owner.
+  upstream-compose:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Open an issue for unreviewed upstream compose changes
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const reviewed = fs.readFileSync('.github/upstream/huly-compose.ref', 'utf8').split('\n')[0].trim();
+            const up = { owner: 'hcengineering', repo: 'huly-selfhost' };
+            const { data: commits } = await github.rest.repos.listCommits({ ...up, path: 'compose.yml', per_page: 20 });
+            const idx = commits.findIndex(c => c.sha === reviewed);
+            if (idx === 0) { console.log(`compose.yml unchanged since ${reviewed.slice(0, 7)}`); return; }
+            // Not found in the last 20 means the ref is stale or wrong: report everything listed.
+            const fresh = idx === -1 ? commits : commits.slice(0, idx);
+            const head = fresh[0];
+            const title = `Huly upstream compose.yml changed (${head.sha.slice(0, 7)})`;
+            const { data: existing } = await github.rest.issues.listForRepo({
+              ...context.repo, labels: 'huly-upstream', state: 'all', per_page: 100 });
+            if (existing.some(i => i.title === title)) { console.log(`Already reported: ${title}`); return; }
+            const body = [
+              `Upstream changed \`compose.yml\` after the reviewed commit \`${reviewed.slice(0, 7)}\`` +
+                (idx === -1 ? ' (which is not among its last 20 commits — check the ref).' : '.'),
+              '',
+              ...fresh.map(c => `- [\`${c.sha.slice(0, 7)}\`](${c.html_url}) ${c.commit.committer.date.slice(0, 10)} — ${c.commit.message.split('\n')[0]}`),
+              '',
+              `Diff: https://github.com/hcengineering/huly-selfhost/compare/${reviewed}...${head.sha}`,
+              '',
+              '- [ ] Apply what matters to `huly/rootfs/opt/huly/compose.yaml.tmpl` (keep images on `mirror.gcr.io`)',
+              `- [ ] Put \`${head.sha}\` on the first line of \`.github/upstream/huly-compose.ref\``,
+            ].join('\n');
+            const { data: issue } = await github.rest.issues.create({
+              ...context.repo, title, body, labels: ['huly-upstream'], assignees: [context.repo.owner] });
+            core.warning(`Upstream compose.yml changed; opened #${issue.number}`);
+
   update-version:
     needs: check-update
     if: needs.check-update.outputs.update_available == 'true'

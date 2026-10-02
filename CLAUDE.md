@@ -90,6 +90,7 @@ The repository includes comprehensive automation for managing pull requests:
 - Requires `automated` and `validation-passed` labels
 - Blocked by `do-not-merge`, `needs-review`, or `on-hold` labels
 - A bot PR that the pipeline parks with `needs-review` (a Lemonade gate, a base-image major bump) also requests the repo owner's review when it opens. The label alone notifies no one: Lemonade 2026.39.1 sat three days unnoticed in #38
+- Lemonade's checks re-run on the open PR every day; when they all pass, the pipeline removes a `needs-review` **it** added (never one a person added), so the next dispatch auto-merges. A gate script must never exit 1 on an internal error, since 1 means "flagged": `check-lemonade-breaking.sh` crashed that way on 2026.40.0 and parked #44 with an empty hit list. It now maps any failure to exit 2, and the workflow treats "flagged with no hits" as a failed check
 - Uses squash merge method
 
 ### Managing Auto-merge
@@ -236,6 +237,11 @@ Every `FROM` that would otherwise hit `docker.io` goes through
 
 Official images take the `library/` prefix; everything else keeps its
 namespace. The image content is identical — only the registry changes.
+
+**Images an app pulls at runtime count too.** `huly` pulls 14 images with
+`docker-compose pull` on every version change, all anonymous. They failed every
+CI smoke test from 2026-09-28 on the rate limit, blocking all base-image PRs.
+Its compose template now references `mirror.gcr.io/...` throughout.
 
 `ghcr.io` is not rate-limited this way, so `$BUILD_FROM` and any other ghcr.io
 reference stays as-is. A bare `docker.io` reference is the thing to avoid; it

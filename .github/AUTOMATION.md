@@ -103,6 +103,19 @@ restriction, so it reliably triggers both PR Validation and Builder workflows.
 
 **What it does:** Checks the latest `home-assistant/operating-system` release and opens a per-release tracking issue (label `haos-update`) with an on-device verification checklist. CI runners do not run the HAOS kernel, so kernel/AppArmor/Docker behavior changes can only be caught on the device — HAOS 18.1 broke the Huly add-on's Docker socket access while all CI was green. Deduped by issue title, so each release gets exactly one issue.
 
+### Huly upstream compose watch
+
+**File:** [`.github/workflows/update-huly.yml`](workflows/update-huly.yml), job `upstream-compose`
+
+The Huly version check reads only `HULY_VERSION`. Upstream also edits
+`huly-selfhost/compose.yml` between versions, and `huly/rootfs/opt/huly/compose.yaml.tmpl`
+is a copy of it. Every upstream commit to that file after the one recorded in
+[`upstream/huly-compose.ref`](upstream/huly-compose.ref) opens a `huly-upstream` issue
+(one per upstream commit, assigned to the owner) with the commits, a diff link and a
+checklist. After applying what matters, put the new SHA on the ref file's first line.
+Added after upstream's #336 (`minio/minio` left Docker Hub; replaced by `pgsty/silo`)
+went unnoticed.
+
 ### Lemonade review gates
 
 **File:** [`.github/workflows/update-lemonade.yml`](workflows/update-lemonade.yml)
@@ -134,6 +147,11 @@ which check fired and why.
    `lemonade/CLAUDE.md`). Steady-state calver (`2026.52 → 2027.1`) never
    fires. Candidate builds are GitHub *prereleases* under `candidate-v*` tags,
    which `releases/latest` ignores, so they are never proposed.
+
+The checks re-run every day while the PR is open. When all three pass, the
+workflow removes a `needs-review` it added itself, so a flag that was wrong
+(the breaking-changes script crashed on 2026.40.0 and parked #44) clears on
+its own. A `needs-review` a person added is never removed.
 
 To merge a flagged PR: read the hits, translate them to the container
 (`lemonade/CLAUDE.md`, "Version Updates"), fix what needs fixing on the PR

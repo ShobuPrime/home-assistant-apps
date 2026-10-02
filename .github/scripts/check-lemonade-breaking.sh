@@ -27,6 +27,10 @@
 # 11.8.1 is clean. Expect roughly every other bump to ask for a glance.
 
 set -euo pipefail
+# Exit 1 means "flagged", so an unexpected failure must not exit 1 too:
+# 2026.40.0's notes left no usable token, the last grep matched nothing,
+# pipefail made that fatal, and #44 was parked with an empty hit list.
+trap 'exit 2' ERR
 
 NOTES="${1:?usage: check-lemonade-breaking.sh <release-notes-file> <path>...}"
 shift
@@ -48,19 +52,20 @@ SECTION="$(tr -d '\r' < "${NOTES}" | awk '
 
 # Backtick-quoted spans, split on whitespace and "=", stripped of quotes and
 # trailing punctuation. Keep only identifier-shaped tokens: something with an
-# underscore, dot, slash or a leading dash — env vars, config keys, paths,
-# flags. Plain words (`limit`, `latest`) and bare version numbers match too
-# much of any tree to mean anything.
+# underscore, dot, slash, colon or a leading dash — env vars, config keys,
+# paths, flags, recipe:backend pairs (`sd-cpp:rocm`). Plain words (`limit`,
+# `latest`) and bare version numbers match too much of any tree to mean
+# anything. No token surviving is a clean result, not an error.
 TOKENS="$(printf '%s\n' "${SECTION}" \
     | grep -oE '`[^`]+`' | tr -d '`' \
     | tr ' =' '\n\n' \
     | sed -E 's/^["'"'"'(]+//; s/["'"'"'),.;:]+$//' \
-    | grep -E '^[A-Za-z0-9_./*-]+$' \
-    | grep -E '[_./]|^-' \
+    | grep -E '^[A-Za-z0-9_./:*-]+$' \
+    | grep -E '[_./:]|^-' \
     | grep -vE '^v?[0-9]+(\.[0-9]+)*$' \
     | grep -vE '^[-._/*]+$' \
     | awk 'length($0) >= 4' \
-    | sort -u)"
+    | sort -u || true)"
 [ -n "${TOKENS}" ] || exit 0
 
 HITS=""

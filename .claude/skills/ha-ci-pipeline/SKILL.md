@@ -115,6 +115,10 @@ The `pull_request` path's allow-list is `Build ` / `Smoke test ` prefixes plus `
 
 When the pipeline itself adds `needs-review` (Lemonade gates, base-image major bump), it also requests the repo owner's review on the PR's creation — the label notifies no one, which is how Lemonade 2026.39.1 sat parked three days in #38. A parked PR needs a human merge; its `pull_request` runs are placeholders, so review it against the dispatch runs.
 
+For Lemonade the gates re-run daily on the open PR, and a clean run removes a `needs-review` the bot added (never a person's). A gate script exits 1 only for a real hit and 2 for any failure; "flagged" with an empty hit list means a crashed check (how #44 was parked on 2026.40.0).
+
+**A base-image PR that fails only `Smoke test huly`** is almost always Docker Hub's anonymous pull limit, not the base image: huly pulls 14 images at runtime. They all go through `mirror.gcr.io` since 2026-10-01; a new image added to its compose template must too.
+
 ## Troubleshooting: PR Not Auto-Merging
 
 When an automated PR has `validation-passed` but isn't merging, check these causes in order:

@@ -1,7 +1,12 @@
+# Every image comes through mirror.gcr.io (Google's Docker Hub cache): the
+# stack pulls 14 images anonymously on each version change, and Docker Hub's
+# rate limit failed every CI smoke test from 2026-09-28. Same digests, other
+# registry. MinIO is pgsty/silo, a drop-in fork: minio/minio left Docker Hub
+# (upstream huly-selfhost #336 made the same swap).
 name: ${DOCKER_NAME}
 services:
   nginx:
-    image: "nginx:1.21.3"
+    image: "mirror.gcr.io/library/nginx:1.21.3"
     # No host port binding — the app container bridges HA ingress (port 4859)
     # to this nginx via the compose network using socat.
     volumes:
@@ -13,7 +18,7 @@ services:
       - huly_net
 
   cockroach:
-    image: cockroachdb/cockroach:latest-v24.2
+    image: mirror.gcr.io/cockroachdb/cockroach:latest-v24.2
     command: start-single-node --accept-sql-without-tls
     environment:
       - COCKROACH_DATABASE=${CR_DATABASE}
@@ -29,7 +34,7 @@ services:
   # Kafka (Redpanda is upstream default but crashes on Cortex-A76/Pi CM5 — exit 133).
   # Apache Kafka in KRaft mode is fully Kafka-wire-protocol compatible.
   kafka:
-    image: apache/kafka:4.1.1
+    image: mirror.gcr.io/apache/kafka:4.1.1
     container_name: kafka
     environment:
       KAFKA_NODE_ID: 1
@@ -58,7 +63,7 @@ services:
       - huly_net
 
   minio:
-    image: "minio/minio"
+    image: "mirror.gcr.io/pgsty/silo"
     command: server /data --address ":9000" --console-address ":9001"
     volumes:
       - ${VOLUME_FILES_PATH}:/data
@@ -74,7 +79,7 @@ services:
       - huly_net
 
   elastic:
-    image: "elasticsearch:7.14.2"
+    image: "mirror.gcr.io/library/elasticsearch:7.14.2"
     user: "1000:1000"
     command: |
       /bin/sh -c "./bin/elasticsearch-plugin list | grep -q ingest-attachment || yes | ./bin/elasticsearch-plugin install --silent ingest-attachment;
@@ -97,7 +102,7 @@ services:
       - huly_net
 
   rekoni:
-    image: hardcoreeng/rekoni-service:${HULY_VERSION}
+    image: mirror.gcr.io/hardcoreeng/rekoni-service:${HULY_VERSION}
     environment:
       - SECRET=${SECRET}
     deploy:
@@ -109,7 +114,7 @@ services:
       - huly_net
 
   transactor:
-    image: hardcoreeng/transactor:${HULY_VERSION}
+    image: mirror.gcr.io/hardcoreeng/transactor:${HULY_VERSION}
     environment:
       - SERVER_PORT=3333
       - SERVER_SECRET=${SECRET}
@@ -133,7 +138,7 @@ services:
       - huly_net
 
   collaborator:
-    image: hardcoreeng/collaborator:${HULY_VERSION}
+    image: mirror.gcr.io/hardcoreeng/collaborator:${HULY_VERSION}
     environment:
       - COLLABORATOR_PORT=3078
       - SECRET=${SECRET}
@@ -145,7 +150,7 @@ services:
       - huly_net
 
   account:
-    image: hardcoreeng/account:${HULY_VERSION}
+    image: mirror.gcr.io/hardcoreeng/account:${HULY_VERSION}
     environment:
       - SERVER_PORT=3000
       - SERVER_SECRET=${SECRET}
@@ -168,7 +173,7 @@ services:
       - huly_net
 
   workspace:
-    image: hardcoreeng/workspace:${HULY_VERSION}
+    image: mirror.gcr.io/hardcoreeng/workspace:${HULY_VERSION}
     environment:
       - SERVER_SECRET=${SECRET}
       - DB_URL=${CR_DB_URL}
@@ -189,7 +194,7 @@ services:
       - huly_net
 
   front:
-    image: hardcoreeng/front:${HULY_VERSION}
+    image: mirror.gcr.io/hardcoreeng/front:${HULY_VERSION}
     environment:
       - SERVER_PORT=8080
       - SERVER_SECRET=${SECRET}
@@ -216,7 +221,7 @@ services:
       - huly_net
 
   fulltext:
-    image: hardcoreeng/fulltext:${HULY_VERSION}
+    image: mirror.gcr.io/hardcoreeng/fulltext:${HULY_VERSION}
     environment:
       - SERVER_SECRET=${SECRET}
       - DB_URL=${CR_DB_URL}
@@ -235,7 +240,7 @@ services:
       - huly_net
 
   stats:
-    image: hardcoreeng/stats:${HULY_VERSION}
+    image: mirror.gcr.io/hardcoreeng/stats:${HULY_VERSION}
     environment:
       - PORT=4900
       - SERVER_SECRET=${SECRET}
@@ -244,7 +249,7 @@ services:
       - huly_net
 
   kvs:
-    image: hardcoreeng/hulykvs:${HULY_VERSION}
+    image: mirror.gcr.io/hardcoreeng/hulykvs:${HULY_VERSION}
     depends_on:
       cockroach:
         condition: service_started

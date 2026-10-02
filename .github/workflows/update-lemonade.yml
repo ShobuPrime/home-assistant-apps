@@ -137,6 +137,8 @@ jobs:
               .github/scripts/smoke-test.sh .github/scripts/mock-supervisor.py)"
           rc=$?
           set -e
+          # A hit always prints a line; "flagged" with none is a crashed check (#44).
+          if [ "${rc}" = 1 ] && [ -z "${hits}" ]; then rc=2; fi
 
           case "${rc}" in
             0)
@@ -158,7 +160,8 @@ jobs:
               ;;
             *)
               echo "flagged=true" >> "$GITHUB_OUTPUT"
-              echo "note=⚠️ The release notes could not be read, so ${latest} was NOT checked for breaking changes. Auto-merge is blocked with \`needs-review\`; read them manually before merging." >> "$GITHUB_OUTPUT"
+              echo "::warning::check-lemonade-breaking.sh exited ${rc}; ${latest} was not checked for breaking changes."
+              echo "note=⚠️ The breaking-changes check could not run (exit ${rc}), so ${latest} was NOT checked. Auto-merge is blocked with \`needs-review\`; read the release notes manually before merging." >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -309,6 +312,34 @@ jobs:
             "repos/${{ github.repository }}/pulls/${{ steps.create-pr.outputs.pull-request-number }}/requested_reviewers" \
             -f "reviewers[]=${{ github.repository_owner }}" > /dev/null \
             || echo "::warning::Could not request a review from ${{ github.repository_owner }}; the PR is still parked by needs-review."
+
+      # The checks re-run every day on an open PR. A needs-review this pipeline
+      # added earlier is stale once they all pass (#44 stayed parked on a crashed
+      # check). Only the bot's own label goes; one a person added stays.
+      # Before the dispatch: auto-merge reads the labels when it starts.
+      - name: Clear a stale needs-review
+        if: >-
+          steps.create-pr.outputs.pull-request-number &&
+          steps.create-pr.outputs.pull-request-operation != 'created' &&
+          needs.check-update.outputs.migration_flagged == 'false' &&
+          needs.check-update.outputs.breaking_flagged == 'false' &&
+          needs.check-update.outputs.scheme_flagged == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.create-pr.outputs.pull-request-number }}
+        run: |
+          repo="${{ github.repository }}"
+          if ! gh api "repos/${repo}/issues/${PR}" --jq '.labels[].name' | grep -qx needs-review; then
+            exit 0
+          fi
+          labeler="$(gh api --paginate "repos/${repo}/issues/${PR}/events" \
+            | jq -rs 'add | [.[] | select(.event == "labeled" and .label.name == "needs-review")] | last | .actor.login // ""')"
+          if [ "${labeler}" = "github-actions[bot]" ]; then
+            gh api --method DELETE "repos/${repo}/issues/${PR}/labels/needs-review" > /dev/null
+            echo "Removed needs-review: every check passed on this run."
+          else
+            echo "needs-review was added by ${labeler:-unknown}; leaving it."
+          fi
 
       - name: Trigger downstream workflows
         if: steps.create-pr.outputs.pull-request-number
