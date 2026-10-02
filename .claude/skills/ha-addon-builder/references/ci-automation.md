@@ -26,6 +26,12 @@ The script operates in two modes:
 
 set -e
 
+# gh_api: every api.github.com call goes through this — authenticated with
+# GITHUB_TOKEN when set, retried, and it prints "GET <url>: HTTP <code> <msg>"
+# on failure instead of nothing. ver_lt: version ordering for the downgrade
+# guard. Both live in .github/scripts/upstream-lib.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/upstream-lib.sh"
+
 # Configuration
 APP_PATH="${APP_PATH:-.}"
 CHECK_ONLY="${CHECK_ONLY:-false}"
@@ -68,7 +74,7 @@ RETRY_DELAY=2
 
 for i in $(seq 1 $MAX_RETRIES); do
     # --- REPLACE THIS BLOCK with app-specific version detection ---
-    RESPONSE=$(curl -s -f "https://api.github.com/repos/<owner>/<repo>/releases/latest" 2>/dev/null) && break
+    RESPONSE=$(gh_api "https://api.github.com/repos/<owner>/<repo>/releases/latest") && break
     log "${YELLOW}Retry $i/$MAX_RETRIES...${NC}"
     sleep $RETRY_DELAY
 done
@@ -94,6 +100,16 @@ if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
         echo "{\"update_available\": false, \"current\": \"${CURRENT_VERSION}\", \"latest\": \"${LATEST_VERSION}\"}"
     fi
     exit 0
+fi
+
+# Never propose a version below the one shipping (yanked release, wrong
+# selection). Exit 1 so the run is red rather than opening a downgrade PR.
+if ver_lt "$LATEST_VERSION" "$CURRENT_VERSION"; then
+    echo "Refusing downgrade: upstream's newest release is $LATEST_VERSION, this app ships $CURRENT_VERSION" >&2
+    if [ "$JSON_OUTPUT" = "true" ]; then
+        echo "{\"update_available\": false, \"current\": \"${CURRENT_VERSION}\", \"latest\": \"${LATEST_VERSION}\", \"error\": \"upstream's newest release is older than the shipping one\"}"
+    fi
+    exit 1
 fi
 
 log "${YELLOW}Update available: ${CURRENT_VERSION} -> ${LATEST_VERSION}${NC}"
@@ -222,9 +238,14 @@ jobs:
 
       - name: Check for updates
         id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # gh_api authenticates with it
         run: |
           cd <app_slug>
-          result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-<app>.sh)
+          if ! result=$(APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-<app>.sh); then
+            echo "::error::Update check failed: $(echo "$result" | jq -r '.error // "no result"' 2>/dev/null)"
+            exit 1
+          fi
           echo "Result: $result"
 
           update_available=$(echo "$result" | jq -r '.update_available')
@@ -259,6 +280,8 @@ jobs:
 
       - name: Update <App Name>
         id: update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd <app_slug>
           APP_PATH=. CHECK_ONLY=false JSON_OUTPUT=false bash ../.github/scripts/update-<app>.sh
@@ -358,7 +381,7 @@ Different upstreams publish versions differently. Here are the patterns used in 
 ### GitHub Releases (Latest) - Used by Arcane
 
 ```bash
-RESPONSE=$(curl -s -f "https://api.github.com/repos/<owner>/<repo>/releases/latest")
+RESPONSE=$(gh_api "https://api.github.com/repos/<owner>/<repo>/releases/latest")
 LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')
 CHANGELOG=$(echo "$RESPONSE" | jq -r '.body // "No changelog available"')
 ```
@@ -368,9 +391,12 @@ CHANGELOG=$(echo "$RESPONSE" | jq -r '.body // "No changelog available"')
 Portainer has LTS and STS tracks, filtered by release name:
 
 ```bash
-RESPONSE=$(curl -s -f "https://api.github.com/repos/portainer/portainer/releases")
+# Highest matching version, not the first published — Portainer patches two
+# LTS lines at once, so publish order can point at the older line.
+RESPONSE=$(gh_api "https://api.github.com/repos/portainer/portainer/releases")
 LATEST_VERSION=$(echo "$RESPONSE" | jq -r \
-    '[.[] | select(.prerelease == false) | select(.name | test("STS"; "i"))] | .[0].tag_name')
+    '.[] | select(.prerelease == false) | select(.name | test("STS"; "i")) | .tag_name' \
+    | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
 ```
 
 ### Docker Hub Tags - Used by Dockhand

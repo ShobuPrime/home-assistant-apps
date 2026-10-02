@@ -4,6 +4,9 @@
 
 set -e
 
+# gh_api (authenticated, retried, one diagnostic line on failure) and ver_lt.
+source "$(dirname "${BASH_SOURCE[0]}")/upstream-lib.sh"
+
 # Configuration
 APP_PATH="${APP_PATH:-.}"
 CHECK_ONLY="${CHECK_ONLY:-false}"
@@ -51,8 +54,8 @@ get_changelog() {
     local changelog=""
 
     # Try to get recent commit messages from the huly-selfhost repo
-    changelog=$(curl -s --connect-timeout 10 "https://api.github.com/repos/hcengineering/huly-selfhost/commits?per_page=5" 2>/dev/null | \
-        jq -r '.[].commit.message' 2>/dev/null | head -20)
+    changelog=$(gh_api "https://api.github.com/repos/hcengineering/huly-selfhost/commits?per_page=5" | \
+        jq -r '.[].commit.message' 2>/dev/null | head -20) || changelog=""
 
     if [ -n "$changelog" ] && [ "$changelog" != "null" ]; then
         echo "$changelog"
@@ -166,7 +169,7 @@ main() {
 
     # Get latest version
     log "Checking for latest version..."
-    LATEST_VERSION=$(get_latest_version)
+    LATEST_VERSION=$(get_latest_version) || LATEST_VERSION=""
 
     if [ -z "$LATEST_VERSION" ]; then
         if [ "$JSON_OUTPUT" = "true" ]; then
@@ -187,6 +190,15 @@ main() {
             log "${GREEN} Already on latest version!${NC}"
         fi
         exit 0
+    fi
+
+    # Never propose a version below the one shipping — see ver_lt in upstream-lib.sh.
+    if ver_lt "$LATEST_VERSION" "$CURRENT_VERSION"; then
+        echo "Refusing downgrade: upstream's newest release is $LATEST_VERSION, this app ships $CURRENT_VERSION" >&2
+        if [ "$JSON_OUTPUT" = "true" ]; then
+            echo "{\"current\": \"$CURRENT_VERSION\", \"latest\": \"$LATEST_VERSION\", \"update_available\": false, \"error\": \"upstream's newest release $LATEST_VERSION is older than $CURRENT_VERSION\"}"
+        fi
+        exit 1
     fi
 
     # Get changelog

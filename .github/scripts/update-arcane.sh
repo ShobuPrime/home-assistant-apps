@@ -4,6 +4,9 @@
 
 set -e
 
+# gh_api (authenticated, retried, one diagnostic line on failure) and ver_lt.
+source "$(dirname "${BASH_SOURCE[0]}")/upstream-lib.sh"
+
 # Configuration
 APP_PATH="${APP_PATH:-.}"
 CHECK_ONLY="${CHECK_ONLY:-false}"
@@ -30,8 +33,8 @@ get_latest_version() {
 
     for i in $(seq 1 $retries); do
         # Get latest release from Arcane GitHub
-        version=$(curl -s --connect-timeout 10 https://api.github.com/repos/getarcaneapp/arcane/releases/latest 2>/dev/null | \
-            jq -r '.tag_name // empty' 2>/dev/null)
+        version=$(gh_api https://api.github.com/repos/getarcaneapp/arcane/releases/latest | \
+            jq -r '.tag_name // empty' 2>/dev/null) || version=""
 
         if [ -n "$version" ]; then
             # Remove 'v' prefix if present
@@ -53,11 +56,10 @@ get_changelog() {
     local changelog=""
 
     # Fetch release info (try with 'v' prefix first)
-    local release_info=$(curl -s --connect-timeout 10 "https://api.github.com/repos/getarcaneapp/arcane/releases/tags/v${version}" 2>/dev/null)
-
-    if [ -z "$release_info" ] || [ "$(echo "$release_info" | jq -r '.message // empty')" = "Not Found" ]; then
-        release_info=$(curl -s --connect-timeout 10 "https://api.github.com/repos/getarcaneapp/arcane/releases/tags/${version}" 2>/dev/null)
-    fi
+    local release_info
+    release_info=$(gh_api "https://api.github.com/repos/getarcaneapp/arcane/releases/tags/v${version}") \
+        || release_info=$(gh_api "https://api.github.com/repos/getarcaneapp/arcane/releases/tags/${version}") \
+        || release_info=""
 
     if [ -n "$release_info" ]; then
         # Extract and format changelog
@@ -185,7 +187,7 @@ main() {
 
     # Get latest version
     log "Checking for latest release..."
-    LATEST_VERSION=$(get_latest_version)
+    LATEST_VERSION=$(get_latest_version) || LATEST_VERSION=""
 
     if [ -z "$LATEST_VERSION" ]; then
         if [ "$JSON_OUTPUT" = "true" ]; then
@@ -206,6 +208,15 @@ main() {
             log "${GREEN} Already on latest version!${NC}"
         fi
         exit 0
+    fi
+
+    # Never propose a version below the one shipping — see ver_lt in upstream-lib.sh.
+    if ver_lt "$LATEST_VERSION" "$CURRENT_VERSION"; then
+        echo "Refusing downgrade: upstream's newest release is $LATEST_VERSION, this app ships $CURRENT_VERSION" >&2
+        if [ "$JSON_OUTPUT" = "true" ]; then
+            echo "{\"current\": \"$CURRENT_VERSION\", \"latest\": \"$LATEST_VERSION\", \"update_available\": false, \"error\": \"upstream's newest release $LATEST_VERSION is older than $CURRENT_VERSION\"}"
+        fi
+        exit 1
     fi
 
     # Get changelog

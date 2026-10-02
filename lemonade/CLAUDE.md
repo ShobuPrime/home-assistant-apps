@@ -36,8 +36,25 @@ APP_PATH=lemonade CHECK_ONLY=true JSON_OUTPUT=true bash .github/scripts/update-l
 
 ## Lemonade Version Scheme
 
-Single release stream on GitHub, tagged `vX.Y.Z`. Releases are frequent
-(multiple per month). The app version tracks the upstream version exactly.
+Weekly releases, numbered `YYYY.WW.N` since the 2026.39 cycle (ISO year, ISO
+week of the stable release, build number on that week's release branch;
+`11.9.0` was the last `X.Y.Z`). Upstream's process
+(`docs/dev/release.md`): a `release-v<year>.<week>` branch is cut every
+Wednesday 16:00 UTC, every push to it publishes a **prerelease** tagged
+`candidate-v<version>`, and a human promotes the tested candidate by pushing a
+plain `v<version>` tag on the same commit — the stable release. Weeks can be
+skipped; numbers are never reused. Dev builds read `YYYY.WW.0~<count>.<hash>`
+and are never tagged.
+
+The app version tracks the stable upstream version exactly. The update script
+uses `releases/latest`, which excludes prereleases, so candidates are never
+proposed. Everything downstream is format-agnostic — checked on 2026-09-20
+against `candidate-v2026.39.1`, whose commit shipped unchanged as stable
+`v2026.39.1` (#38): `sort -V` and Home Assistant's AwesomeVersion
+both order `11.9.0 < 2026.39.1`, pr-validate's version regex accepts it, the
+embeddable archives keep the `lemonade-embeddable-<version>-ubuntu-<arch>`
+name and the ghcr tag stays `v<version>`. Nothing in this app parses
+`lemond --version` output (the Dockerfile only execs it).
 
 Upstream is a **C++** project as of v10: `lemond` (the server) and `lemonade`
 (the CLI). Older documentation describing a Python/pip package is out of date.
@@ -389,8 +406,16 @@ breaking change and auto-merged. Upstream lists breaking changes on every
 release and about five bumps in six name something this app uses, so expect a
 glance most times; that is the same trade the migration check makes.
 
-Both gates only cover what upstream writes down and names; the smoke test
-remains the backstop for the rest.
+A third gate, inline in the workflow, flags when the leading version component
+jumps by more than one (`11.9.0 → 2026.39.1`; a skipped major would too) and
+puts a checklist in the PR body: whole-range notes, HA ordering, Dockerfile
+URL/tag layout, this file's "Lemonade Version Scheme". It exists because the
+two gates above only catch the calver switch by luck — the 2026.39 notes happen
+to name `--version`, which the Dockerfile uses.
+
+All three gates only cover what upstream writes down and names; the smoke test
+remains the backstop for the rest. Expect a flagged PR most weeks now that
+releases are weekly.
 
 ### Testing Checklist
 - Build completes successfully

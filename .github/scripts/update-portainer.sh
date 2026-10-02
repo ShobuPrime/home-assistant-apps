@@ -4,6 +4,9 @@
 
 set -e
 
+# gh_api (authenticated, retried, one diagnostic line on failure) and ver_lt.
+source "$(dirname "${BASH_SOURCE[0]}")/upstream-lib.sh"
+
 # Configuration
 APP_PATH="${APP_PATH:-.}"
 VERSION_TYPE="${VERSION_TYPE:-lts}" # lts or sts
@@ -32,7 +35,8 @@ get_latest_version() {
 
     for i in $(seq 1 $retries); do
         # Fetch all non-prerelease releases
-        local releases=$(curl -s --connect-timeout 10 https://api.github.com/repos/portainer/portainer/releases 2>/dev/null)
+        local releases
+        releases=$(gh_api https://api.github.com/repos/portainer/portainer/releases) || releases=""
 
         if [ -z "$releases" ]; then
             [ $i -lt $retries ] && log "Retry $i/$retries..." >&2
@@ -40,21 +44,16 @@ get_latest_version() {
             continue
         fi
 
-        if [ "$version_type" = "lts" ]; then
-            # LTS versions are explicitly marked with "LTS" in the release name
-            # Filter by release name containing "LTS" (case-insensitive)
-            version=$(echo "$releases" | \
-                jq -r '.[] | select(.prerelease == false) | select(.name | test("LTS"; "i")) | .tag_name' 2>/dev/null | \
-                grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
-                head -1)
-        else
-            # STS versions are explicitly marked with "STS" in the release name
-            # Filter by release name containing "STS" (case-insensitive)
-            version=$(echo "$releases" | \
-                jq -r '.[] | select(.prerelease == false) | select(.name | test("STS"; "i")) | .tag_name' 2>/dev/null | \
-                grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
-                head -1)
-        fi
+        # LTS/STS releases are marked as such in the release NAME (not by any
+        # version-number pattern). Take the HIGHEST matching version, not the
+        # first in publish order: Portainer patches two LTS lines at once
+        # (2.39.8 LTS was published two hours before 2.45.1 LTS on 2026-09-16),
+        # and `head -1` on that list would have proposed a downgrade to 2.39.8.
+        version=$(echo "$releases" | \
+            jq -r --arg t "${version_type^^}" \
+                '.[] | select(.prerelease == false) | select(.name | test($t; "i")) | .tag_name' 2>/dev/null | \
+            grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | \
+            sort -V | tail -1)
 
         if [ -n "$version" ]; then
             echo "$version"
@@ -74,7 +73,8 @@ get_changelog() {
     local changelog=""
 
     # Fetch release info
-    local release_info=$(curl -s --connect-timeout 10 "https://api.github.com/repos/portainer/portainer/releases/tags/${version}" 2>/dev/null)
+    local release_info
+    release_info=$(gh_api "https://api.github.com/repos/portainer/portainer/releases/tags/${version}") || release_info=""
 
     if [ -n "$release_info" ]; then
         # Extract and format changelog
@@ -207,7 +207,7 @@ main() {
 
     # Get latest version
     log "Checking for latest ${VERSION_TYPE^^} release..."
-    LATEST_VERSION=$(get_latest_version "$VERSION_TYPE")
+    LATEST_VERSION=$(get_latest_version "$VERSION_TYPE") || LATEST_VERSION=""
 
     if [ -z "$LATEST_VERSION" ]; then
         if [ "$JSON_OUTPUT" = "true" ]; then
@@ -228,6 +228,15 @@ main() {
             log "${GREEN}✓ Already on latest ${VERSION_TYPE^^} version!${NC}"
         fi
         exit 0
+    fi
+
+    # Never propose a version below the one shipping — see ver_lt in upstream-lib.sh.
+    if ver_lt "$LATEST_VERSION" "$CURRENT_VERSION"; then
+        echo "Refusing downgrade: upstream's newest release is $LATEST_VERSION, this app ships $CURRENT_VERSION" >&2
+        if [ "$JSON_OUTPUT" = "true" ]; then
+            echo "{\"current\": \"$CURRENT_VERSION\", \"latest\": \"$LATEST_VERSION\", \"update_available\": false, \"error\": \"upstream's newest release $LATEST_VERSION is older than $CURRENT_VERSION\"}"
+        fi
+        exit 1
     fi
 
     # Get changelog
