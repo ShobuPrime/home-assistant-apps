@@ -1,0 +1,5 @@
+52a9334be7572205bd58bad43a1c31240fb6dd1e
+# Last commit to hcengineering/huly-selfhost compose.yml that has been reviewed
+# against huly/rootfs/opt/huly/compose.yaml.tmpl (52a9334 = #336, minio/minio ->
+# pgsty/silo, adopted 2026-10-01). update-huly.yml opens an issue for every newer
+# commit to that file. After reviewing one, put its SHA on the first line.

@@ -4,6 +4,8 @@
 
 _2026-07-05_
 
+> _Maintenance (2026-10-01):_ **Images come through `mirror.gcr.io`, and MinIO is now `pgsty/silo`.** `minio/minio` is no longer on Docker Hub, so the next version change, which re-pulls every image, would have failed with `Failed to pull Huly images` and crash-looped. Upstream huly-selfhost made the same swap (#336). Silo is a MinIO fork that reads existing MinIO data: an object written by MinIO read back byte-for-byte, and the `mc ready local` healthcheck passes. The mirror is Google's cache of Docker Hub, serving the same digests without Docker Hub's anonymous pull limit, which had failed every CI smoke test since 2026-09-28. After a rebuild, the next start recreates the containers under the new image names, reusing layers already on disk, and downloads silo once. Data is untouched.
+
 > _Maintenance (2026-08-01):_ **Resolve the app's own container under Supervisor's new name.** Supervisor 2026.07.4 renamed app containers from `addon_<slug>` to `app_<slug>`. Both places that construct that name as a fallback — `cont-init.d/huly.sh` (host data-path resolution) and `services.d/huly-bridge/run` (attaching the app to the compose network) — now try `app_` first and keep `addon_` for older Supervisors. The primary path still reads the real container ID from `/proc/self/mountinfo`, so this only affected installs where that lookup fails.
 
 Updated to Huly version 0.7.426

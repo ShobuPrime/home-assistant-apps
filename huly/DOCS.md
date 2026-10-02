@@ -91,7 +91,7 @@ Huly runs 14 internal Docker services, all orchestrated via Docker Compose:
 - **nginx**: Reverse proxy routing requests to backend services
 - **CockroachDB**: Distributed SQL database for application data
 - **Elasticsearch**: Full-text search engine for content indexing
-- **MinIO**: S3-compatible object storage for files and attachments
+- **MinIO**: S3-compatible object storage for files and attachments (the `pgsty/silo` fork, as upstream uses)
 - **Apache Kafka**: Event streaming (KRaft mode; replaces upstream Redpanda for Pi CM5 compatibility)
 - **Account**: User authentication and workspace management
 - **Front**: Web application frontend

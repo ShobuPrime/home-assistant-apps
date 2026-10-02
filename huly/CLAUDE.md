@@ -21,7 +21,7 @@ The app orchestrates these services via Docker Compose:
 1. **nginx** - Reverse proxy (only externally exposed service, port 4859)
 2. **CockroachDB** - Distributed SQL database
 3. **Elasticsearch** - Full-text search engine
-4. **MinIO** - S3-compatible object storage
+4. **MinIO** - S3-compatible object storage, served by `pgsty/silo` (a MinIO fork; `minio/minio` left Docker Hub — upstream huly-selfhost #336)
 5. **Apache Kafka** - Event streaming (KRaft mode; upstream uses Redpanda but it crashes on Cortex-A76/Pi CM5)
 6. **Account** - Authentication and workspace management
 7. **Front** - Web frontend
@@ -39,6 +39,16 @@ Unlike simpler apps that use a single Docker image, this app:
 - Installs Docker Compose inside the container
 - Generates a `docker-compose.yaml` from templates based on user configuration
 - Manages the full service lifecycle through S6 init/service scripts
+
+**Every image in `rootfs/opt/huly/compose.yaml.tmpl` is a `mirror.gcr.io/...` reference.**
+The stack pulls 14 images anonymously on every version change, so the repo's "never pull
+straight from Docker Hub" rule applies to these runtime pulls too. Docker Hub's limit failed
+every CI smoke test from 2026-09-28 until they moved. Keep new images on the mirror.
+
+**The template is a copy of upstream `huly-selfhost/compose.yml`, and the version check does
+not watch it.** `update-huly.yml`'s `upstream-compose` job opens a `huly-upstream` issue for
+every upstream commit to that file after the one in `.github/upstream/huly-compose.ref`.
+Upstream's #336 (`minio/minio` → `pgsty/silo`) went unnoticed for days before that existed.
 
 ## Key File Locations
 
