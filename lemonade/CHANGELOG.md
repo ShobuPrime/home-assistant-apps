@@ -1,5 +1,90 @@
 # Changelog
 
+## 2026.40.0
+
+_2026-10-02_
+
+## Headline
+
+- Streaming models now run on AMD integrated GPUs by sizing against the APU GTT pool instead of the fixed VRAM carve-out, enabling model streaming on hardware previously unsupported.
+- Junie by JetBrains is a new launch agent available via `lemonade launch junie`, with profile generation and integration documentation.
+- Cloud provider context window and completion token limits are now parsed from model metadata and surfaced on `GET /v1/models`.
+- AMD GPU entries in `GET /api/v1/system-info` show a marketing name (e.g. "AMD Radeon RX 9070 XT (gfx1201)") instead of a raw numeric code.
+
+## Breaking Changes
+
+- 'openmoss:rocm' and `sd-cpp:rocm` temporarily removed while we work on a couple of bugs.
+
+## Lemonade Server
+
+| Operating System | Downloads |
+|------------------|-----------|
+| **Windows** | [lemonade.msi](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade.msi) |
+| **Ubuntu 24.04+** | [Launchpad PPA](https://launchpad.net/~lemonade-team/+archive/ubuntu/stable) |
+| **Debian 13 (x86_64)** | [lemonade-server_2026.40.0-debian13_amd64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-server_2026.40.0-debian13_amd64.deb) |
+| **Debian 13 (ARM64)** | [lemonade-server_2026.40.0-debian13_arm64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-server_2026.40.0-debian13_arm64.deb) |
+| **Fedora 43 (x86_64)** | [lemonade-server-2026.40.0-fc43.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-server-2026.40.0-fc43.x86_64.rpm) |
+| **Fedora 43 (ARM64)** | [lemonade-server-2026.40.0-fc43.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-server-2026.40.0-fc43.aarch64.rpm) |
+| **Fedora 44 (x86_64)** | [lemonade-server-2026.40.0-fc44.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-server-2026.40.0-fc44.x86_64.rpm) |
+| **Fedora 44 (ARM64)** | [lemonade-server-2026.40.0-fc44.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-server-2026.40.0-fc44.aarch64.rpm) |
+| **macOS** | [Lemonade-2026.40.0-Darwin.pkg](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/Lemonade-2026.40.0-Darwin.pkg) |
+
+> **Other platforms?** See our [Installation Options](https://lemonade-server.ai/docs/guide/install/) for [Docker](https://lemonade-server.ai/docs/guide/install/docker/), [Snap](https://lemonade-server.ai/docs/guide/install/ubuntu/#__tabbed_2_3), [Arch](https://lemonade-server.ai/docs/guide/install/arch/), [Debian](https://lemonade-server.ai/docs/guide/install/), and more.
+
+## Embeddable Lemonade
+
+Portable binaries for bundling into your own installer. Run `lemond ./` as a subprocess.
+
+| Platform | Download |
+|----------|----------|
+| **Ubuntu x64** | [lemonade-embeddable-2026.40.0-ubuntu-x64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-embeddable-2026.40.0-ubuntu-x64.tar.gz) |
+| **Ubuntu arm64** | [lemonade-embeddable-2026.40.0-ubuntu-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-embeddable-2026.40.0-ubuntu-arm64.tar.gz) |
+| **Windows x64** | [lemonade-embeddable-2026.40.0-windows-x64.zip](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-embeddable-2026.40.0-windows-x64.zip) |
+| **macOS arm64** | [lemonade-embeddable-2026.40.0-macos-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.40.0/lemonade-embeddable-2026.40.0-macos-arm64.tar.gz) |
+
+---
+
+## What's Changed
+
+Thanks `abn`, `apollo-2006`, `atirna`, `bong-water-water-bong`, `fl0rianr`, `jeremyfowers`, `mashan555`, `noamsto`, `superm1`, `zaneni6` for your awesome contributions to this release!
+
+<details>
+<summary>Click to expand changelog</summary>
+
+* docs(embeddable): update packaging-time bundling limitations by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3548
+* Report the AMD GPU marketing name on Linux by `apollo-2006` in https://github.com/lemonade-sdk/lemonade/pull/3601
+* fix(server): size streaming models against APU GTT pool, not VRAM carve-out (#3377) by `bong-water-water-bong` in https://github.com/lemonade-sdk/lemonade/pull/3502
+* fix: dispatch image upscaling through backend capabilities by `atirna` in https://github.com/lemonade-sdk/lemonade/pull/3511
+* feat(models): add Ornith 1.5 9B and 35B A3B to the catalogue by `noamsto` in https://github.com/lemonade-sdk/lemonade/pull/3564
+* Don't run inference backend jobs on release branch builds by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3604
+* fix(server): drop the lookup-miss registry reload by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3613
+* Remove OpenMOSS ROCm support on all operating systems by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3615
+* feat(server): parse and propagate cloud model token limits by `abn` in https://github.com/lemonade-sdk/lemonade/pull/3568
+* refactor(mcp): make tool definitions declarative by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3619
+* fix: support mbedTLS 4 on Arch Linux by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3188
+* chore(backends): bump FastFlowLM to v1.0.6 by `zaneni6` in https://github.com/lemonade-sdk/lemonade/pull/3623
+* Add Junie by JetBrains support to lemonade launch by `mashan555` in https://github.com/lemonade-sdk/lemonade/pull/3621
+* Remove sd-cpp ROCm support on Windows by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3616
+* docs: add stable platform install pages by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/2923
+* ci(docs): check heading anchors by replacing markdown-link-check with lychee by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3632
+* docs(models): name the custom model guide's sections after their topics by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3640
+* ci: test PPA package upgrade path (config + model persistence) by `superm1` in https://github.com/lemonade-sdk/lemonade/pull/3396
+
+</details>
+
+## New Contributors
+* `atirna` made their first contribution in https://github.com/lemonade-sdk/lemonade/pull/3511
+* `mashan555` made their first contribution in https://github.com/lemonade-sdk/lemonade/pull/3621
+
+**Full Changelog**: https://github.com/lemonade-sdk/lemonade/compare/v2026.39.1...v2026.40.0
+
+---
+
+> Windows installers are signed. Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). See our [Code Signing Policy](https://github.com/lemonade-sdk/lemonade#code-signing-policy).
+
+---
+
+
 ## 2026.39.1
 
 _2026-09-26_
