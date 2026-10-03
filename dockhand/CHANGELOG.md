@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.0.51
+
+_2026-10-03_
+
+### Changed
+- Updated Dockhand to version 1.0.51
+
+Released: 2026-10-03
+
+## What's new in v1.0.51
+
+- ✨ drag to reorder environments (#1638)
+- ✨ drag to reorder tags, and the grid groups follow that order (#1651)
+- 🐛 compose validate no longer reports a volume path built from a variable as undefined (#1653)
+- 🐛 sorting containers by uptime now orders an hour-old container correctly (#1652)
+- 🐛 the vulnerability scan retention schedule saves and reloads correctly
+- 🐛 the stack editor no longer re-queries the secret provider while it sits idle (#1646)
+- 🐛 keepass:// and azurekv:// references are recognised in the stack editor
+- 🐛 a git stack whose deploy fails is retried on the next sync instead of being marked in sync (#1660)
+- 🐛 the scanner check now finds newer grype and trivy releases, not just a rebuild of the pinned tag (#1658)
+- 🐛 default scanner images bumped to grype v0.119.0 and trivy 0.75.0 (#1658)
+- ✨ containers can be tagged with a dockhand.tags label, with a colour and icon (#1655)
+- ✨ containers optionally show the tags their stack carries (#1665)
+- ✨ drag files onto the file browser to upload them (#1661, PR#1662, @Wardrop)
+- 🐛 update docker-compose 5.5.1-r2, undici 7.30.0, devalue 5.9.3 and nodemailer 10.0.10 for security fixes
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.51
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.50
 
 _2026-09-30_
