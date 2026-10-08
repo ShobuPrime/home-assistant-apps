@@ -1,5 +1,85 @@
 # Changelog
 
+## 2026.41.1
+
+_2026-10-08_
+
+## Headline
+
+- ROCm backends move to ROCm 10 for llama.cpp, whisper.cpp, stable-diffusion.cpp, ThinkSound, TRELLIS, and ACE-Step.
+- Non-streaming requests now stop as soon as the client disconnects, so an abandoned request no longer ties up the server.
+- Kokoro TTS fixes four British English voices and one French voice that returned short fixed-length audio.
+- Configuration now rejects unknown backend keys instead of silently ignoring them.
+
+## Breaking Changes
+
+- ROCm backends now use ROCm 10. The first ROCm model load after upgrading downloads the new runtime (about 2.6 GB).
+- lemonade config set now rejects unknown backend keys, for example flm.flm_bin.
+
+## Lemonade Server
+
+| Operating System | Downloads |
+|------------------|-----------|
+| **Windows** | [lemonade.msi](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade.msi) |
+| **Ubuntu 24.04+** | [Launchpad PPA](https://launchpad.net/~lemonade-team/+archive/ubuntu/stable) |
+| **Debian 13 (x86_64)** | [lemonade-server_2026.41.1-debian13_amd64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-server_2026.41.1-debian13_amd64.deb) |
+| **Debian 13 (ARM64)** | [lemonade-server_2026.41.1-debian13_arm64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-server_2026.41.1-debian13_arm64.deb) |
+| **Fedora 43 (x86_64)** | [lemonade-server-2026.41.1-fc43.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-server-2026.41.1-fc43.x86_64.rpm) |
+| **Fedora 43 (ARM64)** | [lemonade-server-2026.41.1-fc43.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-server-2026.41.1-fc43.aarch64.rpm) |
+| **Fedora 44 (x86_64)** | [lemonade-server-2026.41.1-fc44.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-server-2026.41.1-fc44.x86_64.rpm) |
+| **Fedora 44 (ARM64)** | [lemonade-server-2026.41.1-fc44.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-server-2026.41.1-fc44.aarch64.rpm) |
+| **macOS** | [Lemonade-2026.41.1-Darwin.pkg](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/Lemonade-2026.41.1-Darwin.pkg) |
+
+> **Other platforms?** See our [Installation Options](https://lemonade-server.ai/docs/guide/install/) for [Docker](https://lemonade-server.ai/docs/guide/install/docker/), [Snap](https://lemonade-server.ai/docs/guide/install/ubuntu/#__tabbed_2_3), [Arch](https://lemonade-server.ai/docs/guide/install/arch/), [Debian](https://lemonade-server.ai/docs/guide/install/), and more.
+
+## Embeddable Lemonade
+
+Portable binaries for bundling into your own installer. Run `lemond ./` as a subprocess.
+
+| Platform | Download |
+|----------|----------|
+| **Ubuntu x64** | [lemonade-embeddable-2026.41.1-ubuntu-x64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-embeddable-2026.41.1-ubuntu-x64.tar.gz) |
+| **Ubuntu arm64** | [lemonade-embeddable-2026.41.1-ubuntu-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-embeddable-2026.41.1-ubuntu-arm64.tar.gz) |
+| **Windows x64** | [lemonade-embeddable-2026.41.1-windows-x64.zip](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-embeddable-2026.41.1-windows-x64.zip) |
+| **macOS arm64** | [lemonade-embeddable-2026.41.1-macos-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.41.1/lemonade-embeddable-2026.41.1-macos-arm64.tar.gz) |
+
+---
+
+## What's Changed
+
+Thanks `RaulMermans`, `abn`, `bitgamma`, `jeremyfowers`, `pwilkin`, `ramkrishna2910`, `superm1` for your awesome contributions to this release!
+
+<details>
+<summary>Click to expand changelog</summary>
+
+* docs: Add missing macOS user install config path by `superm1` in https://github.com/lemonade-sdk/lemonade/pull/3467
+* feat(tray): add --spawn-server to natively supervise a local lemond by `abn` in https://github.com/lemonade-sdk/lemonade/pull/3304
+* Fix repository documentation links and published docs paths by `ramkrishna2910` in https://github.com/lemonade-sdk/lemonade/pull/3665
+* Default release.py to unsigned tags by `superm1` with `Copilot` in https://github.com/lemonade-sdk/lemonade/pull/3660
+* Move stable diffusion back to our fork and move to ROCm 10 by `superm1` in https://github.com/lemonade-sdk/lemonade/pull/3649
+* docs: link website-only pages to the website, revert marketplace link rewriting by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3667
+* Filter qwen3.6-moe-35b-a3b-FLM on Windows systems under 64 GB RAM by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3675
+* fix(server): propagate non-streaming request cancellation to backends by `abn` in https://github.com/lemonade-sdk/lemonade/pull/2898
+* Update REPO_MANAGER_VERSION to v1.0.4 by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3692
+* fix: change deprecated --no-mmap option to --load-mode none for llama.cpp by `pwilkin` in https://github.com/lemonade-sdk/lemonade/pull/3559
+* fix(config): reject invalid backend-specific keys by `RaulMermans` in https://github.com/lemonade-sdk/lemonade/pull/3684
+* bump Kokoro by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/3695
+* docs: add a spec writing guide under docs/dev/specs by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3687
+
+</details>
+
+## New Contributors
+* `RaulMermans` made their first contribution in https://github.com/lemonade-sdk/lemonade/pull/3684
+
+**Full Changelog**: https://github.com/lemonade-sdk/lemonade/compare/v2026.40.0...v2026.41.1
+
+---
+
+> Windows installers are signed. Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). See our [Code Signing Policy](https://github.com/lemonade-sdk/lemonade#code-signing-policy).
+
+---
+
+
 ## 2026.40.0
 
 _2026-10-02_

@@ -2,4 +2,4 @@ build_from:
   aarch64: ghcr.io/hassio-addons/base:21.0.8
   amd64: ghcr.io/hassio-addons/base:21.0.8
 args:
-  LEMONADE_VERSION: 2026.40.0
+  LEMONADE_VERSION: 2026.41.1
