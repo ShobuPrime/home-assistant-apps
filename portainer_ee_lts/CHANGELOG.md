@@ -1,5 +1,52 @@
 # Changelog
 
+## 2.45.2
+
+_2026-10-08_
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+#### Security
+
+- Fixed a bypass of the "Hide bind mounts for non-administrators" setting. When it is enabled, Compose files deployed by non-administrators can no longer reference host files outside the stack directory (for example in configs, secrets or env_file), and include is disabled for them. 
+- Fixed a denied, failed or dry-run Kubernetes namespace deletion still removing Portainer's namespace access policies, stack records and registry bindings. These records are now removed only after Kubernetes accepts the deletion
+- Fixed in-cluster HTTPS connections to the Kubernetes API server skipping TLS certificate verification during stack deploy and removal, on both the server and the agent 
+
+#### Features
+
+- Added a Node group column to the Kubernetes cluster node list for clusters using EKS, GKE, AKS, Karpenter or kops node pools, plus optional Instance type, Labels and Taints columns that can be turned on from the column menu 
+
+#### Bug Fixes
+
+- Fixed the GitOps Sources page failing to load with "Object not found inside the database (bucket=workflows)" when a stack referenced a deleted workflow. Orphaned references are now skipped, and deleting a stack now unlinks it from its workflow in the same save 
+- Fixed deleting a Kubernetes stack with a namespace leaving behind objects whose manifest names no namespace
+- Fixed Kubernetes Edge agents retrying removal of workload-less Edge stacks forever, which delayed new deployments and check-ins 
+- Fix the issue where the Docker dashboard volume count excludes volumes that restricted users have access to
+- Fix the issue where the Async Edge dashboard includes container statistics for resources that Standard users cannot access
+- Fix the issue where Compose stack undeploy operations do not respect the overall deployment timeout or cancellation context 
+- Fixed the default Unassigned environment group being renameable. It is now read-only, and a group that was already renamed can be reset to "Unassigned"
+
+## Deprecated and removed features
+
+**Deprecated features**
+- None
+
+**Removed features**
+- None
+
+---
+
+
 ## 2.45.1
 
 _2026-09-17_
