@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.0.52
+
+_2026-10-10_
+
+### Changed
+- Updated Dockhand to version 1.0.52
+
+Released: 2026-10-10
+
+## What's new in v1.0.52
+
+- ✨ back up to an SFTP server with a dedicated SSH key and verified host keys (#1478, PR#1693, @ddeitterick)
+- 🐛 a container started with PUID=1001 runs as that user instead of root (#1669)
+- ✨ offer the compose file detected from container labels when adopting an external stack (#1612, PR#1617, @ondras)
+- ✨ hold off automatic updates until a new image is older than a configurable minimum image age (#918, #1365, PR#1643, @TheDuffman85)
+- ✨ a dockhand.name label sets the name a container is shown under (#1623)
+- ✨ redeploy a stack without recreating every service, and choose how it redeploys (#148)
+- ✨ sign in with a passkey instead of a password (#1431, PR#1431, @StefanSa, @timcappalli)
+- 🐛 skip newer-version tags whose image is older than the one running (#1673)
+- ✨ filter newer-version candidates per container (#1674)
+- ✨ read per-stack resource totals from the API (#1626)
+- ✨ show stack health on the stacks page, and filter by it (#1678)
+- 🐛 find the stack folder when a nested bind shares a name with one at the root (#1679)
+- 🐛 ordering one container with dockhand.order now moves it ahead of the unlabelled ones (#1117)
+- 🐛 restore preview no longer reports an empty target for a stack whose files are there (#1681)
+- 🐛 updating a Podman container started by podman-compose no longer leaves it stopped (#1692)
+- 🐛 the next compose deploy no longer recreates a container Dockhand just updated (#1687)
+- 🐛 a stack's bind directories are no longer left out of a backup when no volume covers them (#1696)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.52
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.51
 
 _2026-10-03_
