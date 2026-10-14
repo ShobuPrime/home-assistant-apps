@@ -1,6 +1,6 @@
 name: "Arcane Docker Manager"
 description: "Modern Docker management UI - lightweight alternative to Portainer"
-version: "2.15.1"
+version: "2.16.0"
 slug: "arcane"
 init: false
 ingress: true
