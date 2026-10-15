@@ -1,5 +1,86 @@
 # Changelog
 
+## 2026.42.1
+
+_2026-10-15_
+
+## Headline
+
+- Streaming requests no longer hang when a client disconnects mid-request.
+- Windows support added for TheNoise (ROCm) via a bundled portable CPython interpreter.
+- `extra_models_dir` now correctly import models from Hugging Face style cache directories. 
+- Qwen3.8-27B support for FLM
+
+## Breaking Changes
+
+- The FastFlowLM NPU model hy-mt2:1.8b was renamed to hy-mt2-flash:1.8b; update any configs or scripts that reference the old tag.
+
+## Lemonade Server
+
+| Operating System | Downloads |
+|------------------|-----------|
+| **Windows** | [lemonade.msi](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade.msi) |
+| **Ubuntu 24.04+** | [Launchpad PPA](https://launchpad.net/~lemonade-team/+archive/ubuntu/stable) |
+| **Debian 13 (x86_64)** | [lemonade-server_2026.42.1-debian13_amd64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-server_2026.42.1-debian13_amd64.deb) |
+| **Debian 13 (ARM64)** | [lemonade-server_2026.42.1-debian13_arm64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-server_2026.42.1-debian13_arm64.deb) |
+| **Fedora 43 (x86_64)** | [lemonade-server-2026.42.1-fc43.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-server-2026.42.1-fc43.x86_64.rpm) |
+| **Fedora 43 (ARM64)** | [lemonade-server-2026.42.1-fc43.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-server-2026.42.1-fc43.aarch64.rpm) |
+| **Fedora 44 (x86_64)** | [lemonade-server-2026.42.1-fc44.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-server-2026.42.1-fc44.x86_64.rpm) |
+| **Fedora 44 (ARM64)** | [lemonade-server-2026.42.1-fc44.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-server-2026.42.1-fc44.aarch64.rpm) |
+| **macOS** | [Lemonade-2026.42.1-Darwin.pkg](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/Lemonade-2026.42.1-Darwin.pkg) |
+
+> **Other platforms?** See our [Installation Options](https://lemonade-server.ai/docs/guide/install/) for [Docker](https://lemonade-server.ai/docs/guide/install/docker/), [Snap](https://lemonade-server.ai/docs/guide/install/ubuntu/#__tabbed_2_3), [Arch](https://lemonade-server.ai/docs/guide/install/arch/), [Debian](https://lemonade-server.ai/docs/guide/install/), and more.
+
+## Embeddable Lemonade
+
+Portable binaries for bundling into your own installer. Run `lemond ./` as a subprocess.
+
+| Platform | Download |
+|----------|----------|
+| **Ubuntu x64** | [lemonade-embeddable-2026.42.1-ubuntu-x64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-embeddable-2026.42.1-ubuntu-x64.tar.gz) |
+| **Ubuntu arm64** | [lemonade-embeddable-2026.42.1-ubuntu-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-embeddable-2026.42.1-ubuntu-arm64.tar.gz) |
+| **Windows x64** | [lemonade-embeddable-2026.42.1-windows-x64.zip](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-embeddable-2026.42.1-windows-x64.zip) |
+| **macOS arm64** | [lemonade-embeddable-2026.42.1-macos-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.42.1/lemonade-embeddable-2026.42.1-macos-arm64.tar.gz) |
+
+---
+
+## What's Changed
+
+Thanks `AaronStGeorge`, `bitgamma`, `github-actions`, `jeremyfowers`, `julianxhokaxhiu`, `ramkrishna2910` for your awesome contributions to this release!
+
+<details>
+<summary>Click to expand changelog</summary>
+
+* Auto-install specified backends with `lemonade bench` by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/3690
+* test: remove flaky test_000b_retired_endpoints_removed by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3720
+* Add Windows support for TheNoise by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/3666
+* Don't fail HTTPS requests on Windows when cert revocation status is unknown by `ramkrishna2910` in https://github.com/lemonade-sdk/lemonade/pull/3716
+* fix(models): group shard files at the extra_models_dir root by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3656
+* fix(server): watch extra_models_dir's nested folders on Linux and macOS by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3726
+* docs(models): specify extra_models_dir behavior in the custom model guide by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3633
+* test(models): describe extra_models_dir layouts declaratively by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3634
+* feat(hrx): bump hrx to b99 + add 26 models by `AaronStGeorge` in https://github.com/lemonade-sdk/lemonade/pull/3723
+* chore(backends): bump FastFlowLM to v1.0.7 by `julianxhokaxhiu` in https://github.com/lemonade-sdk/lemonade/pull/3744
+* fix(http): make download stall timeouts follow global_timeout by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3730
+* fix(models): give a shared folder name to one model in both forms by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3657
+* Change evaluation date for AI content policy by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3760
+* bump TheNoise version by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/3750
+* feat(models): support Hugging Face and ModelScope caches in extra_models_dir by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3635
+* fix(tray): make --spawn-server a no-op on macOS by `ramkrishna2910` in https://github.com/lemonade-sdk/lemonade/pull/3756
+* docs: add the container backends spec by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3697
+* Update llama.cpp to b11393 by `github-actions`[bot] in https://github.com/lemonade-sdk/lemonade/pull/3754
+
+</details>
+
+**Full Changelog**: https://github.com/lemonade-sdk/lemonade/compare/v2026.41.1...v2026.42.1
+
+---
+
+> Windows installers are signed. Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). See our [Code Signing Policy](https://github.com/lemonade-sdk/lemonade#code-signing-policy).
+
+---
+
+
 ## 2026.41.1
 
 _2026-10-08_
