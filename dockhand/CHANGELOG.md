@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.0.54
+
+_2026-10-17_
+
+### Changed
+- Updated Dockhand to version 1.0.54
+
+Released: 2026-10-17
+
+## What's new in v1.0.54
+
+- 🐛 a version pattern with four or five parts is no longer refused, and an ignored pattern says why (#1702)
+- 🐛 reading pages no longer fails behind an nginx reverse proxy that uses an upstream block (#1707)
+- 🐛 image scans work again when the Docker daemon compresses its logs (PR#1715, @santacruz-usa)
+- 🐛 a container with a long stop_grace_period updates instead of being left stopped
+- ✨ the interface follows your language - translation engine and German (#494, PR#1706, PR#1709, PR#1718, PR#1719, PR#1722, PR#1726, PR#1734, PR#1736, PR#1738, PR#1742, @Hellraiser28)
+- ✨ Simplified Chinese translation (#494, PR#1708, PR#1716, PR#1720, PR#1721, PR#1730, PR#1733, PR#1741, PR#1749, @maicent)
+- ✨ French translations, for France and Canada (#494, PR#1714, PR#1717, PR#1727, PR#1728, PR#1729, PR#1732, PR#1735, PR#1746, PR#1747, PR#1748, @MagnanGG)
+- ✨ Polish translation (#494)
+- 🐛 a wider sidebar so translated labels fit (PR#1731, @MagnanGG)
+- 🐛 a scheduled update is no longer blocked by a failed scan of an image the registry cannot name (#1737)
+- ✨ Psono as a secret provider, with bulk pull and inline psono:// references
+- ✨ the secret-provider banner collapses its key list when a stack loads many secrets (#1771)
+- ✨ filter containers and stacks by "Untagged" (#1704, PR#1763, @Totopo27)
+- 🐛 bulk operations on stacks over the API no longer fail every item (#1745)
+- 🐛 a quoted value from a .env file no longer keeps its quotes in the form (#1750)
+- 🐛 a dockhand.tags label stays on the container that carries it (#1740, PR#1743, @Totopo27)
+- 🐛 the update check now reports a newer release on Kubernetes instead of giving up (#1710)
+- 🐛 a moved digest on a pinned tag is now reported instead of silently ignored (#1755)
+- 🐛 an unreachable environment no longer fills the log with errors for its own health checks (#1739, PR#1752, @Totopo27)
+- 🐛 a git stack no longer recreates every container when a commit only touched files that do not affect them (#1761, #419, #364)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.54
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.53
 
 _2026-10-11_
