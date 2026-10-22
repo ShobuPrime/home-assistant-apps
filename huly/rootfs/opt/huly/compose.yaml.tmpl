@@ -40,13 +40,16 @@ services:
     volumes:
       - ${VOLUME_CR_DATA_PATH}:/cockroach/cockroach-data
       - ${VOLUME_CR_CERTS_PATH:-cr_certs}:/cockroach/certs
-    # Ready means it accepts SQL; kvs exits on a refused connection.
+    # Ready means it accepts SQL; the services below exit on a refused
+    # connection. The first passing check counts at once; the long start
+    # period only spares a slow start on a big data dir, since an unhealthy
+    # dependency fails `up` and the stack restarts.
     healthcheck:
       test: ['CMD', 'curl', '-fs', 'http://localhost:8080/health?ready=1']
       interval: 5s
       timeout: 5s
       retries: 30
-      start_period: 10s
+      start_period: 300s
     restart: unless-stopped
     networks:
       - huly_net
@@ -157,7 +160,7 @@ services:
     restart: unless-stopped
     depends_on:
       cockroach:
-        condition: service_started
+        condition: service_healthy
       kafka:
         condition: service_healthy
       minio:
@@ -202,7 +205,7 @@ services:
     restart: unless-stopped
     depends_on:
       cockroach:
-        condition: service_started
+        condition: service_healthy
       kafka:
         condition: service_healthy
     networks:
@@ -227,7 +230,7 @@ services:
     restart: unless-stopped
     depends_on:
       cockroach:
-        condition: service_started
+        condition: service_healthy
       kafka:
         condition: service_healthy
     networks:
