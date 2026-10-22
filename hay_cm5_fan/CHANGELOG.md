@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1
+
+_2026-10-22_
+
+- The image requires Alpine's fixed CA bundle (`ca-certificates` 20261020-r0), which drops the emSign roots behind the compromised eMudhra intermediates (CVE-2026-111943).
+
 ## 1.3.0
 
 _2026-08-02_

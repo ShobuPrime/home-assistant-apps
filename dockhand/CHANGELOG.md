@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.54.1
+
+_2026-10-22_
+
+- The image requires Alpine's fixed CA bundle (`ca-certificates` 20261020-r0), which drops the emSign roots behind the compromised eMudhra intermediates (CVE-2026-111943).
+- Node trusts the system CA bundle (`--use-openssl-ca`) instead of its compiled-in roots. The build also patches Dockhand's `tls.rootCertificates` to the system store, which covers remote environments with a custom CA.
+
+These fixes first shipped as maintenance notes under 1.0.54, which needed a manual rebuild. This version number makes Home Assistant offer them as an update.
+
 ## 1.0.54
 
 _2026-10-17_

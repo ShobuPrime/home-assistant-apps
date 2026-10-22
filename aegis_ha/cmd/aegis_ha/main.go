@@ -199,7 +199,7 @@ func setupMQTT(ctx context.Context, logger *slog.Logger, opts *config.Options, e
 	}
 	var tlsCfg *tls.Config
 	if broker.SSL {
-		tlsCfg = &tls.Config{InsecureSkipVerify: true} // internal Supervisor broker, often self-signed
+		tlsCfg = &tls.Config{MinVersion: tls.VersionTLS12} // verified against the system CA bundle
 	}
 	client := mqtt.New(mqtt.Options{
 		Broker:    broker.Addr(),

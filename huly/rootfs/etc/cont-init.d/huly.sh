@@ -364,11 +364,21 @@ VOLUME_KAFKA_PATH=${HOST_DATA_PATH}/huly/kafka
 
 # Nginx config (host-side path for bind mount)
 NGINX_CONF_PATH=${HOST_DATA_PATH}/huly/nginx.conf
+
+# This image's CA bundle, mounted over /etc/ssl/certs in the upstream services
+CA_CERTS_PATH=${HOST_DATA_PATH}/huly/ca-certs
 EOF
 
 # Log the generated .env for debugging (redact secrets)
 bashio::log.debug "Generated .env file (secrets redacted):"
 bashio::log.debug "$(grep -v -E '(PASSWORD|SECRET|PWD)=' /data/huly/.env)" || true
+
+# Refresh the CA bundle the upstream services trust (see compose.yaml.tmpl).
+# Only the bundle goes in: no hash links, so nothing else is trusted. Replaced
+# in place, since a running container keeps the directory it mounted.
+mkdir -p /data/huly/ca-certs
+cp /etc/ssl/certs/ca-certificates.crt /data/huly/ca-certs/.ca-certificates.crt.new
+mv -f /data/huly/ca-certs/.ca-certificates.crt.new /data/huly/ca-certs/ca-certificates.crt
 
 # Copy compose file template
 bashio::log.info "Setting up docker-compose configuration..."

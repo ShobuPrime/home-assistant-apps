@@ -204,6 +204,23 @@ appearing before the first version heading. That job also rejects a `CHANGELOG.m
 valid UTF-8 — the old `head -c 1000` truncation (removed in #197) cut multi-byte characters in
 half and left `muninndb/CHANGELOG.md` undecodable.
 
+## Re-shipping an upstream version: `X.Y.Z.N`, never `X.Y.Z-N`
+
+A maintenance note reaches no one until they rebuild by hand. To offer a fix as an
+update, give an app that mirrors an upstream version a fourth component:
+`2.45.2` → `2.45.2.1` → `2.45.2.2`. Apps with no upstream (`aegis_ha`,
+`sonuntius`, `hay_cm5_fan`) take a normal patch bump instead.
+
+- **Not a dash suffix.** HA core compares with AwesomeVersion, which reads
+  `2.45.2-1` as a *pre-release* of 2.45.2, so the update entity never turns on.
+  (Supervisor's own `!=` check would still show it on the app page.) Verified
+  in the HA container on 2026-10-22: `.1` is the only suffix ordered above
+  `2.45.2` and below `2.45.3`.
+- The update scripts compare upstream against `strip_revision`
+  (`upstream-lib.sh`). Without it, `2.45.2` sorts below `2.45.2.1` and the
+  script refuses it as a downgrade. The next upstream release writes a plain
+  `X.Y.Z`, dropping the `.N`.
+
 ## AppArmor Profile Rules
 
 Hard-won rules from the July 2026 Huly outage on HAOS 18.1 (kernel 6.18), enforced in CI by `.github/scripts/validate-apparmor.sh` (full incident record: `huly/CHANGELOG.md` 0.7.426 maintenance notes, PRs #165/#166):

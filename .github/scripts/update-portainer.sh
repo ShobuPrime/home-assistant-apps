@@ -103,7 +103,7 @@ get_current_version() {
         log "${RED}Error: config.yaml not found at $APP_PATH!${NC}" >&2
         exit 1
     fi
-    grep "^version:" "$APP_PATH/config.yaml" | sed 's/version: *"\(.*\)"/\1/'
+    grep "^version:" "$APP_PATH/config.yaml" | sed 's/version: *"\(.*\)"/\1/' | strip_revision
 }
 
 # Function to update files

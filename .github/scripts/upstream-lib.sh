@@ -59,6 +59,13 @@ gh_api() {
     printf '%s\n' "${body}"
 }
 
+# Drops our revision from a config.yaml version (2.45.2.1 -> 2.45.2). A fourth
+# component re-ships an upstream release with an app fix: HA orders it between
+# 2.45.2 and 2.45.3, whereas a dash suffix reads as a pre-release.
+strip_revision() {
+    sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+$/\1/'
+}
+
 # $1 sorts strictly below $2 in version order (GNU sort -V). Used to refuse
 # downgrades: an update script must never propose a version below the one
 # shipping. Portainer maintains two LTS lines at once (2.39.x and 2.45.x were
