@@ -52,9 +52,12 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
 # Dockhand appends `tls.rootCertificates` (Node's compiled-in roots, which still
 # trust the compromised eMudhra CAs, CVE-2026-111943) to a remote environment's
 # custom CA. Use the system store instead; fail if any use is left unpatched.
+# BusyBox grep has no --include, so find picks the files.
 RUN find /opt/dockhand/build -name '*.js' -exec sed -i -E \
         's/([A-Za-z_$][A-Za-z0-9_$]*)\.rootCertificates\b/\1.getCACertificates("system")/g' {} + \
-    && ! grep -rl --include='*.js' 'rootCertificates' /opt/dockhand/build
+    && left="$(find /opt/dockhand/build -name '*.js' \
+        -exec grep -lE "rootCertificates|getCACertificates\\([\"']bundled" {} + || true)" \
+    && if [ -n "${left}" ]; then echo "Unpatched Node root store use: ${left}" >&2; exit 1; fi
 
 # Create required directories
 RUN mkdir -p /opt/dockhand/data /opt/dockhand/data/db /opt/dockhand/data/stacks
