@@ -4,6 +4,8 @@
 
 _2026-06-10_
 
+> _Maintenance (2026-10-22):_ Built with Go 1.27.3 (`go 1.27.3` in `go.mod`, `golang:1.27.3-alpine` builder). This includes Go's denylist for the compromised eMudhra intermediates (CVE-2026-111943), as a second check beside the CA bundle.
+
 > _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943). This also forces a stale build cache to reinstall packages on the next rebuild. Rebuild the app to apply.
 
 > _Maintenance (2026-07-25):_ **Fix the app being SIGKILLed instead of shut down cleanly.** The AppArmor profile granted `signal (send) set=(...)` but not `receive`. AppArmor mediates signal *delivery* as well as sending, so s6's SIGTERM never reached the app: the graceful shutdown was skipped and the container was killed after the grace period (exit 137). The rule is now `signal (send,receive),`. Measured on one identical image with only this rule varied: no signal rule -> 13.2s/exit 137; `signal (send) set=(...)` -> 12.7s/exit 137 with no cleanup logged; `signal (send,receive),` -> 6.9s/exit 0 with the full s6 shutdown sequence. Now enforced by `.github/scripts/validate-apparmor.sh` (rule 4) and by the smoke test, which fails on exit 137 under confinement. Rebuild/reinstall the app to pick up the corrected profile.

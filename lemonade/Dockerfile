@@ -155,7 +155,7 @@ FROM --platform=linux/amd64 ghcr.io/lemonade-sdk/lemonade-server:v${LEMONADE_VER
 # it is a static binary that runs on musl without touching the glibc closure
 # above.
 # ---------------------------------------------------------------------------
-FROM mirror.gcr.io/library/golang:1.26.5-alpine AS bridge-builder
+FROM mirror.gcr.io/library/golang:1.27.3-alpine AS bridge-builder
 
 WORKDIR /src
 COPY ha-lemonade-bridge/go.mod ./

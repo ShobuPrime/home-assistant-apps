@@ -1,5 +1,5 @@
 ARG BUILD_FROM
-ARG GO_VERSION=1.26-alpine
+ARG GO_VERSION=1.27.3-alpine
 
 # ---------------------------------------------------------------------------
 # Stage 1: build the Go binaries (ma-bridge, sonuntius-ctl)
