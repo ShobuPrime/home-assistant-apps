@@ -4,6 +4,8 @@
 
 _2026-10-22_
 
+> _Maintenance (2026-10-22):_ `kvs` no longer restarts on startup. It connected to CockroachDB about 4 seconds before it was listening and exited on the refused connection. CockroachDB now has a readiness healthcheck, and `kvs` waits for it. Applies on the app's next start.
+
 - The image requires Alpine's fixed CA bundle (`ca-certificates` 20261020-r0), which drops the emSign roots behind the compromised eMudhra intermediates (CVE-2026-111943).
 - The upstream Huly services (Debian images with a 2023 CA bundle) now get this app's bundle mounted over `/etc/ssl/certs`. Their Node processes use it via `--use-openssl-ca`, `SSL_CERT_FILE` and `SSL_CERT_DIR`. Before this, Node trusted its compiled-in roots, and OpenSSL followed Debian's hash links to emSign ECC Root CA - G3.
 - nginx no longer restarts several times on startup. It resolves every upstream it proxies to once at start and exited while `account` did not exist yet. It now waits for all of them.
