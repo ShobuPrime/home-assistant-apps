@@ -4,11 +4,11 @@
 # registry. MinIO is pgsty/silo, a drop-in fork: minio/minio left Docker Hub
 # (upstream huly-selfhost #336 made the same swap).
 #
-# The upstream images are Debian bookworm with a 2023 CA bundle that still
-# trusts emSign ECC Root CA - G3 (CVE-2026-111943). Each one gets this app's
-# Alpine bundle mounted over /etc/ssl/certs, so no hash link to the old roots
-# remains. Node also needs --use-openssl-ca, or it uses its compiled-in store,
-# and SSL_CERT_FILE/SSL_CERT_DIR, because its bundled OpenSSL looks elsewhere.
+# The upstream images keep whatever CA bundle they were built with. Each one
+# gets this app's bundle, which `apk upgrade` keeps current, mounted over
+# /etc/ssl/certs, replacing the image's hash links too. Node also needs
+# --use-openssl-ca, or it uses its compiled-in store, and SSL_CERT_FILE,
+# because its OpenSSL's default file is /etc/ssl/cert.pem.
 name: ${DOCKER_NAME}
 services:
   nginx:
@@ -120,7 +120,6 @@ services:
       - SECRET=${SECRET}
       - NODE_OPTIONS=--use-openssl-ca
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-      - SSL_CERT_DIR=/etc/ssl/certs
     deploy:
       resources:
         limits:
@@ -146,7 +145,6 @@ services:
       - QUEUE_CONFIG=kafka:9092
       - NODE_OPTIONS=--use-openssl-ca
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-      - SSL_CERT_DIR=/etc/ssl/certs
     volumes:
       - ${CA_CERTS_PATH}:/etc/ssl/certs:ro
     restart: unless-stopped
@@ -170,7 +168,6 @@ services:
       - STORAGE_CONFIG=minio|minio?accessKey=${MINIO_ROOT_USER}&secretKey=${MINIO_ROOT_PASSWORD}
       - NODE_OPTIONS=--use-openssl-ca
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-      - SSL_CERT_DIR=/etc/ssl/certs
     volumes:
       - ${CA_CERTS_PATH}:/etc/ssl/certs:ro
     restart: unless-stopped
@@ -193,7 +190,6 @@ services:
       - QUEUE_CONFIG=kafka:9092
       - NODE_OPTIONS=--use-openssl-ca
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-      - SSL_CERT_DIR=/etc/ssl/certs
     volumes:
       - ${CA_CERTS_PATH}:/etc/ssl/certs:ro
     restart: unless-stopped
@@ -219,7 +215,6 @@ services:
       - ACCOUNTS_DB_URL=${CR_DB_URL}
       - NODE_OPTIONS=--use-openssl-ca
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-      - SSL_CERT_DIR=/etc/ssl/certs
     volumes:
       - ${CA_CERTS_PATH}:/etc/ssl/certs:ro
     restart: unless-stopped
@@ -238,7 +233,6 @@ services:
       - SERVER_SECRET=${SECRET}
       - NODE_OPTIONS=--use-openssl-ca
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-      - SSL_CERT_DIR=/etc/ssl/certs
       # Browser-facing URLs use HOST_ADDRESS (what the user types in their browser)
       - ACCOUNTS_URL=http://${HOST_ADDRESS}/_accounts
       - REKONI_URL=http://${HOST_ADDRESS}/_rekoni
@@ -277,7 +271,6 @@ services:
       - QUEUE_CONFIG=kafka:9092
       - NODE_OPTIONS=--use-openssl-ca
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-      - SSL_CERT_DIR=/etc/ssl/certs
     volumes:
       - ${CA_CERTS_PATH}:/etc/ssl/certs:ro
     restart: unless-stopped
@@ -294,7 +287,6 @@ services:
       - SERVER_SECRET=${SECRET}
       - NODE_OPTIONS=--use-openssl-ca
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-      - SSL_CERT_DIR=/etc/ssl/certs
     volumes:
       - ${CA_CERTS_PATH}:/etc/ssl/certs:ro
     restart: unless-stopped
