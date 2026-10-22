@@ -4,6 +4,10 @@
 
 _2026-10-22_
 
+> _Maintenance (2026-10-22):_ Built with Go 1.27.3 (`go 1.27.3` in `go.mod`, `golang:1.27.3-alpine` builder). This includes Go's denylist for the compromised eMudhra intermediates (CVE-2026-111943), as a second check beside the CA bundle.
+
+> _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0` and `ca-certificates>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943).
+
 ## Headline
 
 - TheNoise image backend promoted to Core tier for ROCm on AMD GPUs across Linux and Windows.
@@ -89,10 +93,6 @@ Thanks `bitgamma`, `fl0rianr`, `jeremyfowers`, `joshuacox`, `sreeram-11`, `zanen
 ## 2026.42.1
 
 _2026-10-15_
-
-> _Maintenance (2026-10-22):_ Built with Go 1.27.3 (`go 1.27.3` in `go.mod`, `golang:1.27.3-alpine` builder). This includes Go's denylist for the compromised eMudhra intermediates (CVE-2026-111943), as a second check beside the CA bundle.
-
-> _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0` and `ca-certificates>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943). This also forces a stale build cache to reinstall packages on the next rebuild. Rebuild the app to apply.
 
 ## Headline
 
