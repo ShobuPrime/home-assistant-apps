@@ -28,8 +28,8 @@ FROM ${BUILD_FROM}
 RUN apk upgrade --no-cache \
     && apk add --no-cache \
         'ca-certificates-bundle>=20261020-r0' \
+        'ca-certificates>=20261020-r0' \
         bash \
-        ca-certificates \
         curl \
         jq \
         alsa-utils \

@@ -4,7 +4,9 @@
 
 _2026-10-17_
 
-> _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943). This also forces a stale build cache to reinstall packages on the next rebuild. Rebuild the app to apply.
+> _Maintenance (2026-10-22):_ A remote environment with a custom CA no longer trusts Node's compiled-in roots, which still include the compromised eMudhra CAs (CVE-2026-111943). The build patches Dockhand's `tls.rootCertificates` to the system store, and fails if any use is left unpatched.
+
+> _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0` and `ca-certificates>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943). This also forces a stale build cache to reinstall packages on the next rebuild. Rebuild the app to apply.
 
 > _Maintenance (2026-10-22):_ Node now trusts the system CA bundle (`NODE_OPTIONS=--use-openssl-ca`) instead of its compiled-in one, which still includes the root behind the compromised eMudhra intermediates (CVE-2026-111943). Rebuild the app to apply; the rebuild also pulls Alpine's fixed `ca-certificates` 20261020. Also unpins `musl` so the build resolves again: the base image pins `musl=1.2.6-r2`, Alpine now ships `musl-dev` r3, and `g++` failed to install against the pin.
 

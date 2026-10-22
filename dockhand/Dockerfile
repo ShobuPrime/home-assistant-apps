@@ -15,12 +15,12 @@ ARG DOCKHAND_VERSION
 # Install runtime requirements
 # Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
 # The base image pins musl in /etc/apk/world, which `apk upgrade` respects;
-# naming it here lifts the pin so g++ (musl-dev) resolves below.
+# naming musl and musl-utils here lifts the pin so g++ (musl-dev) resolves below.
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
         'ca-certificates-bundle>=20261020-r0' \
-        ca-certificates \
+        'ca-certificates>=20261020-r0' \
         curl \
         jq \
         docker-cli \
@@ -29,6 +29,7 @@ RUN \
         sqlite \
         git \
         musl \
+        musl-utils \
         openssh-client \
         tini
 
@@ -47,6 +48,13 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
     && cd /opt/dockhand \
     && npm rebuild better-sqlite3 \
     && apk del .build-deps
+
+# Dockhand appends `tls.rootCertificates` (Node's compiled-in roots, which still
+# trust the compromised eMudhra CAs, CVE-2026-111943) to a remote environment's
+# custom CA. Use the system store instead; fail if any use is left unpatched.
+RUN find /opt/dockhand/build -name '*.js' -exec sed -i -E \
+        's/([A-Za-z_$][A-Za-z0-9_$]*)\.rootCertificates\b/\1.getCACertificates("system")/g' {} + \
+    && ! grep -rl --include='*.js' 'rootCertificates' /opt/dockhand/build
 
 # Create required directories
 RUN mkdir -p /opt/dockhand/data /opt/dockhand/data/db /opt/dockhand/data/stacks

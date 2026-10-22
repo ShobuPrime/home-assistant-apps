@@ -25,8 +25,8 @@ RUN \
     apk upgrade --no-cache \
     && apk add --no-cache --upgrade \
         'ca-certificates-bundle>=20261020-r0' \
+        'ca-certificates>=20261020-r0' \
         bash \
-        ca-certificates \
         curl \
         docker-cli \
         jq \

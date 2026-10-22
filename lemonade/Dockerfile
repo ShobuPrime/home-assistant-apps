@@ -201,7 +201,7 @@ RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
         'ca-certificates-bundle>=20261020-r0' \
-        ca-certificates \
+        'ca-certificates>=20261020-r0' \
         curl \
         jq \
         tar \
