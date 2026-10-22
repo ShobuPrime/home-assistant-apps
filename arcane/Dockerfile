@@ -15,6 +15,7 @@ ARG ARCANE_VERSION=2.16.1
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache --upgrade \
+        'ca-certificates-bundle>=20261020-r0' \
         ca-certificates \
         curl \
         jq \

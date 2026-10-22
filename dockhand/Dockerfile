@@ -19,6 +19,7 @@ ARG DOCKHAND_VERSION
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
+        'ca-certificates-bundle>=20261020-r0' \
         ca-certificates \
         curl \
         jq \

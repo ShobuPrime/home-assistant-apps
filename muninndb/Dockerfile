@@ -107,6 +107,7 @@ ENV S6_SERVICES_GRACETIME=90000 \
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
+        'ca-certificates-bundle>=20261020-r0' \
         ca-certificates \
         curl \
         jq

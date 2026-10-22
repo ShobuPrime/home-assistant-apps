@@ -4,6 +4,8 @@
 
 _2026-08-02_
 
+> _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943). This also forces a stale build cache to reinstall packages on the next rebuild. Rebuild the app to apply.
+
 ### Changes
 
 **Entity IDs are now short natively — `sensor.hay_cm5_processor_temperature`, not `sensor.hay_cm5_fan_controller_cm5_processor_temperature`.** 1.2.0 renamed the device and entities, which gave new installs the short form, but existing installs kept the IDs Home Assistant had already pinned. This release makes the change reach them too, from the app itself — no manual renaming.

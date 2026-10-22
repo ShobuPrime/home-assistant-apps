@@ -13,6 +13,7 @@ ARG DOCKGE_VERSION=1.5.0
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
+        'ca-certificates-bundle>=20261020-r0' \
         bash \
         ca-certificates \
         curl \
