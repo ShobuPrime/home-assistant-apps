@@ -218,6 +218,11 @@ Who owns the exit-delay countdown, and therefore *when* the ARM webhook fires:
 - `mqtt_topic_prefix`: topic + entity namespace (default `aegis_ha`). Advanced;
   leave as-is unless it collides on your broker.
 
+If the Supervisor reports a TLS broker, AegisHA verifies its certificate
+against the system CA bundle and the broker's hostname. A self-signed broker
+fails to connect. The official Mosquitto app announces plain MQTT on port 1883,
+so this does not affect it.
+
 ### Web UI / card / zones
 
 - `enable_web_ui`: serve the ingress keypad in the HA sidebar (default `true`).
