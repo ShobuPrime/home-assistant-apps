@@ -1,5 +1,91 @@
 # Changelog
 
+## 2026.43.3
+
+_2026-10-22_
+
+## Headline
+
+- TheNoise image backend promoted to Core tier for ROCm on AMD GPUs across Linux and Windows.
+- Image editing now accepts multiple reference images with automatic size selection and lossless passthrough.
+- Live inference metrics added to GET /v1/stats, showing active requests and estimated tokens per second.
+- AMD GPU utilization and VRAM telemetry now reported on Windows alongside NVIDIA in system-stats.
+
+## Breaking Changes
+
+- GET /api/v1/system-stats now reports gpu_percent and vram_gb for the primary GPU by total memory instead of the GPU with the highest utilization — on multi-GPU systems these fields will show different values, requiring updates to dashboards and alerting rules.
+- Models gated behind a guest-tier backend are now hidden from GET /v1/models?show_all=true and return model_not_supported on pull until the guest backend is installed — existing setups relying on those models being visible will no longer see them.
+
+## Lemonade Server
+
+| Operating System | Downloads |
+|------------------|-----------|
+| **Windows** | [lemonade.msi](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade.msi) |
+| **Ubuntu 24.04+** | [Launchpad PPA](https://launchpad.net/~lemonade-team/+archive/ubuntu/stable) |
+| **Debian 13 (x86_64)** | [lemonade-server_2026.43.3-debian13_amd64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-server_2026.43.3-debian13_amd64.deb) |
+| **Debian 13 (ARM64)** | [lemonade-server_2026.43.3-debian13_arm64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-server_2026.43.3-debian13_arm64.deb) |
+| **Fedora 43 (x86_64)** | [lemonade-server-2026.43.3-fc43.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-server-2026.43.3-fc43.x86_64.rpm) |
+| **Fedora 43 (ARM64)** | [lemonade-server-2026.43.3-fc43.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-server-2026.43.3-fc43.aarch64.rpm) |
+| **Fedora 44 (x86_64)** | [lemonade-server-2026.43.3-fc44.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-server-2026.43.3-fc44.x86_64.rpm) |
+| **Fedora 44 (ARM64)** | [lemonade-server-2026.43.3-fc44.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-server-2026.43.3-fc44.aarch64.rpm) |
+| **macOS** | [Lemonade-2026.43.3-Darwin.pkg](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/Lemonade-2026.43.3-Darwin.pkg) |
+
+> **Other platforms?** See our [Installation Options](https://lemonade-server.ai/docs/guide/install/) for [Docker](https://lemonade-server.ai/docs/guide/install/docker/), [Snap](https://lemonade-server.ai/docs/guide/install/ubuntu/#__tabbed_2_3), [Arch](https://lemonade-server.ai/docs/guide/install/arch/), [Debian](https://lemonade-server.ai/docs/guide/install/), and more.
+
+## Embeddable Lemonade
+
+Portable binaries for bundling into your own installer. Run `lemond ./` as a subprocess.
+
+| Platform | Download |
+|----------|----------|
+| **Ubuntu x64** | [lemonade-embeddable-2026.43.3-ubuntu-x64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-embeddable-2026.43.3-ubuntu-x64.tar.gz) |
+| **Ubuntu arm64** | [lemonade-embeddable-2026.43.3-ubuntu-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-embeddable-2026.43.3-ubuntu-arm64.tar.gz) |
+| **Windows x64** | [lemonade-embeddable-2026.43.3-windows-x64.zip](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-embeddable-2026.43.3-windows-x64.zip) |
+| **macOS arm64** | [lemonade-embeddable-2026.43.3-macos-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.43.3/lemonade-embeddable-2026.43.3-macos-arm64.tar.gz) |
+
+---
+
+## What's Changed
+
+Thanks `bitgamma`, `fl0rianr`, `jeremyfowers`, `joshuacox`, `sreeram-11`, `zaneni6` for your awesome contributions to this release!
+
+<details>
+<summary>Click to expand changelog</summary>
+
+* refactor(server): run backend servers through ServerProcess and NativeProcess by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3705
+* fix(server): support multi-reference image editing by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3801
+* fix(config): read the distro defaults override from lemond's own install prefix by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3775
+* feat(images): add per-model edit size caps and Qwen-Image-2.1 Turbo INT8 by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3803
+* fix(models): preserve catalog identities in extra_models_dir by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3805
+* fix(models): prevent duplicate discovery of incomplete shards by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3811
+* docs: add systemd start step to the Arch install page by `joshuacox` in https://github.com/lemonade-sdk/lemonade/pull/3784
+* ci: bump auto-labeler to Claude Haiku 5.5 by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3774
+* feat(backends): label each backend with a tier and a format by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3706
+* Update Lemonade to ROCm 10.1.0 by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/3821
+* chore(flm): bump FLM to v1.0.8 by `zaneni6` in https://github.com/lemonade-sdk/lemonade/pull/3810
+* Build cpp-httplib once instead of in every file that includes it by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3837
+* fix(server): report NVIDIA GPU and VRAM usage by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3282
+* mark TheNoise as Core-tier by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/3826
+* test: pre-pull server_llm.py's models and cover implicit pull on inference by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3839
+* lemonade bench: add prefill TPS by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/3759
+* Add AnythingLLM and Phoronix Lemonade 11.9 articles to news page by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3836
+* fix(server): expose live inference throughput across backends by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3791
+* test: isolate every C++ test from the real config dir by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3612
+
+</details>
+
+## New Contributors
+* `joshuacox` made their first contribution in https://github.com/lemonade-sdk/lemonade/pull/3784
+
+**Full Changelog**: https://github.com/lemonade-sdk/lemonade/compare/v2026.42.1...v2026.43.3
+
+---
+
+> Windows installers are signed. Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). See our [Code Signing Policy](https://github.com/lemonade-sdk/lemonade#code-signing-policy).
+
+---
+
+
 ## 2026.42.1
 
 _2026-10-15_
