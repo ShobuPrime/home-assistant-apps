@@ -24,8 +24,7 @@ FROM ${BUILD_FROM}
 # Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
 RUN apk upgrade --no-cache \
     && apk add --no-cache \
-        'ca-certificates-bundle>=20261020-r0' \
-        'ca-certificates>=20261020-r0' \
+        ca-certificates \
         curl \
         jq
 
