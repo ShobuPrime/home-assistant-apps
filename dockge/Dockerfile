@@ -8,6 +8,8 @@ ARG DOCKGE_VERSION=1.5.0
 
 # Install runtime requirements (NO nodejs — we install Node 22 LTS manually)
 # Upgrade first to resolve base image package version mismatches
+# The base image pins musl in /etc/apk/world, which `apk upgrade` respects;
+# naming it here lifts the pin so g++ (musl-dev) resolves below.
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
@@ -16,7 +18,8 @@ RUN \
         curl \
         jq \
         libstdc++ \
-        libgcc
+        libgcc \
+        musl
 
 # Install Node.js 22 LTS (musl build) to match upstream Dockge's ABI
 # Alpine 3.23 ships Node 24 which breaks native module compatibility.
@@ -30,6 +33,11 @@ RUN ARCH="$(uname -m)" \
     && curl -fsSL "https://unofficial-builds.nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}-musl.tar.xz" \
        | tar -xJ -C /usr/local --strip-components=1 \
     && node --version && npm --version
+
+# Node verifies TLS against its own compiled-in root store, which still trusts
+# the compromised eMudhra intermediates (CVE-2026-111943). Use the system
+# bundle instead; `apk upgrade` keeps it current.
+ENV NODE_OPTIONS="--use-openssl-ca"
 
 # Copy Dockge application from official image
 COPY --from=dockge /app /app

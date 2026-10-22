@@ -4,6 +4,8 @@
 
 _2026-10-17_
 
+> _Maintenance (2026-10-22):_ Node now trusts the system CA bundle (`NODE_OPTIONS=--use-openssl-ca`) instead of its compiled-in one, which still includes the root behind the compromised eMudhra intermediates (CVE-2026-111943). Rebuild the app to apply; the rebuild also pulls Alpine's fixed `ca-certificates` 20261020. Also unpins `musl` so the build resolves again: the base image pins `musl=1.2.6-r2`, Alpine now ships `musl-dev` r3, and `g++` failed to install against the pin.
+
 ### Changed
 - Updated Dockhand to version 1.0.54
 

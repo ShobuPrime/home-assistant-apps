@@ -14,6 +14,8 @@ ARG DOCKHAND_VERSION
 
 # Install runtime requirements
 # Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
+# The base image pins musl in /etc/apk/world, which `apk upgrade` respects;
+# naming it here lifts the pin so g++ (musl-dev) resolves below.
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
@@ -25,8 +27,14 @@ RUN \
         npm \
         sqlite \
         git \
+        musl \
         openssh-client \
         tini
+
+# Node verifies TLS against its own compiled-in root store, which still trusts
+# the compromised eMudhra intermediates (CVE-2026-111943). Use the system
+# bundle instead; `apk upgrade` keeps it current.
+ENV NODE_OPTIONS="--use-openssl-ca"
 
 # Copy Dockhand application from source image
 COPY --from=dockhand-source /app /opt/dockhand
