@@ -13,6 +13,7 @@ ARG PORTAINER_VERSION=2.44.0
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
+        'ca-certificates-bundle>=20261020-r0' \
         ca-certificates \
         curl \
         jq \
