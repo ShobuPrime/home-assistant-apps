@@ -1,5 +1,50 @@
 # Changelog
 
+## 2.45.3
+
+_2026-10-22_
+
+## Known issues
+
+- On Async Edge environments, an invalid update schedule date can be displayed when browsing a snapshot
+
+### Known issues with Podman support
+
+- Podman environments aren't supported by auto-onboarding script
+- It's not possible to add Podman environments via socket, when running a Portainer server on Docker (and vice versa)
+- Support for only CentOS 9, Podman 5 rootful
+
+## Changes
+
+### Breaking changes
+
+- Portainer no longer trusts TLS certificates issued by eMudhra (emSign), following the compromise of eight eMudhra intermediate CAs (CVE-2026-111943). Connections to services that present an affected certificate, including OAuth/OIDC and LDAPS providers, registries and Git hosts, will fail after the upgrade. If your single sign-on or LDAP provider is affected, only the initial admin will be able to sign in. Check your services before upgrading. [See this FAQ for details.](https://hubs.li/Q04B-qY30)
+
+### Security improvements
+
+- Rejected Compose and Swarm stacks using `volumes_from` when non-administrators create, update, start or redeploy them with `Hide bind mounts for non-administrators` enabled, which let them inherit another container's host bind mounts
+- Updated the Go toolchain to 1.26.10, fixing CVE-2026-56857 and CVE-2026-78663 (both Critical), along with CVE-2026-111943, CVE-2026-97032, CVE-2026-97031, CVE-2026-94440, CVE-2026-94439, CVE-2026-78669, CVE-2026-78667, CVE-2026-78660, CVE-2026-78659, CVE-2026-56866, CVE-2026-94448 and CVE-2026-97030
+- Removed the eMudhra emSign root certificates from the CA bundle in Linux images, and rejected certificate chains that contain the compromised eMudhra intermediates (CVE-2026-111943). [See this FAQ for details.](https://hubs.li/Q04B-qY30)
+- Updated [golang.org/x/net](http://golang.org/x/net) to 0.60.0, fixing CVE-2026-78663 (Critical), CVE-2026-97032, CVE-2026-78669, CVE-2026-78660 and CVE-2026-78659 (all High)
+- Updated helm in the kubectl shell image to v4.3.1, taking its Go toolchain to 1.27.2 and oras.land/oras-go/v2 to 2.6.2, fixing CVE-2026-39821 (Critical) and CVE-2026-50163 (High)
+- Restricted kubeconfig tokens to the /api/endpoints/{id}/kubernetes proxy, so they are rejected with a 403 on every other API route, including admin-only routes and the Docker proxy. Kubeconfigs downloaded after upgrading carry a separate token per environment, limited to that environment 
+
+### Bug fixes
+
+- Fixed starting a container with an empty request body failing with a 400 error on Docker standalone and Swarm agent environments 
+- Fixed GitOps sources starting a new poll while the previous one was still running, which could pile up overlapping redeploys on slow repositories. A poll that is still running now causes the next scheduled poll to be skipped
+- Fixed GitOps workflows showing the Git reference and file path status as unknown after a stack was manually redeployed from Git. A manual redeploy now records these statuses for the stack's workflow artifact
+- Fixed the YAML tab on the Kubernetes node details page going blank after switching tabs or refocusing the browser, and restored the missing gap between the tab content and the Applications table
+- Fixed DockerHub pull rate limits and agent version detection failing on Docker engines newer than API 1.47, and, in BE, non-admin users with environment access getting 403 errors on `/agent/docker` and `/agent/host` routes, which left Swarm node selectors empty
+- Fixed the search box on the Authentication logs page not filtering events by username
+
+## Deprecated and removed features
+
+None.
+
+---
+
+
 ## 2.45.2.1
 
 _2026-10-22_
