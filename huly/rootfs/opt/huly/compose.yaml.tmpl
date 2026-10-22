@@ -40,6 +40,13 @@ services:
     volumes:
       - ${VOLUME_CR_DATA_PATH}:/cockroach/cockroach-data
       - ${VOLUME_CR_CERTS_PATH:-cr_certs}:/cockroach/certs
+    # Ready means it accepts SQL; kvs exits on a refused connection.
+    healthcheck:
+      test: ['CMD', 'curl', '-fs', 'http://localhost:8080/health?ready=1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     restart: unless-stopped
     networks:
       - huly_net
@@ -297,7 +304,7 @@ services:
     image: mirror.gcr.io/hardcoreeng/hulykvs:${HULY_VERSION}
     depends_on:
       cockroach:
-        condition: service_started
+        condition: service_healthy
     environment:
       - HULY_DB_CONNECTION=${CR_DB_URL}
       - HULY_TOKEN_SECRET=${SECRET}
