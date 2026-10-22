@@ -4,7 +4,9 @@
 
 _2026-08-01_
 
-> _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943). This also forces a stale build cache to reinstall packages on the next rebuild. Rebuild the app to apply.
+> _Maintenance (2026-10-22):_ Built with Go 1.27.3 (`go 1.27.3` in `go.mod`, `golang:1.27.3-alpine` builder). This includes Go's denylist for the compromised eMudhra intermediates (CVE-2026-111943), as a second check beside the CA bundle.
+
+> _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0` and `ca-certificates>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943). This also forces a stale build cache to reinstall packages on the next rebuild. Rebuild the app to apply.
 
 - Renamed the `addon_config` folder mapping to `app_config`, matching the app terminology Home Assistant Supervisor introduced in 2026.07. Supervisor still accepts the old name but logs `uses legacy map type 'addon_config'; use 'app_config' instead` on every config read. The mount is unchanged — both names resolve to the same source and the same `/config` target — so nothing inside the app moves.
 

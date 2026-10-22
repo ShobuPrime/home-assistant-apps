@@ -9,24 +9,25 @@ ARG DOCKGE_VERSION=1.5.0
 # Install runtime requirements (NO nodejs — we install Node 22 LTS manually)
 # Upgrade first to resolve base image package version mismatches
 # The base image pins musl in /etc/apk/world, which `apk upgrade` respects;
-# naming it here lifts the pin so g++ (musl-dev) resolves below.
+# naming musl and musl-utils here lifts the pin so g++ (musl-dev) resolves below.
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache \
         'ca-certificates-bundle>=20261020-r0' \
+        'ca-certificates>=20261020-r0' \
         bash \
-        ca-certificates \
         curl \
         jq \
         libstdc++ \
         libgcc \
-        musl
+        musl \
+        musl-utils
 
 # Install Node.js 22 LTS (musl build) to match upstream Dockge's ABI
 # Alpine 3.23 ships Node 24 which breaks native module compatibility.
 # Node 22 musl build from nodejs.org gives us ABI v127 on musl,
 # matching the prebuilt native modules (node-pty, better-sqlite3).
-ARG NODE_VERSION=22.14.0
+ARG NODE_VERSION=22.23.4
 RUN ARCH="$(uname -m)" \
     && if [ "${ARCH}" = "x86_64" ]; then NODE_ARCH="x64"; \
     elif [ "${ARCH}" = "aarch64" ]; then NODE_ARCH="arm64"; \

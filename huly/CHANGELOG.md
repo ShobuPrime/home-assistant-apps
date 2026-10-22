@@ -4,7 +4,7 @@
 
 _2026-07-05_
 
-> _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943). This also forces a stale build cache to reinstall packages on the next rebuild. Rebuild the app to apply.
+> _Maintenance (2026-10-22):_ The image now requires `ca-certificates-bundle>=20261020-r0` and `ca-certificates>=20261020-r0`, Alpine's bundle without the root behind the compromised eMudhra intermediates (CVE-2026-111943). This also forces a stale build cache to reinstall packages on the next rebuild. Rebuild the app to apply.
 
 > _Maintenance (2026-10-01):_ **Images come through `mirror.gcr.io`, and MinIO is now `pgsty/silo`.** `minio/minio` is no longer on Docker Hub, so the next version change, which re-pulls every image, would have failed with `Failed to pull Huly images` and crash-looped. Upstream huly-selfhost made the same swap (#336). Silo is a MinIO fork that reads existing MinIO data: an object written by MinIO read back byte-for-byte, and the `mc ready local` healthcheck passes. The mirror is Google's cache of Docker Hub, serving the same digests without Docker Hub's anonymous pull limit, which had failed every CI smoke test since 2026-09-28. After a rebuild, the next start recreates the containers under the new image names, reusing layers already on disk, and downloads silo once. Data is untouched.
 

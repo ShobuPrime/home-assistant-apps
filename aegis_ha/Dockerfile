@@ -1,5 +1,5 @@
 ARG BUILD_FROM
-ARG GO_VERSION=1.26-alpine
+ARG GO_VERSION=1.27.3-alpine
 
 # ---------------------------------------------------------------------------
 # Stage 1: build the Go binary
@@ -25,7 +25,7 @@ FROM ${BUILD_FROM}
 RUN apk upgrade --no-cache \
     && apk add --no-cache \
         'ca-certificates-bundle>=20261020-r0' \
-        ca-certificates \
+        'ca-certificates>=20261020-r0' \
         curl \
         jq
 
