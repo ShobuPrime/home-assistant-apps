@@ -33,9 +33,8 @@ RUN \
         openssh-client \
         tini
 
-# Node verifies TLS against its own compiled-in root store, which still trusts
-# the compromised eMudhra intermediates (CVE-2026-111943). Use the system
-# bundle instead; `apk upgrade` keeps it current.
+# Trust the system CA bundle, which `apk upgrade` keeps current, rather than
+# the root store compiled into this Node release.
 ENV NODE_OPTIONS="--use-openssl-ca"
 
 # Copy Dockhand application from source image
@@ -49,9 +48,9 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
     && npm rebuild better-sqlite3 \
     && apk del .build-deps
 
-# Dockhand appends `tls.rootCertificates` (Node's compiled-in roots, which still
-# trust the compromised eMudhra CAs, CVE-2026-111943) to a remote environment's
-# custom CA. Use the system store instead; fail if any use is left unpatched.
+# Dockhand appends `tls.rootCertificates` (Node's compiled-in roots, which
+# NODE_OPTIONS does not change) to a remote environment's custom CA. Use the
+# system store instead; fail if any use is left unpatched.
 # BusyBox grep has no --include, so find picks the files.
 RUN find /opt/dockhand/build -name '*.js' -exec sed -i -E \
         's/([A-Za-z_$][A-Za-z0-9_$]*)\.rootCertificates\b/\1.getCACertificates("system")/g' {} + \

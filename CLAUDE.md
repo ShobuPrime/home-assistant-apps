@@ -220,6 +220,9 @@ update, give an app that mirrors an upstream version a fourth component:
   (`upstream-lib.sh`). Without it, `2.45.2` sorts below `2.45.2.1` and the
   script refuses it as a downgrade. The next upstream release writes a plain
   `X.Y.Z`, dropping the `.N`.
+- HA's release-notes slice stops at the first heading that *starts with* the
+  installed version, so a user going straight from 2.45.2 to 2.45.3 never sees
+  the `## 2.45.2.1` notes. Repeat anything they must know in the next entry.
 
 ## AppArmor Profile Rules
 
