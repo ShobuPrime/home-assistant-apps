@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.45.2.1
+
+_2026-10-22_
+
+- The image requires Alpine's fixed CA bundle (`ca-certificates` 20261020-r0), which drops the emSign roots behind the compromised eMudhra intermediates (CVE-2026-111943).
+
+These fixes first shipped as maintenance notes under 2.45.2, which needed a manual rebuild. This version number makes Home Assistant offer them as an update.
+
 ## 2.45.2
 
 _2026-10-08_

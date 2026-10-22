@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.5
+
+_2026-10-22_
+
+- The image requires Alpine's fixed CA bundle (`ca-certificates` 20261020-r0), which drops the emSign roots behind the compromised eMudhra intermediates (CVE-2026-111943).
+- Built with Go 1.27.3, which adds Go's own denylist for the compromised intermediates.
+- MQTT over TLS now verifies the broker's certificate against the system CA bundle and its hostname. It used to accept any certificate. The official Mosquitto app announces plain MQTT on port 1883, so it is unaffected.
+
 ## 0.2.4
 
 _2026-06-10_

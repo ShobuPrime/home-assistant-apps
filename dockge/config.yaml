@@ -1,6 +1,6 @@
 name: "Dockge"
 description: "A fancy, easy-to-use and reactive self-hosted docker compose.yaml stack-oriented manager"
-version: "1.5.0"
+version: "1.5.0.1"
 slug: "dockge"
 init: false
 ingress: true

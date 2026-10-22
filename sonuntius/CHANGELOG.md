@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4
+
+_2026-10-22_
+
+- The image requires Alpine's fixed CA bundle (`ca-certificates` 20261020-r0), which drops the emSign roots behind the compromised eMudhra intermediates (CVE-2026-111943).
+- Built with Go 1.27.3, which adds Go's own denylist for the compromised intermediates.
+
 ## 0.3.3
 
 _2026-08-01_

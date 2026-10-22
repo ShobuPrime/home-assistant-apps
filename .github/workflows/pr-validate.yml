@@ -107,9 +107,10 @@ jobs:
               # Extract version for validation
               VERSION=$(grep "^version:" "$app_dir/config.yaml" | sed 's/version: *"\(.*\)"/\1/')
 
-              # Validate version format (semver, with optional pre-release suffix)
-              if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-][a-zA-Z0-9.]+)*$'; then
-                ERRORS="${ERRORS}\n- Invalid version format in $app_dir/config.yaml: $VERSION (should be X.Y.Z or X.Y.Z-suffix)"
+              # X.Y.Z, optionally .N (our revision of an upstream release, see
+              # strip_revision in upstream-lib.sh) or a pre-release suffix
+              if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?([-][a-zA-Z0-9.]+)*$'; then
+                ERRORS="${ERRORS}\n- Invalid version format in $app_dir/config.yaml: $VERSION (should be X.Y.Z, X.Y.Z.N or X.Y.Z-suffix)"
                 EXIT_CODE=1
               fi
 

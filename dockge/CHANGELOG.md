@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0.1
+
+_2026-10-22_
+
+- The image requires Alpine's fixed CA bundle (`ca-certificates` 20261020-r0), which drops the emSign roots behind the compromised eMudhra intermediates (CVE-2026-111943).
+- Node trusts the system CA bundle (`--use-openssl-ca`) instead of its compiled-in roots, and moves from 22.14.0 to 22.23.4, which also builds on aarch64 again.
+
+These fixes first shipped as maintenance notes under 1.5.0, which needed a manual rebuild. This version number makes Home Assistant offer them as an update.
+
 ## 1.5.0
 
 > _Maintenance (2026-10-22):_ Node 22.14.0 → 22.23.4. 22.14.0 has no arm64 musl build, so the app could not build on aarch64. 22.23.4 also drops the compromised eMudhra roots from Node's own store (CVE-2026-111943).
