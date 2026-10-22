@@ -18,7 +18,6 @@ ENV S6_SERVICES_GRACETIME=10000 \
 # Upgrade first to resolve base image package version mismatches (e.g. libcrypto3/libssl3)
 RUN apk upgrade --no-cache \
     && apk add --no-cache \
-        'ca-certificates-bundle>=20261020-r0' \
         curl \
         jq \
         libgpiod \
