@@ -32,8 +32,8 @@ RUN \
         openssh-client \
         tini
 
-# Trust the system CA bundle, which `apk upgrade` keeps current, rather than
-# the root store compiled into this Node release.
+# Alpine's Node already trusts the system CA bundle, which `apk upgrade` keeps
+# current. Set explicitly so it still holds if the Node build changes.
 ENV NODE_OPTIONS="--use-openssl-ca"
 
 # Copy Dockhand application from source image
