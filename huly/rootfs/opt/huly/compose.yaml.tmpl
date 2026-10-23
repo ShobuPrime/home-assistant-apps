@@ -285,6 +285,8 @@ services:
       - ${CA_CERTS_PATH}:/etc/ssl/certs:ro
     restart: unless-stopped
     depends_on:
+      cockroach:
+        condition: service_healthy
       elastic:
         condition: service_healthy
     networks:
