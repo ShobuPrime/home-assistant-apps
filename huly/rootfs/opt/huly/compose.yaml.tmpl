@@ -4,9 +4,9 @@
 # registry. MinIO is pgsty/silo, a drop-in fork: minio/minio left Docker Hub
 # (upstream huly-selfhost #336 made the same swap).
 #
-# The upstream images keep whatever CA bundle they were built with. Each one
-# gets this app's bundle, which `apk upgrade` keeps current, mounted over
-# /etc/ssl/certs, replacing the image's hash links too. Node also needs
+# The upstream images keep whatever CA bundle they were built with. The Node
+# services and kvs get this app's bundle, which `apk upgrade` keeps current,
+# mounted over /etc/ssl/certs, replacing the image's hash links too. Node also needs
 # --use-openssl-ca, or it uses its compiled-in store, and SSL_CERT_FILE,
 # because its OpenSSL's default file is /etc/ssl/cert.pem.
 name: ${DOCKER_NAME}
