@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.0.55
+
+_2026-10-24_
+
+### Changed
+- Updated Dockhand to version 1.0.55
+
+Released: 2026-10-23
+
+## What's new in v1.0.55
+
+- ✨ start and stop a container on a schedule (#1178)
+- ✨ the interface language is kept on the server, so it survives a browser that clears its data (#1795)
+- 🐛 the actions column can be resized in every data grid (#1777, PR#1787, @Totopo27)
+- 🐛 newer version tags are found on GHCR repositories with tens of thousands of tags (#1792)
+- 🐛 a stack that bind-mounts a single file restores, also onto a host where the file is missing (#1793)
+- 🐛 the log view's live streaming toggle shows its state like the other toggles (#1654)
+- 🐛 backup history shows the destination each run used, not the schedule's current one (#1783)
+- ✨ moved-digest reports on pinned images are now configurable, globally or per container (#1780)
+- ✨ terminal button in the container details view (#1754, PR#1768, @Totopo27)
+- 🐛 mobile layouts for the containers list and environment tabs (PR#1758, @ddeitterick)
+- ✨ Psono bulk pull and inline references now read Environment Variables secrets (#1784)
+- ✨ decrypt a git stack's SOPS-encrypted env file with a new SOPS (age) secret provider (#386, PR#1781, @oha-4)
+- 🐛 update docker-compose to 5.6.0-r2 to pick up its CVE fixes
+- 🐛 update Node.js to 24.22.1 to pick up its October 21, 2026 security fixes
+- ✨ EXPORT_METRICS_PUBLIC makes /metrics endpoint public, off by default (#1698)
+- ✨ -lsNNN and -rN tag bumps count as newer versions, with tag.transform and link.template labels (#1703)
+- ✨ minimum image age visual improvements and dockhand.skip.cooldown label (#1725)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.55
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.54.1
 
 _2026-10-22_
