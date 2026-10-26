@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.17.1
+
+_2026-10-26_
+
+> [!NOTE]
+> This release fixes manual job and updater behavior, improves Compose and workspace handling, and resolves a Rustic container certificate issue.
+
+### Jobs and updates
+- Require jobs to be enabled in saved settings before allowing manual runs (#4550, `grootbro`).
+- Allow manual updater runs to proceed even when updates are opted out (#4564, `kmendell`).
+- Resolve orphaned job run activities on startup (#4572, `kmendell`).
+
+### Compose and workspaces
+- Respect the name set in a Compose file instead of the project name (#4561, `kmendell`).
+- Use mount-time environment and volume settings in the workspace cache listener (#4563, `kmendell`).
+
+### Backups
+- Trust Arcane’s CA roots inside the Rustic container (#4554, `Mczubi`).
+
+---
+
+
 ## 2.17.0
 
 _2026-10-22_
