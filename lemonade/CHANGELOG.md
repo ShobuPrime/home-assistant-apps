@@ -1,5 +1,87 @@
 # Changelog
 
+## 2026.44.1
+
+_2026-10-29_
+
+## Headline
+
+- `lemonade launch pi` gains MCP and code mode, so pi can call Lemonade tools such as image generation.
+- sd-cpp ROCm is back on Windows, with GPU detection fixed so image generation no longer falls back to CPU.
+- LFM2.5-24B-A2B joins the model registry.
+
+## Breaking Changes
+
+## Lemonade Server
+
+| Operating System | Downloads |
+|------------------|-----------|
+| **Windows** | [lemonade.msi](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade.msi) |
+| **Ubuntu 24.04+** | [Launchpad PPA](https://launchpad.net/~lemonade-team/+archive/ubuntu/stable) |
+| **Debian 13 (x86_64)** | [lemonade-server_2026.44.1-debian13_amd64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-server_2026.44.1-debian13_amd64.deb) |
+| **Debian 13 (ARM64)** | [lemonade-server_2026.44.1-debian13_arm64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-server_2026.44.1-debian13_arm64.deb) |
+| **Fedora 43 (x86_64)** | [lemonade-server-2026.44.1-fc43.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-server-2026.44.1-fc43.x86_64.rpm) |
+| **Fedora 43 (ARM64)** | [lemonade-server-2026.44.1-fc43.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-server-2026.44.1-fc43.aarch64.rpm) |
+| **Fedora 44 (x86_64)** | [lemonade-server-2026.44.1-fc44.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-server-2026.44.1-fc44.x86_64.rpm) |
+| **Fedora 44 (ARM64)** | [lemonade-server-2026.44.1-fc44.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-server-2026.44.1-fc44.aarch64.rpm) |
+| **macOS** | [Lemonade-2026.44.1-Darwin.pkg](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/Lemonade-2026.44.1-Darwin.pkg) |
+
+> **Other platforms?** See our [Installation Options](https://lemonade-server.ai/docs/guide/install/) for [Docker](https://lemonade-server.ai/docs/guide/install/docker/), [Snap](https://lemonade-server.ai/docs/guide/install/ubuntu/#__tabbed_2_3), [Arch](https://lemonade-server.ai/docs/guide/install/arch/), [Debian](https://lemonade-server.ai/docs/guide/install/), and more.
+
+## Embeddable Lemonade
+
+Portable binaries for bundling into your own installer. Run `lemond ./` as a subprocess.
+
+| Platform | Download |
+|----------|----------|
+| **Ubuntu x64** | [lemonade-embeddable-2026.44.1-ubuntu-x64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-embeddable-2026.44.1-ubuntu-x64.tar.gz) |
+| **Ubuntu arm64** | [lemonade-embeddable-2026.44.1-ubuntu-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-embeddable-2026.44.1-ubuntu-arm64.tar.gz) |
+| **Windows x64** | [lemonade-embeddable-2026.44.1-windows-x64.zip](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-embeddable-2026.44.1-windows-x64.zip) |
+| **macOS arm64** | [lemonade-embeddable-2026.44.1-macos-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.44.1/lemonade-embeddable-2026.44.1-macos-arm64.tar.gz) |
+
+---
+
+## What's Changed
+
+Thanks `QuTosh`, `bernardogv`, `fl0rianr`, `iswaryaalex`, `jeremyfowers`, `meghsat`, `sawansri`, `sreeram-11`, `superm1`, `zaneni6` for your awesome contributions to this release!
+
+<details>
+<summary>Click to expand changelog</summary>
+
+* Fixes 3267: Model delete keeps files on the disk by `meghsat` in https://github.com/lemonade-sdk/lemonade/pull/3765
+* fix(ci): avoid SIGPIPE race in launchpad upgrade assertions by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/3860
+* Add conformance tests (phase 2: model-backed) by `QuTosh` in https://github.com/lemonade-sdk/lemonade/pull/2865
+* Add LFM2.5-24B-A2B by `sawansri` in https://github.com/lemonade-sdk/lemonade/pull/3866
+* chore(flm): bump FLM to v1.0.9 by `zaneni6` in https://github.com/lemonade-sdk/lemonade/pull/3873
+* ci: group inference suites by runner class to reduce handoffs by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/3861
+* fix(auto-tune): improve context sizing to avoid GPU memory pressure by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3862
+* Roll back FLM to 1.0.7 release by `superm1` in https://github.com/lemonade-sdk/lemonade/pull/3903
+* Restore sdcpp rocm support on Windows by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/3718
+* docs: extra_models_dir under /home needs a drop-in on deb/rpm by `bernardogv` in https://github.com/lemonade-sdk/lemonade/pull/3895
+* Improve `lemonade launch pi` integration by `sawansri` in https://github.com/lemonade-sdk/lemonade/pull/3786
+* fix(backends): resolve a *_bin directory to the binary inside it by `bernardogv` in https://github.com/lemonade-sdk/lemonade/pull/3893
+* ci: publish news posts to the website as soon as they merge by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3884
+* fix(server): report AMD GPU usage and VRAM on Windows by `iswaryaalex` in https://github.com/lemonade-sdk/lemonade/pull/3872
+* fix(ci): stop Hugging Face rate limits from failing model pulls by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/3859
+* (ci) : Adding halo box backend benchmarking support by `iswaryaalex` in https://github.com/lemonade-sdk/lemonade/pull/3715
+* News: auto-BKC vision blog post by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3846
+* News: edit auto-opt blog based on feedback by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3921
+* [v2026.44] fix(auto-tune): never refuse a load over a context estimate (backport #3986) by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3994
+
+</details>
+
+## New Contributors
+* `bernardogv` made their first contribution in https://github.com/lemonade-sdk/lemonade/pull/3895
+
+**Full Changelog**: https://github.com/lemonade-sdk/lemonade/compare/v2026.43.3...v2026.44.1
+
+---
+
+> Windows installers are signed. Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). See our [Code Signing Policy](https://github.com/lemonade-sdk/lemonade#code-signing-policy).
+
+---
+
+
 ## 2026.43.3
 
 _2026-10-22_
