@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.0.56
+
+_2026-10-31_
+
+### Changed
+- Updated Dockhand to version 1.0.56
+
+Released: 2026-10-30
+
+## What's new in v1.0.56
+
+- 🐛 bitwarden bulk pull skips a key that is not a valid environment variable name (#1831)
+- ✨ Spanish interface translation (PR#1811, @hugomon)
+- ✨ Russian interface translation (PR#1809, @Kirill901)
+- ✨ stack redeploy can respect each service's pull_policy and pull newer base images (#1800)
+- 🐛 backups list shows a schedule's snapshots from every destination it has used (#1783)
+- 🐛 scheduled updates retry a rate-limited pull (toomanyrequests) and honour the registry's retry-after (#1268)
+- 🐛 pruning unused images works on older Docker engines (#1490)
+- 🐛 the stacks page update check counts only containers that belong to a stack (#1803)
+- 🐛 git stack deploys notify channels subscribed to stack events, once per deploy (#1295)
+- 🐛 the git stack editor no longer lists a SOPS env file's metadata as variables (#1815)
+- ✨ wildcard search (* and ?) in the containers and stacks search boxes (#1814)
+- 🐛 self-update keeps a pinned IP and the MAC derived from it (#1816)
+- 🐛 editing a container's env var no longer corrupts a command with embedded quotes (#1821)
+- ✨ release notes for a held update are available during the cooldown (#1824)
+- 🐛 git stacks over ssh keep the username from the repo url so they log in as the right user (#1828)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.56
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.55
 
 _2026-10-24_
