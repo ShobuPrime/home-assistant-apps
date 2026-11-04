@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.17.3
+
+_2026-11-04_
+
+> [!NOTE]
+> This release fixes image update planning and Compose image reporting, improves container sorting, and hardens request logging and startup behavior.
+
+### Containers and images
+- Sort containers by name without regard to case. (#4620, `kmendell`)
+- Show the configured image for Compose services. (#4638, `kmendell`)
+- Drop stale image-level pending updates before planning. (#4637, `kmendell`)
+
+### Reliability and security
+- Warn at startup when using direct agent mode. (#4619, `kmendell`)
+- Redact secrets from logged request paths. (#4623, `kmendell`)
+- Mount the CA bundle into the Rustic container using a staged volume. (#4621, `kmendell`)
+- Skip cancellation of a superseded workflow when its instance is missing. (#4624, `kmendell`)
+
+---
+
+
 ## 2.17.2
 
 _2026-11-01_
