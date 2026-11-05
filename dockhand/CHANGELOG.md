@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.0.57
+
+_2026-11-05_
+
+### Changed
+- Updated Dockhand to version 1.0.57
+
+Released: 2026-11-04
+
+## What's new in v1.0.57
+
+- ✨ OIDC back-channel logout ends a Dockhand session when the identity provider signals logout (#1835)
+- ✨ Ukrainian interface translation (#1839, PR#1839, @TripShuti)
+- ✨ Brazilian Portuguese interface translation (PR#1851, @lucasskluser)
+- ✨ Turkish interface translation (PR#1853, @Gorke07)
+- ✨ Infisical bulk pull now includes secrets from folder imports (#1829, PR#1844, @gorillka)
+- ✨ convert a stack between local and git management without recreating it (#636, PR#795, @barrelltitor)
+- 🐛 git stack files keep their executable bit when deployed to a Hawser remote host
+- 🐛 a git stack webhook skips a push whose branch is not the one the stack tracks (#1790, PR#1796, @Totopo27)
+- 🐛 the containers and stacks status filter survives a page refresh (#1842)
+- 🐛 git stack files over 10 MB reach a Hawser agent instead of being dropped (#1845)
+- 🐛 env vars used only as placeholders in other env values are no longer flagged unused (#1766, PR#1804, @Totopo27)
+- 🐛 update bundled dependencies (nodemailer, undici)
+- 🐛 detect a same-version rebuild of a floating multi-arch tag by the image the container actually runs (#1848)
+- 🐛 stop sending a container exit notification for a non-terminating signal like a terminal resize (#1849)
+- 🐛 view and download container files whose names contain characters like { } or =
+- 🐛 always show the file action buttons on touch devices (#1776, PR#1854, @Totopo27)
+- 🐛 widen the edit-backup dialog so bind-mount paths are not cut off, with the full path on hover (#1857)
+- 🐛 security hardening: path-write guards, deploy-env filtering, origin checks and framing headers
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.57
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.56
 
 _2026-10-31_
