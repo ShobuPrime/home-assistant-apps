@@ -55,21 +55,34 @@ under a new name) is skipped rather than merged as a broken build.
 
 ## If the Web UI breaks after an upstream bump
 
-The add-on adapts upstream's web app in two ways, both applied at **build
-time** in `Dockerfile` and both dependent on the shape of what upstream ships.
-An upstream redesign can invalidate them.
+One small script adapts upstream's web app to ingress:
+`rootfs/opt/lemonade/resources/web-app/ha-addon-shim.js`. The `Dockerfile` adds
+it to `index.html`. It does nothing on direct access. An upstream redesign can
+still invalidate it, as 2026.45.3's did to the bundle patches it replaced.
 
-**None of this needs an AI to diagnose or repair.** Each symptom maps to one
-cause with a mechanical fix.
+Each symptom below maps to one cause with a mechanical fix.
 
 ### Why the adaptation exists
 
-Upstream's web app is an Electron renderer repurposed for the browser. It
-derives its API base from `window.location.origin`, **discarding the path** —
-correct at an origin root, wrong under
-`/api/hassio_ingress/<token>/web-app/`. Home Assistant's Supervisor sends no
-`X-Ingress-Path` header, so the prefix is knowable only in the browser and no
-server-side setting can substitute.
+Upstream's web app assumes it is served from an origin root, so it discards the
+path, which is wrong under `/api/hassio_ingress/<token>/web-app/`. The
+Supervisor sends no `X-Ingress-Path` header, so the prefix is knowable only in
+the browser and no server-side setting can substitute.
+
+The shim does three things under ingress:
+
+| Upstream behaviour (`src/app/src/api.ts`, `core/web_ui.cpp`) | Shim |
+|---|---|
+| The API client reads `lemonade_base_url` from localStorage before its own default | Sets it to origin + prefix |
+| lemond's `window.api.getSettings()` returns `apiUrl: location.origin`, and the client lets that replace the stored value | Wraps `getSettings` to return origin + prefix |
+| `_buildWebSocketUrl` assigns `url.pathname`, dropping the prefix | Wraps `WebSocket` to put it back |
+
+It is a deferred script placed first, so it runs after lemond's inline
+`window.api` mock and before the app's bundles. It edits nothing in the bundles,
+so upstream's chunk layout does not matter.
+
+Resetting the server URL in the app's Connect view clears the base until the
+next page load. Reload the panel.
 
 This is a known upstream limitation, not a misconfiguration here:
 
@@ -80,42 +93,42 @@ This is a known upstream limitation, not a misconfiguration here:
   uses `window.location.origin` only, dropping the path"*, and that the fix is
   to extend it to `origin + window.location.pathname`
 
-That PR describes exactly the patch applied here. **If upstream ever ships it,
-delete this adaptation** rather than repairing it.
+**If upstream ever ships sub-path support, delete the shim** rather than
+repairing it.
 
 ### The build tells you first
 
-Both patches assert their anchors and **fail the build** rather than shipping
-silently:
+The `Dockerfile` **fails the build** rather than shipping a shim that cannot
+work:
 
 ```
-PATCH FAILED: bundle <script> tag not found in web-app/index.html — upstream layout changed
-PATCH FAILED: expected exactly 1 'window.location?.origin' in renderer.bundle.js, found N
+PATCH FAILED: expected the shim once, ahead of the deferred bundles in web-app/index.html
+PATCH FAILED: 'lemonade_base_url' not found in the web app; the shim no longer sets its API base
 ```
 
-A failing build is the designed outcome — it means upstream moved and the
-anchor needs re-deriving. CI will not auto-repair this; a human must look.
+Neither proves the panel works. These check that the mechanism is still present,
+and only a browser under ingress shows the rest. CI will not auto-repair this; a
+human must look.
 
 ### Symptom → cause → fix
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Panel renders, stuck on "connecting", log view empty | Base-URL patch missing or ineffective | A |
+| Panel renders, stuck on "connecting" | Shim missing or ineffective | A |
+| Log view or dictation fails, everything else works | WebSocket path | A |
 | Chat returns `403 {"error": "Origin not allowed"}` | Origin allowlist wrong or empty | B |
-| Companion app on Android jumps to the Play Store | Shim not served | C |
 | Works on `<ha-ip>:13305`, only ingress broken | Base URL only — Origin is fine | A |
 
-**A. Base URL.** Confirm the patch is in the running image:
+**A. Shim.** Confirm it is served and is the first deferred script:
 
 ```bash
-docker exec addon_<hash>_lemonade sh -c \
-  'grep -c __haLemonadeBase /opt/lemonade/resources/web-app/renderer.bundle.js'
+docker exec app_<hash>_lemonade sh -c \
+  'curl -s http://127.0.0.1:13305/web-app/ | grep -o "<script defer=\"defer\" src=\"[^\"]*\"" | head -1'
 ```
 
-`1` means applied. `0` means the image predates the patch — rebuild. If the
-build failed instead, upstream changed how the base URL is derived: find the
-new expression and update the `sed` in `Dockerfile`. The browser console on the
-panel logs the base URL the app chose, which tells you what it is using now.
+It must name `ha-addon-shim.js`. If it does and the panel still fails, open the
+browser's network tab: any request outside `/api/hassio_ingress/<token>/` means
+upstream changed how it builds URLs. Compare against the table above.
 
 **B. Origin.** The allowlist is derived at startup and printed:
 
@@ -145,21 +158,11 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST \
 Avoid `*`. With no `api_key` set it lets any site you visit drive model
 management and host info, not just chat.
 
-**C. Android / shim.** Confirm it is served and ordered before the bundle:
-
-```bash
-docker exec addon_<hash>_lemonade sh -c \
-  'curl -s http://127.0.0.1:13305/web-app/ | grep -c "ha-addon-shim.js\"></script><script defer"'
-```
-
-`1` is correct. The shim must load **before** the deferred bundle; if that
-ordering breaks, the base URL is read before the shim publishes it.
-
 ### The fallback that always works
 
-Direct access at `http://<ha-ip>:13305/web-app/` does not depend on the
-base-URL adaptation at all — there is no path prefix to reconstruct. If ingress
-breaks, use the port directly while the anchor is fixed.
+Direct access at `http://<ha-ip>:13305/` does not depend on the shim at all:
+there is no path prefix to reconstruct. If ingress breaks, use the port directly
+while it is fixed.
 
 ## Best Practices
 

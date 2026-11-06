@@ -1,34 +1,15 @@
 name: "Lemonade"
 description: "Local LLM server with an OpenAI- and Ollama-compatible API, for private on-device AI in Home Assistant"
-version: "2026.44.1"
+version: "2026.45.3"
 slug: "lemonade"
 init: false
 ingress: true
 ingress_port: 13305
 ingress_stream: true
-# Land the ingress panel on the actual chat application rather than lemond's
-# "Lemonade Server" landing page at /, which links nowhere useful.
-#
-# BOTH slashes matter, and they are not symmetric — this value takes a trailing
-# slash and NO leading slash. Supervisor concatenates it onto a base that
-# already ends in one (apps/app.py: `url = f"/api/hassio_ingress/{token}/"`),
-# then the ingress proxy prepends another when forwarding
-# (api/ingress.py: `f"http://{ip}:{port}/{path}"`, where {path:.*} keeps its
-# leading slash). A leading slash here therefore reaches lemond doubled:
-#
-#   ingress_entry: /web-app/  ->  GET //web-app/                  200
-#                             ->  GET //web-app/renderer.bundle.js 404  <-- blank panel
-#   ingress_entry: web-app/   ->  GET /web-app/renderer.bundle.js  200
-#
-# Verified against the running server: lemond tolerates the doubled slash on
-# the directory route but not on asset paths, so the panel loads its HTML and
-# then renders nothing, with a 404 visible only in the browser console.
-#
-# The trailing slash is equally required: web-app/ references its assets
-# relatively (src="renderer.bundle.js"), so without it the document URL ends in
-# /web-app and the browser resolves the bundle one level too high. lemond
-# serves /web-app and /web-app/ alike and issues no redirect, so it cannot
-# correct either mistake for us.
+# BOTH slashes matter: a trailing slash and NO leading slash. Supervisor joins
+# this onto a base ending in "/", and the app loads its assets relatively.
+# A leading slash reaches lemond as //web-app/, whose assets 404, and a missing
+# trailing slash resolves them one level too high. Either way: a blank panel.
 ingress_entry: web-app/
 panel_icon: mdi:fruit-citrus
 panel_title: Lemonade

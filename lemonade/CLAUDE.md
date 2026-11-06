@@ -73,7 +73,7 @@ Upstream is a **C++** project as of v10: `lemond` (the server) and `lemonade`
 ### Critical Files
 - **`config.yaml`**: version, ingress on 13305, options schema
 - **`build.yaml`**: base images per architecture
-- **`Dockerfile`**: two stages — a Debian trixie `glibc-provider` and the Alpine runtime
+- **`Dockerfile`**: an Ubuntu `glibc-provider` stage and the Alpine runtime
 - **`apparmor.txt`**: security profile
 
 ### Architecture Support
@@ -100,7 +100,7 @@ still need glibc.
 So the image stays on the repo-standard Alpine base and bundles a glibc
 closure:
 
-1. Stage `glibc-provider` (`debian:trixie-slim`) downloads the Lemonade
+1. Stage `glibc-provider` (`ubuntu:26.04`) downloads the Lemonade
    "embeddable" archive and copies the `ldd` closure of `lemond` + `lemonade`
    into `/glibc/lib`, plus the ELF loader.
 2. The Alpine runtime stage copies that to `/opt/glibc/lib` and puts the loader
@@ -109,8 +109,11 @@ closure:
 
 Rules that follow from this:
 
-- **Debian trixie, not bookworm.** `lemond` needs GLIBC_2.38 and
-  GLIBCXX_3.4.32; bookworm has glibc 2.36 / libstdc++ 12 and will not run it.
+- **The donor's glibc must cover what `lemond` was linked against, and that
+  moves.** Upstream builds amd64 on `ubuntu-latest` and arm64 on
+  `ubuntu-24.04-arm`, so the two differ: 2026.45.3 needs GLIBC_2.43 on amd64 and
+  2.38 on arm64, with nothing in the release notes. Hence Ubuntu 26.04. The
+  build fails on a mismatch. `readelf -d` will not show it, only `readelf -V`.
 - **`libgomp1` must be copied explicitly.** Every llama.cpp build links OpenMP,
   but those binaries do not exist at build time so `ldd` cannot discover the
   dependency. Without it, model loading fails with
@@ -122,6 +125,19 @@ Rules that follow from this:
   `lemond` and inherits it, which is exactly what it needs.
 - The closure is computed with `ldd`, not hand-listed, so a new upstream
   dependency cannot silently go missing.
+
+### The web app under ingress
+
+`ha-addon-shim.js` (in `rootfs/`) is the only change to upstream's web app, and
+it does nothing outside `/api/hassio_ingress/<token>`. See `UPDATE_GUIDE.md`.
+Do not go back to patching bundles: since 2026.45.3 the client's code is
+duplicated across about 14 webpack chunks.
+
+The build and smoke test cannot prove the panel works. To check an upstream UI
+change, put a prefix-stripping proxy in front of the image, open
+`/api/hassio_ingress/<token>/web-app/#/monitor/logs` in a browser, and look for
+requests outside the prefix. `/favicon.ico` is expected. Run a control with the
+shim removed, or a clean result proves nothing.
 
 ### AppArmor: signals must be receivable
 

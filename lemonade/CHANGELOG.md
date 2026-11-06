@@ -1,5 +1,108 @@
 # Changelog
 
+## 2026.45.3
+
+_2026-11-05_
+
+> _App changes:_ The sidebar panel now runs upstream's redesigned web app, adapted to ingress by a small script instead of patches to its bundles. The bundled glibc now comes from Ubuntu 26.04, because this release's amd64 `lemond` needs glibc 2.43. Per-model sampler defaults and the API docs at `/api/v1/docs` are now included. Startup no longer re-pulls a model that is already downloaded.
+
+## Headline
+
+- The Lemonade desktop app and web ui are completely redesigned with built-in tools, an all-new model manager, a visual router policy editor, Chinese localization, mobile web ui, an LLM telemetry viewer, and much more.
+- Watch a deep dive of the new GUI here: https://youtu.be/mg2PqmRujMo
+- The HTTP server is rebuilt on a route-class architecture with consistent errors and generated API docs.
+- New models: K2-Horizon family (0.9B to MoVA-36B-A4B) and Flint.
+
+## Breaking Changes
+
+- GET requests to POST-only paths (`slots/{id}`, `jobs/{id}/pause`, `jobs/{id}/interrupt`, `jobs/{id}/resume`, `models/register`) return 405 instead of 404.
+- A request without a `model` field returns the same error, "Missing model field in request", on every model route (`chat/completions`, `completions`, `embeddings`, `responses`, `rerank`).
+- Form-encoded requests with invalid field types (for example, a non-numeric `temperature` on transcription) return 400 instead of 500.
+
+## Lemonade Server
+
+| Operating System | Downloads |
+|------------------|-----------|
+| **Windows** | [lemonade.msi](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade.msi) |
+| **Ubuntu 24.04+** | [Launchpad PPA](https://launchpad.net/~lemonade-team/+archive/ubuntu/stable) |
+| **Debian 13 (x86_64)** | [lemonade-server_2026.45.3-debian13_amd64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-server_2026.45.3-debian13_amd64.deb) |
+| **Debian 13 (ARM64)** | [lemonade-server_2026.45.3-debian13_arm64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-server_2026.45.3-debian13_arm64.deb) |
+| **Fedora 43 (x86_64)** | [lemonade-server-2026.45.3-fc43.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-server-2026.45.3-fc43.x86_64.rpm) |
+| **Fedora 43 (ARM64)** | [lemonade-server-2026.45.3-fc43.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-server-2026.45.3-fc43.aarch64.rpm) |
+| **Fedora 44 (x86_64)** | [lemonade-server-2026.45.3-fc44.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-server-2026.45.3-fc44.x86_64.rpm) |
+| **Fedora 44 (ARM64)** | [lemonade-server-2026.45.3-fc44.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-server-2026.45.3-fc44.aarch64.rpm) |
+| **macOS** | [Lemonade-2026.45.3-Darwin.pkg](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/Lemonade-2026.45.3-Darwin.pkg) |
+
+> **Other platforms?** See our [Installation Options](https://lemonade-server.ai/docs/guide/install/) for [Docker](https://lemonade-server.ai/docs/guide/install/docker/), [Snap](https://lemonade-server.ai/docs/guide/install/ubuntu/#__tabbed_2_3), [Arch](https://lemonade-server.ai/docs/guide/install/arch/), [Debian](https://lemonade-server.ai/docs/guide/install/), and more.
+
+## Embeddable Lemonade
+
+Portable binaries for bundling into your own installer. Run `lemond ./` as a subprocess.
+
+| Platform | Download |
+|----------|----------|
+| **Ubuntu x64** | [lemonade-embeddable-2026.45.3-ubuntu-x64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-embeddable-2026.45.3-ubuntu-x64.tar.gz) |
+| **Ubuntu arm64** | [lemonade-embeddable-2026.45.3-ubuntu-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-embeddable-2026.45.3-ubuntu-arm64.tar.gz) |
+| **Windows x64** | [lemonade-embeddable-2026.45.3-windows-x64.zip](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-embeddable-2026.45.3-windows-x64.zip) |
+| **macOS arm64** | [lemonade-embeddable-2026.45.3-macos-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.45.3/lemonade-embeddable-2026.45.3-macos-arm64.tar.gz) |
+
+---
+
+## What's Changed
+
+Thanks `bitgamma`, `fl0rianr`, `github-actions`, `iswaryaalex`, `jeremyfowers`, `lucbruni-amd`, `meghsat`, `mike2307`, `ramkrishna2910`, `ramkrishs`, `sawansri` for your awesome contributions to this release!
+
+<details>
+<summary>Click to expand changelog</summary>
+
+* Test that model-optional classify keeps a routing helper's residency by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3850
+* docs: add the server architecture spec by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3762
+* GUI3 into Main by `meghsat` in https://github.com/lemonade-sdk/lemonade/pull/3834
+* Fully refactor the HTTP server: route classes, core components, generated API docs by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3771
+* docs: add ModelManager spec by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/3768
+* fix: name the gpt-oss-20b checkpoint file by `lucbruni-amd` in https://github.com/lemonade-sdk/lemonade/pull/3939
+* fix(server): invalidate backend status cache after implicit installs by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3926
+* fix(docs): key recorded API examples on the recipe's Vulkan pin only by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3946
+* Adding GRG Halo device into the allow list by `meghsat` in https://github.com/lemonade-sdk/lemonade/pull/3954
+* fix(bench): select context size per scenario by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3942
+* docs: transcribe the policy for adding a new backend by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3925
+* fix(ci): resolve ROCm llama.cpp architecture source correctly by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3950
+* fix(server): report unavailable ttft/tps as null when the backend reports no timing by `mike2307` in https://github.com/lemonade-sdk/lemonade/pull/3955
+* fix(web): prevent webpack from parsing vendored model-viewer by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3938
+* fix(app): preserve composer mode during microphone dictation by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3951
+* chore(app): rename Dashboard to Monitor by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3934
+* fix(gui): restore browser-local API key persistence by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3967
+* fix(app): model report shared GPU memory correctly by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3944
+* fix(cli): distinguish a closed connection from a server that is not running by `ramkrishs` in https://github.com/lemonade-sdk/lemonade/pull/3972
+* Update llama.cpp to b11846 by `github-actions`[bot] in https://github.com/lemonade-sdk/lemonade/pull/3964
+* fix(gui3): keep mobile conversation sheet hidden with reduced motion by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3962
+* Model Manager refactoring by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/3828
+* CI(GUI): fix flaky A34 test - wait for mobile sheet before drag assertion by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3981
+* test(app): add light theme contrast checks and fix accessibility issues by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3948
+* fix(app): consume navigation query params on route changes by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3978
+* Add Flint-GGUF by `sawansri` in https://github.com/lemonade-sdk/lemonade/pull/3940
+* chore(app): make browser chat persistant by default by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3984
+* add pi to mkdocs nav by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3989
+* fix(gui): sync model backend warnings after backend updates by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/3977
+* models: add K2-Horizon llama.cpp catalog entries by `ramkrishna2910` in https://github.com/lemonade-sdk/lemonade/pull/3985
+* fix(auto-tune): never refuse a load over a context estimate by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/3986
+* (docs): Update Release Guide  by `iswaryaalex` in https://github.com/lemonade-sdk/lemonade/pull/3979
+
+</details>
+
+## New Contributors
+* `lucbruni-amd` made their first contribution in https://github.com/lemonade-sdk/lemonade/pull/3939
+* `ramkrishs` made their first contribution in https://github.com/lemonade-sdk/lemonade/pull/3972
+
+**Full Changelog**: https://github.com/lemonade-sdk/lemonade/compare/v2026.44.1...v2026.45.3
+
+---
+
+> Windows installers are signed. Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). See our [Code Signing Policy](https://github.com/lemonade-sdk/lemonade#code-signing-policy).
+
+---
+
+
 ## 2026.44.1
 
 _2026-10-29_
