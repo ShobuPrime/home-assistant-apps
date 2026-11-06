@@ -489,21 +489,13 @@ case "${SLUG}" in
             fail "Web UI not served at / (HTTP ${UI_CODE}) — ingress would 404. The UI assets come from the 'webui' Dockerfile stage, not the embeddable archive."
         fi
 
-        # ...and the check above is not sufficient on its own. `/` is only the
-        # "Lemonade Server" landing page, which lives in resources/static/. The
-        # actual chat application is a SEPARATE directory, resources/web-app/,
-        # served at /web-app/ — and for the whole of 11.5.0 it was never copied
-        # into the image. Every signal looked healthy: / returned 200 HTML, no
-        # index.html error was ever logged, and nothing on the landing page
-        # links to /web-app/, so the panel showed a real-looking page with the
-        # application silently absent behind it. `ingress_entry: /web-app` now
-        # points the panel here, so a 404 is a broken panel.
+        # ingress_entry points at /web-app/, so a 404 here is a broken panel.
         APP_CODE=$(docker exec "${CONTAINER_NAME}" \
             curl -s -o /tmp/webapp.html -w "%{http_code}" --max-time 10 "http://127.0.0.1:${HEALTH_PORT}/web-app/" 2>/dev/null || echo "000")
         if [ "${APP_CODE}" = "200" ] && docker exec "${CONTAINER_NAME}" grep -qi "renderer.bundle.js" /tmp/webapp.html 2>/dev/null; then
             pass "Chat application served at /web-app/ (HTTP 200, bundle referenced)"
         else
-            fail "Chat application not served at /web-app/ (HTTP ${APP_CODE}) — ingress_entry points here, so the panel would 404. Copy resources/web-app/ from the 'webui' stage, not just resources/static/."
+            fail "Chat application not served at /web-app/ (HTTP ${APP_CODE}) — ingress_entry points here, so the panel would 404. Copy resources/web-app/ from the 'webui' stage."
         fi
 
         # The bundle itself must resolve, or the panel renders an empty page
@@ -581,35 +573,40 @@ case "${SLUG}" in
             pass "No config.json at the legacy .cache/lemonade path"
         fi
 
-        # The two patches applied to upstream's web app in the Dockerfile. The
-        # build already fails loudly if an anchor stops matching, but that only
-        # covers the patch being APPLIED — these check it is actually SERVED,
-        # which is what the browser depends on.
+        # The ingress shim. The build asserts it was inserted; these check it is
+        # served and that it runs before the app's bundles.
         SHIM_CODE=$(docker exec "${CONTAINER_NAME}" \
             curl -s -o /tmp/shim.js -w "%{http_code}" --max-time 10 "http://127.0.0.1:${HEALTH_PORT}/web-app/ha-addon-shim.js" 2>/dev/null || echo "000")
-        if [ "${SHIM_CODE}" = "200" ] && docker exec "${CONTAINER_NAME}" grep -q "__haLemonadeBase" /tmp/shim.js 2>/dev/null; then
-            pass "Add-on web shim served (/web-app/ha-addon-shim.js)"
+        if [ "${SHIM_CODE}" = "200" ] && docker exec "${CONTAINER_NAME}" grep -q "hassio_ingress" /tmp/shim.js 2>/dev/null; then
+            pass "Ingress shim served (/web-app/ha-addon-shim.js)"
         else
-            fail "Add-on web shim not served (HTTP ${SHIM_CODE}) — the ingress panel would sit on 'connecting' and Android would redirect to the Play Store."
+            fail "Ingress shim not served (HTTP ${SHIM_CODE}) — the panel would send its API calls to Home Assistant's root."
         fi
 
-        # Order matters: the shim must load BEFORE the deferred bundle, or the
-        # bundle reads its API base before the shim has published one.
-        if docker exec "${CONTAINER_NAME}" sh -c \
-            'curl -s --max-time 10 "http://127.0.0.1:'"${HEALTH_PORT}"'/web-app/" | grep -q "ha-addon-shim\.js\"></script><script defer"' 2>/dev/null; then
-            pass "Shim loads before the deferred bundle in web-app/index.html"
+        FIRST_DEFERRED=$(docker exec "${CONTAINER_NAME}" sh -c \
+            'curl -s --max-time 10 "http://127.0.0.1:'"${HEALTH_PORT}"'/web-app/" | grep -o "<script defer=\"defer\" src=\"[^\"]*\"" | head -1' 2>/dev/null || true)
+        if echo "${FIRST_DEFERRED}" | grep -q 'ha-addon-shim\.js'; then
+            pass "Shim is the first deferred script in web-app/index.html"
         else
-            fail "Shim is not ordered before renderer.bundle.js — the API base would be read before the shim sets it."
+            fail "First deferred script is '${FIRST_DEFERRED}', not the shim — the app would read its API base before the shim sets it."
         fi
 
-        # The bundle must prefer the shim's base over window.location.origin,
-        # which is what makes API calls and the log WebSocket resolve under the
-        # ingress path prefix instead of hitting the Home Assistant root.
-        if docker exec "${CONTAINER_NAME}" grep -q "__haLemonadeBase" \
-            /opt/lemonade/resources/web-app/renderer.bundle.js 2>/dev/null; then
-            pass "Bundle patched to honour the ingress-aware API base URL"
+        # The logs, realtime audio and inspect views use WebSockets, which must
+        # upgrade through the bridge on the main port. Ingress has no other route.
+        WS_STATUS=$(docker exec "${CONTAINER_NAME}" sh -c \
+            'curl -s --http1.1 -i --max-time 3 -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: c21va2UtdGVzdC1rZXkwMQ==" "http://127.0.0.1:'"${HEALTH_PORT}"'/logs/stream" | head -1' 2>/dev/null || true)
+        if echo "${WS_STATUS}" | grep -q " 101"; then
+            pass "Log WebSocket upgrades through the bridge"
         else
-            fail "renderer.bundle.js is unpatched — it would use window.location.origin and never reach the add-on through ingress."
+            fail "Log WebSocket did not upgrade through the bridge: '${WS_STATUS}'"
+        fi
+
+        # Resources the embeddable archive omits.
+        if docker exec "${CONTAINER_NAME}" test -f /opt/lemonade/resources/architecture_defaults.json \
+            && docker exec "${CONTAINER_NAME}" test -d /opt/lemonade/resources/docs; then
+            pass "architecture_defaults.json and docs/ bundled"
+        else
+            fail "resources/architecture_defaults.json or resources/docs missing — copy them from the 'webui' stage."
         fi
 
         # The bridge derives the list at runtime; assert it logged one.

@@ -1,6 +1,6 @@
 # Global ARGs must be declared before the first FROM
 ARG BUILD_FROM
-ARG LEMONADE_VERSION=2026.44.1
+ARG LEMONADE_VERSION=2026.45.3
 
 # ---------------------------------------------------------------------------
 # Stage 1: Fetch Lemonade and collect the glibc runtime it needs
@@ -12,10 +12,12 @@ ARG LEMONADE_VERSION=2026.44.1
 # repo), we bundle just the glibc closure into the standard Alpine base — the
 # same approach muninndb already uses here.
 #
-# Debian *trixie* is the donor, not bookworm: `lemond` needs GLIBC_2.38 and
-# GLIBCXX_3.4.32, and bookworm only has glibc 2.36 / libstdc++ 12.
+# The donor's glibc must be at least what lemond was linked against, and that
+# moves: upstream builds amd64 on `ubuntu-latest` and arm64 on `ubuntu-24.04-arm`.
+# 2026.45.3's amd64 lemond needs GLIBC_2.43, which ruled out Debian trixie (2.41).
+# Ubuntu 26.04 matches that runner and is a pinned LTS.
 # ---------------------------------------------------------------------------
-FROM mirror.gcr.io/library/debian:trixie-slim AS glibc-provider
+FROM mirror.gcr.io/library/ubuntu:26.04 AS glibc-provider
 
 ARG LEMONADE_VERSION
 
@@ -26,15 +28,14 @@ RUN apt-get update \
         libdrm-amdgpu1 \
         libgcc-s1 \
         libgomp1 \
-        libssl3 \
+        libssl3t64 \
         libstdc++6 \
         libzstd1 \
         zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 # The "embeddable" archive is the right artifact: just `lemond`, the `lemonade`
-# CLI and `resources/`, with no systemd unit and no dependency on Debian
-# backports (the .deb needs libcpp-httplib0.41 from trixie-backports).
+# CLI and `resources/`, with no systemd unit and no distro package dependencies.
 RUN \
     ARCH="$(uname -m)" \
     && if [ "${ARCH}" = "aarch64" ]; then \
@@ -82,6 +83,10 @@ RUN \
 # a library `ldd` cannot discover here. When a new backend fails with exit 127,
 # read its DT_NEEDED (`readelf -d`) rather than adding symbols one at a time.
 RUN set -eu \
+    # ldd reports a too-old glibc only as a message; the donor must satisfy it here.
+    && if ldd /opt/lemonade/lemond /opt/lemonade/lemonade 2>&1 | grep 'not found'; then \
+        echo "GLIBC DONOR TOO OLD: see the requirement above; update glibc-provider's FROM" ; exit 1 ; \
+    fi \
     && mkdir -p /glibc/lib \
     && LIBGOMP="$(find /usr/lib -name 'libgomp.so.1' | head -1)" \
     && COMPAT="" \
@@ -98,7 +103,7 @@ RUN set -eu \
     done \
     # The ELF interpreter path is baked into every binary, including the
     # llama.cpp ones fetched at runtime, so the loader must end up at exactly
-    # the path Debian used. Record it for the runtime stage.
+    # the path the donor used. Record it for the runtime stage.
     && LOADER="$(ldd /opt/lemonade/lemond | awk '/ld-linux/ { print $1 }' | head -1)" \
     && test -n "${LOADER}" \
     && cp -L "${LOADER}" /glibc/ld.so \
@@ -106,42 +111,17 @@ RUN set -eu \
     && echo "Bundled glibc closure:" && ls -1 /glibc/lib
 
 # ---------------------------------------------------------------------------
-# Stage 1b: Web UI assets
+# Stage 1b: Web UI assets and the resources the embeddable archive omits
 #
-# The embeddable archive ships the binaries and JSON resources but NOT the web
-# UI. Without this, lemond starts and serves its APIs perfectly well, then logs
-# `Could not open index.html at: /opt/lemonade/resources/static/index.html` and
-# the ingress panel 404s — the failure is invisible unless you open the UI.
+# web-app/ is the application, served at / and /web-app/. static/ is the status
+# page at /api/v1. Without web-app/ the ingress panel is an empty page and
+# nothing logs an error.
 #
-# The UI lives in TWO directories, and both are needed:
+# Published for amd64 only. Everything copied from here is architecture
+# independent and nothing in this stage is executed.
 #
-#   resources/static/    ~132 KB  "Lemonade Server" landing page, served at /
-#   resources/web-app/   ~4.5 MB  "Lemonade App" — the actual chat UI, served
-#                                 at /web-app/ (routes `/web-app/?` and
-#                                 `/web-app/(.+)` in the lemond binary)
-#
-# Copying only `static/` — as this did until 11.5.1 — yields a server whose
-# root page loads fine, so the UI looks present, while the application itself
-# 404s. Nothing on the landing page links to /web-app/, so there is no way to
-# reach it and no error anywhere; it simply does not exist. Ingress lands on
-# the landing page and that is all the user ever sees.
-#
-# web-app/ uses RELATIVE asset paths (`src="renderer.bundle.js"`), so its
-# ASSETS load unchanged behind ingress path prefixing — which is what makes the
-# `ingress_entry: web-app/` in config.yaml safe. Its API calls are a different
-# matter and are patched below; assets being relative is what made the panel
-# render while the app behind it could not reach anything.
-#
-# The UI exists only in upstream's container image, which is published for
-# amd64 ONLY. That is fine here: both directories are HTML/JS/CSS/fonts with
-# no native code (verified: no .so/.node/.bin), so they are architecture
-# independent. Nothing from this stage is ever executed — files are copied out
-# and that is all — so pulling an amd64 image while building for aarch64 is
-# safe.
-#
-# Pinned to the same version as the binaries so the UI can never drift from the
-# server it talks to. update-lemonade.sh verifies this tag exists before
-# proposing a version bump.
+# Pinned to the binaries' version. update-lemonade.sh verifies this tag exists
+# before proposing a bump.
 # ---------------------------------------------------------------------------
 FROM --platform=linux/amd64 ghcr.io/lemonade-sdk/lemonade-server:v${LEMONADE_VERSION} AS webui
 
@@ -149,9 +129,9 @@ FROM --platform=linux/amd64 ghcr.io/lemonade-sdk/lemonade-server:v${LEMONADE_VER
 # Stage 2: Build the Home Assistant bridge
 #
 # A small Go sidecar that fronts lemond and adds what Home Assistant needs and
-# Lemonade does not provide: long-term memory in MuninnDB, the web-app fixes
-# for ingress and Android, Origin handling, and a Wyoming server so Home
-# Assistant can discover Lemonade as a Speech-to-text engine. Built CGO-free so
+# Lemonade does not provide: long-term memory in MuninnDB, Origin handling, and
+# a Wyoming server so Home Assistant can discover Lemonade as a Speech-to-text
+# engine. Built CGO-free so
 # it is a static binary that runs on musl without touching the glibc closure
 # above.
 # ---------------------------------------------------------------------------
@@ -214,85 +194,26 @@ COPY --from=glibc-provider /opt/lemonade /opt/lemonade
 # HA bridge (static, CGO-free — needs none of the glibc closure above)
 COPY --from=bridge-builder /ha-lemonade-bridge /opt/ha-lemonade-bridge/ha-lemonade-bridge
 
-# Web UI — absent from the embeddable archive (see the webui stage above).
-# BOTH directories are required: static/ is the landing page at /, web-app/ is
-# the actual application at /web-app/. Copying only static/ leaves the app
-# silently missing.
+# Absent from the embeddable archive (see the webui stage above).
+#   architecture_defaults.json  per-model-family sampler defaults
+#   docs/                       served at /api/v1/docs and to MCP clients
 COPY --from=webui /opt/lemonade/resources/static /opt/lemonade/resources/static
 COPY --from=webui /opt/lemonade/resources/web-app /opt/lemonade/resources/web-app
+COPY --from=webui /opt/lemonade/resources/docs /opt/lemonade/resources/docs
+COPY --from=webui /opt/lemonade/resources/architecture_defaults.json /opt/lemonade/resources/architecture_defaults.json
 
-# ---------------------------------------------------------------------------
-# Two patches to upstream's web app, both required to make it usable inside
-# Home Assistant. Each asserts its anchor matched and FAILS THE BUILD if not —
-# upstream ships roughly weekly, and a silently-no-op patch would quietly
-# reintroduce the bug it fixes.
-#
-# 1. ANDROID: the app's entry module redirects to the Play Store on any
-#    Android user-agent:
-#
-#      /android/i.test(ua) ? location.href="https://play.google.com/..."
-#      : /iPad|iPhone|iPod/.test(ua) ? location.href="https://apps.apple.com/..."
-#      : createRoot(...).render(<App/>)
-#
-#    The else-branch is the app mount, so on Android the UI never renders at
-#    all — the HA Companion app leaves for the Play Store the moment the panel
-#    opens. Companion only supplies the user-agent; Chrome on Android does the
-#    same thing, so no Companion setting can fix it. The shim rewrites the
-#    "Android" token so the ternary falls through to mounting. "Mobile Safari"
-#    is left intact, so the app still knows it is on a phone.
-#
-# 2. INGRESS: in browser mode the app sets its API base to
-#    `window.location.origin` — origin ONLY, no path. Under ingress the page
-#    lives at /api/hassio_ingress/<token>/web-app/, so every API call and the
-#    log WebSocket go to the Home Assistant frontend root instead of the
-#    add-on, and the UI sits on "connecting" with an empty log view forever.
-#    The shim publishes the correct base (origin + the ingress prefix, empty on
-#    direct access) and the bundle is patched to prefer it.
-#
-# The shim is an EXTERNAL script deliberately: it must run before the deferred
-# bundle, and inline <script> tags cannot be deferred. lemond injects its own
-# `window.api` shim immediately before </head> at serve time — i.e. AFTER
-# everything in this file — so the shim only touches a plain global and never
-# window.api, which lemond would overwrite.
+# Load ha-addon-shim.js (from rootfs) ahead of the app's bundles, and fail the
+# build if the client stops reading the settings the shim sets. See
+# UPDATE_GUIDE.md "If the Web UI breaks".
 RUN set -e; \
     WEBAPP=/opt/lemonade/resources/web-app; \
-    printf '%s\n' \
-        '// Injected by the Home Assistant add-on. See lemonade/Dockerfile.' \
-        '(function () {' \
-        '  try {' \
-        '    // Ingress: expose origin + path prefix, minus the /web-app/ suffix.' \
-        '    // Direct access yields the bare origin, so both paths work.' \
-        '    var prefix = location.pathname.replace(/\/web-app(\/.*)?$/, "");' \
-        '    window.__haLemonadeBase = location.origin + prefix;' \
-        '  } catch (e) { /* leave the bundle to fall back to its own default */ }' \
-        '  try {' \
-        '    // Android: defeat the Play Store redirect by hiding the token.' \
-        '    var d = Object.getOwnPropertyDescriptor(Navigator.prototype, "userAgent");' \
-        '    if (d && d.get) {' \
-        '      Object.defineProperty(navigator, "userAgent", {' \
-        '        configurable: true,' \
-        '        get: function () { return d.get.call(navigator).replace(/Android/gi, "Linux"); }' \
-        '      });' \
-        '    }' \
-        '  } catch (e) { /* nothing to do; the redirect stays, the app still works elsewhere */ }' \
-        '})();' \
-        > "${WEBAPP}/ha-addon-shim.js"; \
-    \
-    grep -q '<script defer="defer" src="renderer.bundle.js">' "${WEBAPP}/index.html" \
-        || { echo "PATCH FAILED: bundle <script> tag not found in web-app/index.html — upstream layout changed"; exit 1; }; \
-    sed -i 's|<script defer="defer" src="renderer.bundle.js">|<script src="ha-addon-shim.js"></script><script defer="defer" src="renderer.bundle.js">|' \
-        "${WEBAPP}/index.html"; \
-    grep -q 'ha-addon-shim.js' "${WEBAPP}/index.html" \
-        || { echo "PATCH FAILED: shim <script> not inserted into web-app/index.html"; exit 1; }; \
-    \
-    HITS="$(grep -c 'window\.location?\.origin' "${WEBAPP}/renderer.bundle.js" || true)"; \
-    [ "${HITS}" = "1" ] \
-        || { echo "PATCH FAILED: expected exactly 1 'window.location?.origin' in renderer.bundle.js, found ${HITS} — upstream changed how the API base URL is derived"; exit 1; }; \
-    sed -i 's#window\.location?\.origin#(window.__haLemonadeBase||window.location?.origin)#' \
-        "${WEBAPP}/renderer.bundle.js"; \
-    grep -q '__haLemonadeBase' "${WEBAPP}/renderer.bundle.js" \
-        || { echo "PATCH FAILED: base-URL patch did not apply to renderer.bundle.js"; exit 1; }; \
-    echo "web-app patched: Android redirect defeated, ingress base URL made path-aware"
+    sed -i 's#<script defer="defer"#<script defer="defer" src="ha-addon-shim.js"></script>&#' "${WEBAPP}/index.html"; \
+    [ "$(grep -o 'ha-addon-shim\.js"></script><script defer="defer"' "${WEBAPP}/index.html" | wc -l)" = "1" ] \
+        || { echo "PATCH FAILED: expected the shim once, ahead of the deferred bundles in web-app/index.html"; exit 1; }; \
+    for token in lemonade_base_url baseURL; do \
+        grep -qF "${token}" "${WEBAPP}"/*.js \
+            || { echo "PATCH FAILED: '${token}' not found in the web app; the shim no longer sets its API base"; exit 1; }; \
+    done
 
 # Put the loader where the binaries expect it (/lib64/ld-linux-x86-64.so.2 on
 # amd64, /lib/ld-linux-aarch64.so.1 on aarch64). musl's own loader is named
@@ -309,11 +230,8 @@ RUN set -eu \
     && rm -f /opt/glibc/ld.so /opt/glibc/loader-path \
     && chmod +x /opt/lemonade/lemond /opt/lemonade/lemonade \
     && ls -lh /opt/lemonade \
-    # Proves the bundled glibc actually runs the binary on musl. Skipped (not
-    # failed) when building a foreign arch without qemu binfmt; the smoke test
-    # covers the native case.
-    && ( LD_LIBRARY_PATH=/opt/glibc/lib /opt/lemonade/lemond --version \
-         || echo "WARNING: could not exec lemond (cross-build without qemu?) — skipping version check" )
+    # Proves the bundled glibc actually runs the binary on musl.
+    && LD_LIBRARY_PATH=/opt/glibc/lib /opt/lemonade/lemond --version
 
 # Copy root filesystem
 COPY rootfs /

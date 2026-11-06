@@ -81,9 +81,9 @@ ensure_model() {
     local models_json
 
     models_json="$(mktemp)"
-    if curl -sf --max-time 10 "http://127.0.0.1:${LEMOND_PORT}/api/v1/models" -o "${models_json}" 2>/dev/null \
-        && jq -e --arg name "${full_name}" \
-            '[.data[]? | select(.id == $name)] | length > 0' "${models_json}" > /dev/null 2>&1; then
+    # By exact name: the model list reports the id without its user. prefix.
+    if curl -sf --max-time 10 "http://127.0.0.1:${LEMOND_PORT}/api/v1/models/${full_name}" -o "${models_json}" 2>/dev/null \
+        && jq -e '.downloaded == true' "${models_json}" > /dev/null 2>&1; then
         bashio::log.info "Model '${full_name}' is already available"
         rm -f "${models_json}"
         return 0
