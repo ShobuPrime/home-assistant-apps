@@ -22,6 +22,14 @@ configuration:
       but requires internet the first time and is not tested against this
       server version. You can also enter a specific version tag such as
       "b8664". Changing this downloads a different engine on the next start.
+  llamacpp_args:
+    name: Extra engine flags
+    description: >-
+      Extra llama-server flags for all llama.cpp models. Leave empty for the
+      tuned default on a Raspberry Pi CM5, or upstream's defaults on any other
+      hardware. Anything set here replaces the CM5 default and any server-wide
+      flags set in the Web UI. Flags Lemonade sets itself, such as the port and
+      context size, are rejected.
   model_name:
     name: Model name
     description: >-

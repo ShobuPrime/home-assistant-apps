@@ -563,6 +563,16 @@ case "${SLUG}" in
             fail "llamacpp_bin did not reach config.json as .llamacpp.cpu_bin"
         fi
 
+        # Off a CM5 the app must leave upstream's thread defaults alone.
+        if ! docker exec "${CONTAINER_NAME}" grep -qs 'Raspberry Pi Compute Module 5' /proc/cpuinfo; then
+            if docker exec "${CONTAINER_NAME}" sh -c \
+                'jq -e "(.llamacpp.args // \"\") == \"\"" /data/lemonade/.config/lemonade/config.json' >/dev/null 2>&1; then
+                pass "No llama.cpp flags added on untuned hardware"
+            else
+                fail "llama.cpp flags were written to config.json on untuned hardware"
+            fi
+        fi
+
         # lemond 11.8.0 moved its config dir to .config/lemonade and reads the
         # legacy .cache path only once, to migrate it. A config.json sitting
         # there after boot means something is still writing options where

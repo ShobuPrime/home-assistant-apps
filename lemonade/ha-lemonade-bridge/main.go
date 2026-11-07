@@ -274,6 +274,15 @@ func (s *server) handleChat(w http.ResponseWriter, r *http.Request, flavour stri
 		http.Error(w, "cannot read request body", http.StatusBadRequest)
 		return
 	}
+	// Too big to rewrite: send all of it upstream, including the unread rest.
+	if len(body) == maxRequestBody {
+		r.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(body), r.Body), r.Body}
+		s.proxy.ServeHTTP(w, r)
+		return
+	}
 	_ = r.Body.Close()
 
 	// Decode into a generic map so unknown fields (temperature, tools,

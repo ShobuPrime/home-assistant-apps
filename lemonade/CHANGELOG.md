@@ -4,6 +4,8 @@
 
 _2026-11-05_
 
+> _Maintenance (2026-11-07):_ Much faster on a Raspberry Pi CM5: a fresh prompt on LFM2.5-230M went from about 33 to about 58 tokens per second, using better llama.cpp thread settings. All other hardware keeps upstream's defaults. The new `llamacpp_args` option sets your own flags on any hardware and replaces server-wide flags set in the Web UI. Requests over 32 MiB are no longer cut off when memory is on. Rebuild the app to get these changes.
+
 > _App changes:_ The sidebar panel now runs upstream's redesigned web app, adapted to ingress by a small script instead of patches to its bundles. The bundled glibc now comes from Ubuntu 26.04, because this release's amd64 `lemond` needs glibc 2.43. Per-model sampler defaults and the API docs at `/api/v1/docs` are now included. Startup no longer re-pulls a model that is already downloaded.
 
 ## Headline

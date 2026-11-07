@@ -88,6 +88,7 @@ schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
   llamacpp_backend: list(auto|cpu|vulkan)?
   llamacpp_bin: str?
+  llamacpp_args: str?
   model_name: str?
   model_checkpoint: str?
   embedding_model_name: str?

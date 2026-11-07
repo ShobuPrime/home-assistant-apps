@@ -351,6 +351,51 @@ Two things that look like they should work a certain way, and don't:
   Never benchmark tool calling without a system prompt — that is what produced
   the wrong conclusion the first time.
 
+### Performance on the CM5 — measured 2026-11-07
+
+Compare like with like before calling something a regression: check `in=` on
+lemond's `Telemetry` log line. Decode speed depends on context size, not just
+settings. These are LFM2.5-230M Q4_K_M, llama.cpp b11846.
+
+| Context | 4 threads (upstream default) | `--threads 2 --threads-batch 4 --poll 0 --poll-batch 50` |
+|---|---|---|
+| Fresh "hello" | 29-37 t/s | 57-61 t/s (58-64 through lemond + bridge) |
+| ~2,200 tokens | 20-24 t/s | 23-25 t/s |
+| ~4,300 tokens | 14-15 t/s | 15-16 t/s |
+
+- Fewer decode threads are faster here because thread synchronisation costs more
+  than the small per-token work gains. 1.2B gained too (9.3 to 11.9 t/s). 1 thread
+  is worse past short contexts. `cont-init.d/lemonade.sh` applies the flags through
+  lemond's `llamacpp.args` only when `/proc/cpuinfo`'s `Model` line names a CM5.
+  Nothing else was measured, including the Pi 5. Docker hides the device tree, so
+  `/proc/device-tree/model` is not readable in the container. The app owns
+  `llamacpp.args`: the option or CM5 default overwrites it on every start, and
+  empty clears it.
+- `--flash-attn` is not the lever: `auto` already behaves like `on`, and `off`
+  trades prefill for decode. Liquid's 42 t/s used `-fa 1`, probably with
+  `llama-bench`, whose decode test starts from a near-empty context.
+- **Do not move per-turn text out of the system prompt to save the prompt cache.**
+  Templates render tools after the system prompt, so a changing memory block or
+  timestamp forces the tools and history to be reprocessed. It looks like an easy
+  win, and it costs Assist correct tool calls (6 commands x 5 seeds, temp 0.8):
+
+  | Placement | Correct |
+  |---|---|
+  | Nothing added, or timestamp in system prompt (today) | 30/30 |
+  | Timestamp after the user text | 28/30 |
+  | Timestamp + memory notes in system prompt (today) | 25/30 |
+  | Own system message before the last user turn | 20/30 |
+  | Notes after the user text | 18/30 |
+  | Notes before the user text | 9/30 |
+
+- `--ubatch-size` sets the cache floor: a follow-up reprocesses about that many
+  tokens (512: 3.9s, 128: 1.1s), with no measured cost to full prefill. Do not set
+  it in `llamacpp.args`: that also reaches embedding models, which need each input
+  to fit in one ubatch.
+- Sustained load reaches 85°C and clocks start to dip, so let the CPU cool to the
+  same temperature between benchmark runs. `--prio 2` fails to start in the
+  container.
+
 ### Configuration Handling
 
 `config.json` lives at `$HOME/.config/lemonade/config.json` — lemond 11.8.0

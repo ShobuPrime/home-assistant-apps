@@ -77,6 +77,17 @@ LLAMACPP_BIN="$(bashio::config 'llamacpp_bin' 'builtin')"
 if [[ -z "${LLAMACPP_BIN}" ]]; then
     LLAMACPP_BIN="builtin"
 fi
+
+# On a CM5, 2 decode threads beat the default 4 because thread synchronisation
+# costs more than the extra threads gain. Other hardware keeps upstream's defaults.
+# Docker hides the device tree, so the board is read from /proc/cpuinfo.
+LLAMACPP_ARGS=""
+if bashio::config.has_value 'llamacpp_args'; then
+    LLAMACPP_ARGS="$(bashio::config 'llamacpp_args')"
+elif grep -qs '^Model.*Raspberry Pi Compute Module 5' /proc/cpuinfo; then
+    LLAMACPP_ARGS="--threads 2 --threads-batch 4 --poll 0 --poll-batch 50"
+fi
+
 MAX_LOADED="$(bashio::config 'max_loaded_models' '1')"
 LOG_LEVEL="$(bashio::config 'log_level' 'info')"
 TELEMETRY="$(bashio::config 'telemetry' 'false')"
@@ -151,6 +162,7 @@ MERGED="$(jq \
     --argjson telemetry "${TELEMETRY}" \
     --arg backend "${LLAMACPP_BACKEND}" \
     --arg bin "${LLAMACPP_BIN}" \
+    --arg llamacpp_args "${LLAMACPP_ARGS}" \
     --arg log_level "${LEMON_LOG_LEVEL}" \
     --arg extra_models_dir "${EXTRA_MODELS_DIR}" \
     '
@@ -163,7 +175,8 @@ MERGED="$(jq \
     | .extra_models_dir = $extra_models_dir
     | .allowed_origins = "*"
     | .llamacpp = (($existing.llamacpp // {}) + {backend: $backend}
-                   + {("\($backend)_bin"): $bin})
+                   + {("\($backend)_bin"): $bin}
+                   + {args: $llamacpp_args})
     | .telemetry = (($existing.telemetry // {}) + {enabled: $telemetry})
     ' "${CONFIG_FILE}")"
 
@@ -171,6 +184,7 @@ echo "${MERGED}" > "${CONFIG_FILE}"
 
 bashio::log.info "Lemonade configured:"
 bashio::log.info "  Backend:          llamacpp/${LLAMACPP_BACKEND} (${LLAMACPP_BIN})"
+bashio::log.info "  llama.cpp flags:  ${LLAMACPP_ARGS:-(upstream defaults)}"
 bashio::log.info "  Context size:     ${CTX_SIZE}"
 bashio::log.info "  Max loaded models: ${MAX_LOADED}"
 bashio::log.info "  Log level:        ${LEMON_LOG_LEVEL}"
