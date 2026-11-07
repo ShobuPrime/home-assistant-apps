@@ -44,6 +44,19 @@ Selects which llama.cpp build Lemonade downloads and runs.
 
 Changing this downloads a different llama.cpp build on the next start.
 
+### Option: `llamacpp_args`
+
+Extra `llama-server` flags for all llama.cpp models. Leave it empty unless you
+are tuning.
+
+When empty on a Raspberry Pi 5 or CM5, the app uses
+`--threads 2 --threads-batch 4 --poll 0 --poll-batch 50`, which is much faster
+there than the default 4 decode threads. Other hardware keeps upstream's
+defaults, so try `--threads` here on any machine where you want to tune it.
+
+Anything you set replaces the tuned default. Flags Lemonade sets itself, such as
+the port and context size, are rejected and the model fails to load.
+
 ### Option: `model_name`
 
 Short name the model is registered under. Lemonade namespaces
@@ -353,16 +366,21 @@ are not part of an app backup and they survive uninstalling and reinstalling.
 ## Configuration Precedence
 
 The app's Configuration tab wins. Settings it manages — context size, backend,
-log level, maximum loaded models, telemetry — are reapplied on every start, so
+engine flags, log level, maximum loaded models, telemetry — are reapplied on every start, so
 changing those in the Web UI will not stick. Everything else you set in the Web
 UI, such as per-model options and installed backends, is preserved.
 
 ## Hardware Expectations
 
 On a Raspberry Pi CM5 (Home Assistant Yellow), LFM2.5-230M at Q4_K_M generates
-roughly 20-40 tokens per second on CPU, which is comfortable for short Assist
-replies. Larger models scale down proportionally: a 1.2B model runs at roughly
-a fifth of that speed.
+about 55-60 tokens per second on a fresh prompt. Speed falls as the context
+grows, whatever the settings: about 24 t/s with 2,000 tokens of context and about
+15 t/s with 4,000. A prompt that isn't cached is read at about 270 t/s, so 3,000
+tokens takes around 12 seconds. A 1.2B model generates about 12 t/s on a fresh
+prompt.
+
+Keep Assist's prompts small by exposing only the entities you need. Sustained
+load can reach 85°C, where the CPU starts to throttle, so good cooling helps.
 
 Memory use is approximately the model size plus the context window — about
 300 MB resident for the default configuration.

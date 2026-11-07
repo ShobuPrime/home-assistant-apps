@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.45.3.1
+
+_2026-11-07_
+
+- Much faster on Raspberry Pi 5 and CM5: a fresh prompt on LFM2.5-230M went from about 33 to about 58 tokens per second, using better llama.cpp thread settings. This is on by default there. The new `llamacpp_args` option overrides it.
+- Requests over 32 MiB are no longer cut off when memory is on.
+
 ## 2026.45.3
 
 _2026-11-05_

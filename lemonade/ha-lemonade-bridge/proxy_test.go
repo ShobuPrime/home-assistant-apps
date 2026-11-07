@@ -104,6 +104,27 @@ func TestInjectSystemAddsOneWhenAbsent(t *testing.T) {
 	}
 }
 
+func TestChatOversizedBodyPassesThroughWhole(t *testing.T) {
+	fake := newFakeMuninn()
+	defer fake.Close()
+
+	var gotLen int
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotLen = len(b)
+	})
+	mem := NewMemory(fake.URL, "home_assistant", "", 3, 300, time.Second)
+	srv := newTestServer(t, mem, upstream)
+
+	size := maxRequestBody + 1024
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(strings.Repeat("x", size)))
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+
+	if gotLen != size {
+		t.Errorf("upstream received %d bytes, want %d", gotLen, size)
+	}
+}
+
 func TestExtractDelta(t *testing.T) {
 	tests := []struct {
 		name, flavour, line, want string
