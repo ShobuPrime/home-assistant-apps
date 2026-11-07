@@ -365,8 +365,12 @@ settings. These are LFM2.5-230M Q4_K_M, llama.cpp b11846.
 
 - Fewer decode threads are faster here because thread synchronisation costs more
   than the small per-token work gains. 1.2B gained too (9.3 to 11.9 t/s). 1 thread
-  is worse past short contexts. `cont-init.d/lemonade.sh` applies the flags on a
-  4-core Cortex-A76 through lemond's `llamacpp.args`. Other CPUs were not measured.
+  is worse past short contexts. `cont-init.d/lemonade.sh` applies the flags through
+  lemond's `llamacpp.args` only when `/proc/cpuinfo`'s `Model` line names a CM5.
+  Nothing else was measured, including the Pi 5. Docker hides the device tree, so
+  `/proc/device-tree/model` is not readable in the container. The app owns
+  `llamacpp.args`: the option or CM5 default overwrites it on every start, and
+  empty clears it.
 - `--flash-attn` is not the lever: `auto` already behaves like `on`, and `off`
   trades prefill for decode. Liquid's 42 t/s used `-fa 1`, probably with
   `llama-bench`, whose decode test starts from a near-empty context.

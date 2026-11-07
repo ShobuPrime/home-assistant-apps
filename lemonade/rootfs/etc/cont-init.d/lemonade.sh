@@ -80,15 +80,16 @@ fi
 
 # Extra llama-server flags, passed through lemond's own llamacpp.args setting.
 #
-# On a Cortex-A76 (Raspberry Pi 5, CM5) llama.cpp's default of 4 decode threads
-# is slower than 2: thread synchronisation costs more than the small per-token
-# work gains. A fresh prompt on LFM2.5-230M measured 29-37 t/s by default and
-# 57-61 with these flags, with prefill unchanged. 1.2B also gained. Other CPUs
-# were not measured, so they keep upstream's defaults.
+# On a CM5 llama.cpp's default of 4 decode threads is slower than 2: thread
+# synchronisation costs more than the small per-token work gains. A fresh prompt
+# on LFM2.5-230M measured 29-37 t/s by default and 57-61 with these flags, with
+# prefill unchanged. Nothing else was measured, so all other hardware keeps
+# upstream's defaults. Docker hides the device tree, so read the model from
+# /proc/cpuinfo.
 LLAMACPP_ARGS=""
 if bashio::config.has_value 'llamacpp_args'; then
     LLAMACPP_ARGS="$(bashio::config 'llamacpp_args')"
-elif [[ "$(nproc)" -eq 4 ]] && grep -q '0xd0b' /proc/cpuinfo; then
+elif grep -qs '^Model.*Raspberry Pi Compute Module 5' /proc/cpuinfo; then
     LLAMACPP_ARGS="--threads 2 --threads-batch 4 --poll 0 --poll-batch 50"
 fi
 
@@ -180,7 +181,7 @@ MERGED="$(jq \
     | .allowed_origins = "*"
     | .llamacpp = (($existing.llamacpp // {}) + {backend: $backend}
                    + {("\($backend)_bin"): $bin}
-                   + (if $llamacpp_args != "" then {args: $llamacpp_args} else {} end))
+                   + {args: $llamacpp_args})
     | .telemetry = (($existing.telemetry // {}) + {enabled: $telemetry})
     ' "${CONFIG_FILE}")"
 

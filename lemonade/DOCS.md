@@ -49,13 +49,14 @@ Changing this downloads a different llama.cpp build on the next start.
 Extra `llama-server` flags for all llama.cpp models. Leave it empty unless you
 are tuning.
 
-When empty on a Raspberry Pi 5 or CM5, the app uses
+When empty on a Raspberry Pi CM5, the app uses
 `--threads 2 --threads-batch 4 --poll 0 --poll-batch 50`, which is much faster
-there than the default 4 decode threads. Other hardware keeps upstream's
+there than the default 4 decode threads. All other hardware uses upstream's
 defaults, so try `--threads` here on any machine where you want to tune it.
 
-Anything you set replaces the tuned default. Flags Lemonade sets itself, such as
-the port and context size, are rejected and the model fails to load.
+Anything you set replaces the CM5 default. This option also replaces any
+server-wide llama.cpp flags set in the Web UI. Flags Lemonade sets itself, such
+as the port and context size, are rejected and the model fails to load.
 
 ### Option: `model_name`
 

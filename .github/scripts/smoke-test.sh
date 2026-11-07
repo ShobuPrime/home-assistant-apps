@@ -563,8 +563,8 @@ case "${SLUG}" in
             fail "llamacpp_bin did not reach config.json as .llamacpp.cpu_bin"
         fi
 
-        # Off the tuned CPU the app must leave upstream's thread defaults alone.
-        if ! docker exec "${CONTAINER_NAME}" grep -q 0xd0b /proc/cpuinfo 2>/dev/null; then
+        # Off a CM5 the app must leave upstream's thread defaults alone.
+        if ! docker exec "${CONTAINER_NAME}" grep -qs 'Raspberry Pi Compute Module 5' /proc/cpuinfo; then
             if docker exec "${CONTAINER_NAME}" sh -c \
                 'jq -e "(.llamacpp.args // \"\") == \"\"" /data/lemonade/.config/lemonade/config.json' >/dev/null 2>&1; then
                 pass "No llama.cpp flags added on untuned hardware"

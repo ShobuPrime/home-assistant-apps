@@ -26,9 +26,10 @@ configuration:
     name: Extra engine flags
     description: >-
       Extra llama-server flags for all llama.cpp models. Leave empty for the
-      tuned default on Raspberry Pi 5 and CM5, or upstream's defaults on other
-      hardware. Anything set here replaces the tuned default. Flags Lemonade
-      sets itself, such as the port and context size, are rejected.
+      tuned default on a Raspberry Pi CM5, or upstream's defaults on any other
+      hardware. Anything set here replaces the CM5 default and any server-wide
+      flags set in the Web UI. Flags Lemonade sets itself, such as the port and
+      context size, are rejected.
   model_name:
     name: Model name
     description: >-
