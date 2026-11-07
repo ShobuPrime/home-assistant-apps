@@ -78,14 +78,9 @@ if [[ -z "${LLAMACPP_BIN}" ]]; then
     LLAMACPP_BIN="builtin"
 fi
 
-# Extra llama-server flags, passed through lemond's own llamacpp.args setting.
-#
-# On a CM5 llama.cpp's default of 4 decode threads is slower than 2: thread
-# synchronisation costs more than the small per-token work gains. A fresh prompt
-# on LFM2.5-230M measured 29-37 t/s by default and 57-61 with these flags, with
-# prefill unchanged. Nothing else was measured, so all other hardware keeps
-# upstream's defaults. Docker hides the device tree, so read the model from
-# /proc/cpuinfo.
+# On a CM5, 2 decode threads beat the default 4 because thread synchronisation
+# costs more than the extra threads gain. Other hardware keeps upstream's defaults.
+# Docker hides the device tree, so the board is read from /proc/cpuinfo.
 LLAMACPP_ARGS=""
 if bashio::config.has_value 'llamacpp_args'; then
     LLAMACPP_ARGS="$(bashio::config 'llamacpp_args')"
