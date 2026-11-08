@@ -86,8 +86,7 @@ if [[ -n "${NETWORK_ID}" ]]; then
         -X DELETE "http://localhost/networks/${NETWORK_ID}" 2>/dev/null || true
 fi
 
-# A cold backup archives /data as soon as this container exits, so nothing
-# may still be writing to it.
+# Cold backups archive /data as soon as this exits.
 STILL_RUNNING=$(curl -s --unix-socket "${DOCKER_SOCK}" \
     "http://localhost/containers/json?filters=${PROJECT_FILTER}" \
     2>/dev/null | jq -r '.[].Names[0] // empty' 2>/dev/null) || true

@@ -90,7 +90,7 @@ This app has access to the following Home Assistant directories:
 - `/data` - App persistent data (read/write)
 - `/share` - Home Assistant share folder (read/write)
 
-All Huly data (databases, object storage, configuration) is stored under `/data` and automatically included in Home Assistant backups. Huly is stopped while a backup runs, so the copy is consistent; see DOCS.md.
+All Huly data (databases, object storage, configuration) is stored under `/data` and automatically included in Home Assistant backups. Huly stops while a backup runs; see DOCS.md.
 
 ## First Time Setup
 

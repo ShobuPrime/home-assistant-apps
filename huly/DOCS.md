@@ -116,13 +116,11 @@ All services communicate over an internal Docker network. Only nginx (port 4859)
 
 ## Backups
 
-Home Assistant **stops Huly for every backup that includes it** (a "cold" backup), archives `/data`, then starts it again. Expect Huly to be unavailable for the backup itself plus a normal start, typically one to a few minutes, including during the nightly automatic backup.
+Home Assistant **stops Huly for each backup** that includes it, then starts it again, so Huly is unavailable for a minute or more. Copying the databases while they run would not be reliably restorable.
 
-This is deliberate. CockroachDB, MinIO and Elasticsearch rewrite and delete their files constantly. A copy taken while they run may not restore, and if a file disappears mid-copy, Home Assistant leaves Huly out of the backup without showing an error. With the stack stopped, every file is at rest and the backup is complete.
+If the log shows `Huly containers still running after shutdown`, that backup may be inconsistent; please report it.
 
-On shutdown the app stops all of its containers before it exits. If one is somehow still running, the log shows `Huly containers still running after shutdown`; report it, since that backup was taken while that service was writing.
-
-**Restoring**: restore the backup (full or partial with Huly selected) in **Settings → System → Backups**. The databases, attachments and the generated secrets in `/data/huly/.secrets` all come back together, so no reconfiguration is needed. If you set credentials in the app configuration, they are restored with it. The first start after a restore takes as long as a normal start.
+**Restoring**: restore the backup in **Settings → System → Backups**. Data, attachments and generated secrets come back together; no reconfiguration is needed.
 
 > **Note**: Backup size may be substantial due to the databases and object storage.
 

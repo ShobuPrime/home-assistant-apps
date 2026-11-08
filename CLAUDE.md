@@ -429,23 +429,19 @@ build, run, wait for health, `docker stop`, check exit code and grep for
 | `arcane` | 3.6s | clean | 10 (default) | |
 | `muninndb` | 3.7s | clean | **120** | Empty DB; shutdown backup ran in 126ms. |
 | `dockge` | 5.6s | clean | 10 (default) | |
-| `huly` | 24-25s | clean | **120** | Healthy stack under load, 10 runs (2026-11-08). `backup: cold`, so this is backup downtime too. |
+| `huly` | 24-25s | clean | **120** | Also backup downtime (`backup: cold`). |
 | `lemonade` | 9-13s | clean | **30** | |
 | `hay_cm5_fan` | not measured | — | 10 (default) | aarch64-only. |
 
 Every app on the 10s default has at least ~2x headroom and stops cleanly, so
 those defaults are correct — **do not add `timeout:` to them speculatively.**
 
-Caveats on the raised ones:
+Caveat on the raised ones:
 
 - **`muninndb` 3.7s was an empty database.** The shutdown backup completed in
   126 ms writing 2.3 KB. Backup duration scales with stored data, so this
   confirms the mechanism works — it does not bound a populated instance. The
   120s stands as headroom.
-- **`huly` was first recorded at 9.4s on a stack that never reached full
-  health.** Settled, it takes 24-25s: the finish script stops containers in
-  parallel with a 20s grace, and one uses all of it. Well past the 10s default,
-  so the 120 is needed.
 
 `hay_cm5_fan` is aarch64-only and is not measured on an amd64 host (registering
 an arm64 binfmt handler is a host-level change and is deliberately not done).

@@ -4,11 +4,10 @@
 
 _2026-11-07_
 
-- **Backups are now cold**: Home Assistant stops Huly, archives it, and starts it again. Huly is unavailable for a minute or more during each backup, including the nightly one.
-- Before this, backups copied CockroachDB, MinIO and Elasticsearch while they were writing. Such a copy may not restore. When CockroachDB deleted a file mid-copy, Home Assistant left Huly out of the full backup and still reported it as successful (`Error adding .../cockroach/333360.sst to tarfile: [Errno 2] No such file or directory`).
-- On shutdown, the app now logs an error if any Huly container is still running, since a cold backup relies on every service being stopped.
+- Backups now stop Huly while they run (about a minute). Live copies of the databases could fail to restore, or leave Huly out of a full backup with no visible error.
+- Shutdown logs an error if any Huly container is still running.
 
-Backups taken before this update may be inconsistent. Take a new backup after updating.
+Backups taken before this update may be inconsistent; take a new one after updating.
 
 ## 0.7.426.1
 
