@@ -117,6 +117,10 @@ Huly version tracking is based on the `.template.huly.conf` file in the [huly-se
 
 ### Data Persistence
 - All persistent data lives under `/data/huly/`
-- Subdirectories: `cockroach/`, `elastic/`, `minio/`, `kafka/`, `config/`, `secrets/`
-- Included automatically in Home Assistant backups
-- Backup size can be substantial due to databases and object storage
+- Subdirectories: `cockroach/`, `cockroach-certs/`, `elastic/`, `minio/`, `kafka/`; secrets in `.secrets`
+- **`backup: cold`**: Supervisor stops the app, tars `/data`, starts it again. Hot backups
+  copied live Pebble/MinIO files, and a `.sst` deleted mid-copy dropped Huly from a full
+  backup silently (2026-11-07). Don't switch to `backup_pre` hooks: a failing hook takes the
+  same `capture_error` path in Supervisor (`backups/backup.py` `store_apps`), so it is no louder.
+- Cold mode is only consistent because `services.d/huly/finish` stops (and force-removes) every
+  `huly_ha` container before the app container exits. Keep it that way.

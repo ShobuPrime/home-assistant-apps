@@ -1,6 +1,6 @@
 name: "Huly"
 description: "All-in-one project management platform - alternative to Linear, Jira, Slack, and Notion"
-version: "0.7.426.1"
+version: "0.7.426.2"
 slug: "huly"
 init: false
 ingress: true
@@ -13,6 +13,10 @@ arch:
   - amd64
 startup: application
 timeout: 120
+# Stop the stack for backups. A copy of CockroachDB, MinIO and Elasticsearch
+# taken while they write may not restore, and a file deleted mid-copy drops
+# Huly from the backup with no visible error.
+backup: cold
 boot: auto
 watchdog: tcp://[HOST]:[PORT:4859]/
 ports:
