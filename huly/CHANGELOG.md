@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.426.2
+
+_2026-11-07_
+
+- Backups now stop Huly while they run (about a minute). Live copies of the databases could fail to restore, or leave Huly out of a full backup with no visible error.
+- Shutdown logs an error if any Huly container is still running.
+
+Backups taken before this update may be inconsistent; take a new one after updating.
+
 ## 0.7.426.1
 
 _2026-10-22_

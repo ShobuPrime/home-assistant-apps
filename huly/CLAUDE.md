@@ -117,6 +117,7 @@ Huly version tracking is based on the `.template.huly.conf` file in the [huly-se
 
 ### Data Persistence
 - All persistent data lives under `/data/huly/`
-- Subdirectories: `cockroach/`, `elastic/`, `minio/`, `kafka/`, `config/`, `secrets/`
-- Included automatically in Home Assistant backups
-- Backup size can be substantial due to databases and object storage
+- Subdirectories: `cockroach/`, `cockroach-certs/`, `elastic/`, `minio/`, `kafka/`; secrets in `.secrets`
+- **`backup: cold`**. Hot copies of the live stores aren't consistent. `backup_pre` hooks are
+  no fix: Supervisor skips the app quietly on hook failure, same as on a tar error.
+- Cold mode depends on `services.d/huly/finish` removing every `huly_ha` container before exit.

@@ -111,10 +111,16 @@ All services communicate over an internal Docker network. Only nginx (port 4859)
 - **Elasticsearch data**: Stored in `/data/huly/elastic`
 - **MinIO data**: Stored in `/data/huly/minio`
 - **Kafka data**: Stored in `/data/huly/kafka`
-- **Huly configuration**: Stored in `/data/huly/config`
-- **Generated secrets**: Stored in `/data/huly/secrets`
+- **Generated secrets**: Stored in `/data/huly/.secrets`
+- **Generated configuration**: `/data/huly/.env`, `compose.yml` and `nginx.conf`, rewritten on every start
 
-All data is automatically included in Home Assistant backups.
+## Backups
+
+Home Assistant **stops Huly for each backup** that includes it, then starts it again, so Huly is unavailable for a minute or more. Copying the databases while they run would not be reliably restorable.
+
+If the log shows `Huly containers still running after shutdown`, that backup may be inconsistent; please report it.
+
+**Restoring**: restore the backup in **Settings → System → Backups**. Data, attachments and generated secrets come back together; no reconfiguration is needed.
 
 > **Note**: Backup size may be substantial due to the databases and object storage.
 
