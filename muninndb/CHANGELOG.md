@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.12.1
+
+_2026-11-17_
+
+0.12.1 carries the same code as 0.12.0. The 0.12.0 release workflow could not build its macOS binaries because GitHub no longer offers the runner it named, so 0.12.0 has no release page, binaries or Homebrew formula. This release is the one to install. The full notes are in the [CHANGELOG](https://github.com/scrypster/muninndb/blob/develop/CHANGELOG.md).
+
+The correctness release. Recall now orders results by how well each memory matches the
+query, weighted by how confident MuninnDB is in it. Several ways memory could be silently
+lost or misreported are closed: evolve dropping a memory's trust level, association decay
+erasing the link that retires a replaced memory, and a vault memory count that let
+`max_engrams` prune real memories. It also fixes security weaknesses present in every
+release up to 0.11.0, most of them in the MBP listener. The main fixes were checked end to
+end on real binaries against the build before them.
+
+**Upgrade notes.** This release runs no schema migration. On its first start a server
+recounts its vault memory counts, and a single server or cluster leader restores any
+replacement links an older version's decay archived, as described in the CHANGELOG.
+
+- Read the Security section of the CHANGELOG before upgrading a server that other machines can reach. The
+  MBP listener now holds at most 16 connections at the default memory limit, so set
+  `MUNINN_MBP_MAX_CONNECTIONS` first if you run more MBP clients at once. `observe` and
+  `write` API keys are held to their modes over MBP, statistics and the vault list cover
+  only the caller's own vault unless the caller is signed in as admin, and SUBSCRIBE over
+  MBP is refused.
+- The first start recounts every vault's memory count and logs each correction as
+  `vault memory count corrected at start`. A vault with `max_engrams` whose count read
+  high may have lost memories before this release. Restore them from a backup if you
+  need them.
+- A link of another relation in the same direction at the weight an existing link
+  already holds is refused, with a message naming both relations. REST answers 409 and
+  gRPC answers `FailedPrecondition`. Write the link at a different weight.
+- Cluster operators: traffic between cluster nodes is not encrypted, so keep the nodes on
+  a private network. A replica that has diverged from its leader is now refused, and stays
+  refused until it is re-seeded.
+
+**Full Changelog**: https://github.com/scrypster/muninndb/compare/v0.11.0...v0.12.1
+
+---
+
+
 ## 0.11.0.1
 
 _2026-10-22_
