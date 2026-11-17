@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.0.58
+
+_2026-11-17_
+
+### Changed
+- Updated Dockhand to version 1.0.58
+
+Released: 2026-11-16
+
+## What's new in v1.0.58
+
+- ✨ DISABLE_FRAME_PROTECTION allows embedding Dockhand in a trusted iframe (#1867)
+- ✨ Korean interface translation (PR#1910, @hw0603)
+- 🐛 self-update starts correctly on podman with cgroup v2 (#1860)
+- 🐛 reject an ssh git url paired with a username/password credential with a clear message (#1862)
+- 🐛 renaming an environment no longer leaves its stacks showing an empty compose file (#1879)
+- 🐛 no false 403 when opened by an address other than ORIGIN (#1878)
+- 🐛 repository stats no longer time out behind a reverse proxy (#1874)
+- 🐛 the disk usage panel no longer starts a new scan on every page load on slow storage (#1891, PR#1893, @elric667)
+- 🐛 image ships docker-compose 5.7.0 and an updated restic, fixing CVE-2026-116591 (#1884)
+- 🐛 stack deploys no longer write .env file contents to the log (#1890, PR#1894, @elric667)
+- 🐛 scheduled updates honour the dockhand.skip.cooldown label instead of failing at the pull (#1895)
+- 🐛 containerd image store: images no longer show as unused after a rebuild (#1896)
+- 🐛 the git stack webhook secret field shows when a secret is already set (#1898)
+- 🐛 the logs panel shows the container it is switched to while streaming is paused (#1889)
+- 🐛 a webhook arriving during a running git sync no longer sends a false git sync failed notification (PR#1899, @Totopo27)
+- 🐛 a running backup no longer writes tens of MB/s to the database (#1914)
+- 🐛 the stack editor no longer shows variables from a SOPS-encrypted env file as missing (#1913)
+- 🐛 hawser edge compose operations honour COMPOSE_TIMEOUT (#1915)
+- 🐛 stacks under a DATA_DIR inside /root are no longer refused as "Compose path is not allowed" (#1912)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.58
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.57
 
 _2026-11-05_
