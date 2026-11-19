@@ -59,6 +59,7 @@ The repository includes comprehensive automation for managing pull requests:
 - Lemonade bumps additionally get `needs-review` when upstream's Migration page covers the crossed range, the release's Breaking Changes section names something the app's code uses, or the leading version component jumps by more than one (`.github/scripts/check-lemonade-migration.sh`, `check-lemonade-breaking.sh`, and an inline scheme check; see `lemonade/CLAUDE.md` "Version Updates"). Lemonade numbers releases `YYYY.WW.N` since 2026.39 and ships weekly; candidates are `candidate-v*` prereleases that `releases/latest` ignores
 - Every `api.github.com` call in an update script goes through `gh_api` in `.github/scripts/upstream-lib.sh` (a flat file on purpose: `.gitignore` has `lib/`, so a helper under `.github/scripts/lib/` never reaches the repo and every script dies on its `source` line in CI): authenticated with `GITHUB_TOKEN` (the anonymous 60 req/h budget is per runner IP and shared), retried, and never silent — the 2026-09-20 Portainer LTS check died with no output because `set -e` fired on `LATEST_VERSION=$(get_latest_version)` before the error branch. The scripts also refuse to propose a version that sorts below the one shipping (`ver_lt`); Portainer picks the highest LTS/STS-named release, since two LTS lines are patched at once
 - **Every bot PR leaves two red zero-job `pull_request` runs** (PR Validation + Builder). GitHub creates them for a `GITHUB_TOKEN`-created PR, parks them as `action_required`, and marks them `failure` the second the PR merges. They never ran and mean nothing; the `repository_dispatch` pair is the real gate. A red run *with jobs* is the one to read
+- **A bump that skips releases carries their notes too** (`skipped_release_notes` in `upstream-lib.sh`, used by Lemonade and Arcane): CHANGELOG.md gets a `## <version>` section per skipped release, and Lemonade's breaking-changes check reads them. Lemonade 2026.46.2 was parked, 2026.47.1 superseded it, and 46.2's Breaking Changes would never have been checked
 - **IMPORTANT:** Portainer version detection is based on GitHub release **names** containing "LTS" or "STS"
   - Do NOT use version number patterns (odd/even) - Portainer does not follow a consistent mathematical pattern
   - The script filters releases by searching for "LTS" or "STS" in the release name via GitHub API
@@ -91,6 +92,8 @@ The repository includes comprehensive automation for managing pull requests:
 - Blocked by `do-not-merge`, `needs-review`, or `on-hold` labels
 - A bot PR that the pipeline parks with `needs-review` (a Lemonade gate, a base-image major bump) also requests the repo owner's review when it opens. The label alone notifies no one: Lemonade 2026.39.1 sat three days unnoticed in #38
 - Lemonade's checks re-run on the open PR every day; when they all pass, the pipeline removes a `needs-review` **it** added (never one a person added), so the next dispatch auto-merges. A gate script must never exit 1 on an internal error, since 1 means "flagged": `check-lemonade-breaking.sh` crashed that way on 2026.40.0 and parked #44 with an empty hit list. It now maps any failure to exit 2, and the workflow treats "flagged with no hits" as a failed check
+- A bot PR whose Builder run fails gets a comment **and a review request to the repo owner**. The comment alone reached no one: Arcane 3.0.0 failed its smoke test for four days in #91 and #92
+- A newer bot PR for the same app closes the older one and deletes its branch (`close-superseded` in `pr-validate.yml`). Every release has its own branch, so #91 (Arcane 3.0.0) stayed open beside #92 (3.0.1)
 - Uses squash merge method
 
 ### Managing Auto-merge
@@ -462,6 +465,36 @@ written in.
 
 The smoke test reads each app's `timeout:` and judges the stop against it, so
 these numbers stay honest as apps change — no value is hardcoded there.
+
+## A green merge does not keep an app installable
+
+Apps are built on the device at install and update time, so every URL a
+Dockerfile fetches has to still answer then. MuninnDB 0.12.1 merged on
+2026-11-17 with a green build; the same day `github.com/microsoft/onnxruntime`
+began returning 404, and from then on 0.12.1 could not be built on any
+architecture. The device shows only `An unknown error occurred while trying to
+build the image`; the failing step is in the Supervisor log
+(`sudo docker logs hassio_supervisor`).
+
+Nothing in CI sees this after the merge. When an update fails to build on the
+device, rebuild the same version locally before suspecting the device or the
+architecture. The fix here was upstream's next release (0.13.0 pins hashes and
+falls back to a mirror). Any PR that touches an app's directory rebuilds that
+app, so a docs-only change to a broken app fails its Builder too.
+
+## An upstream major version needs an upgrade test, not just a smoke test
+
+The smoke test boots an empty data directory, so it proves a new install and
+nothing about an existing one. Before shipping an upstream major, boot the
+shipping image on an empty `/data`, create real state through the app's API
+(a changed password, a stored secret), stop it, and boot the new image on the
+same directory. Arcane 2.17.3 → 3.1.0 was checked this way: database migrated,
+old password accepted, and a registry token encrypted by 2.17.3 arrived intact
+at a capture server.
+
+The smoke test did catch Arcane 3, but only because Arcane refuses to start on
+its renamed settings. A major that starts and silently ignores an old setting,
+such as an encryption key, would pass and auto-merge.
 
 ## Notes
 

@@ -558,6 +558,52 @@ jobs:
               console.log('validation-passed label not present');
             }
 
+  close-superseded:
+    name: Close superseded update PRs
+    runs-on: ubuntu-latest
+    needs: resolve-context
+    # Bot PRs only; they arrive by repository_dispatch.
+    if: github.event_name == 'repository_dispatch'
+    steps:
+      - name: Close older update PRs for the same app
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Every release gets its own branch (update-<app>-<version>), so
+            // the previous release's PR stayed open when a newer one arrived:
+            // #91 (Arcane 3.0.0) beside #92 (3.0.1).
+            const prNumber = ${{ needs.resolve-context.outputs.pr_number }};
+            const { owner, repo } = context.repo;
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+            if (pr.user.login !== 'github-actions[bot]' || pr.state !== 'open') return;
+
+            // update-portainer-lts-2.45.3 -> update-portainer-lts-
+            const m = pr.head.ref.match(/^(update-.*?-)\d/);
+            if (!m) return;
+            const prefix = m[1];
+
+            const open = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 });
+            for (const old of open) {
+              if (old.number >= pr.number) continue;
+              if (old.user.login !== 'github-actions[bot]') continue;
+              if (!old.head.ref.startsWith(prefix)) continue;
+              // Same app only: the rest of the branch name must be a version.
+              if (!/^\d/.test(old.head.ref.slice(prefix.length))) continue;
+
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: old.number,
+                body: `Superseded by #${pr.number}.`
+              });
+              await github.rest.pulls.update({ owner, repo, pull_number: old.number, state: 'closed' });
+              try {
+                await github.rest.git.deleteRef({ owner, repo, ref: `heads/${old.head.ref}` });
+              } catch (e) {
+                core.warning(`Could not delete ${old.head.ref}: ${e.message}`);
+              }
+              console.log(`Closed #${old.number} (${old.head.ref}), superseded by #${pr.number}`);
+            }
+
   auto-merge:
     name: Auto-merge if eligible
     runs-on: ubuntu-latest
@@ -765,6 +811,19 @@ jobs:
                   issue_number: prNumber,
                   body: `⚠️ Auto-merge skipped: Builder workflow failed.\n\nFailed checks:\n${builderDetails.map(d => d.url ? `- [**${d.name}**](${d.url}): ${d.conclusion}` : `- **${d.name}**: ${d.conclusion}`).join('\n')}\n\nPlease investigate and merge manually if appropriate.`
                 });
+                // The comment alone reached no one: Arcane 3.0.0 failed its
+                // smoke test for four days in #91 and #92. A review request
+                // lands in the owner's inbox, as it does for a parked PR.
+                try {
+                  await github.rest.pulls.requestReviewers({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber,
+                    reviewers: [context.repo.owner]
+                  });
+                } catch (e) {
+                  core.warning(`Could not request a review from ${context.repo.owner}: ${e.message}`);
+                }
                 return;
               }
 

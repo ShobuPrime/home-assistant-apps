@@ -72,6 +72,24 @@ The auto-merge job:
 4. Verifies the PR is mergeable
 5. Performs a squash merge
 
+If the Builder fails, the job comments on the PR and requests a review from the
+repository owner, so the failure reaches an inbox instead of sitting on the PR.
+
+#### Superseded update PRs
+
+Each release gets its own branch (`update-<app>-<version>`), so a newer release
+opens a second PR. The `close-superseded` job in PR Validation closes the older
+bot PR for the same app, with a `Superseded by #N` comment, and deletes its
+branch. It only acts on PRs opened by `github-actions[bot]`.
+
+#### Skipped releases
+
+When a bump skips releases (a parked PR is overtaken by the next release), the
+Lemonade and Arcane update scripts append each skipped release's notes under
+its own `## <version>` heading (`skipped_release_notes` in `upstream-lib.sh`).
+CHANGELOG.md then covers the whole range, and Lemonade's breaking-changes check
+reads the skipped releases too.
+
 ### Auto-merge Flow
 
 ```

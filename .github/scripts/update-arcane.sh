@@ -222,6 +222,8 @@ main() {
     # Get changelog
     log "Fetching changelog..."
     CHANGELOG=$(get_changelog "$LATEST_VERSION")
+    # Releases this bump skips: their notes belong in CHANGELOG.md too.
+    CHANGELOG="${CHANGELOG}$(skipped_release_notes getarcaneapp/arcane "$CURRENT_VERSION" "$LATEST_VERSION")"
 
     # If check-only mode, output result and exit
     if [ "$CHECK_ONLY" = "true" ]; then
