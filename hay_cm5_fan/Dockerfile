@@ -1,4 +1,15 @@
 ARG BUILD_FROM
+
+# fan-uart-hold: holds a serial break for "fan off" when the kernel owns the
+# fan's pin (rootfs/usr/share/hay_cm5_fan/fan-control.sh). Built in a stage of
+# the target platform, like the other apps' Go helpers: no build argument has
+# to name the architecture.
+FROM mirror.gcr.io/library/golang:1.27.3-alpine AS helper-builder
+WORKDIR /src
+COPY fan-uart-hold/go.mod fan-uart-hold/*.go ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /fan-uart-hold . \
+    && test -x /fan-uart-hold
+
 FROM $BUILD_FROM
 
 # S6-overlay shutdown timing.
@@ -23,6 +34,8 @@ RUN apk upgrade --no-cache \
         libgpiod \
         mosquitto-clients \
         raspberrypi-utils-vcgencmd
+
+COPY --from=helper-builder /fan-uart-hold /usr/bin/fan-uart-hold
 
 # Copy root filesystem
 COPY rootfs /

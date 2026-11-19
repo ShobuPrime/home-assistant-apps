@@ -125,6 +125,7 @@ See [`.github/AUTOMATION.md`](.github/AUTOMATION.md) for complete documentation.
 - **Always run `apk upgrade --no-cache` before `apk add`** in Dockerfiles to resolve base image package version mismatches (e.g. libcrypto3/libssl3 conflicts with openssl)
 - **Use `ARG BUILD_FROM` with no default** — the base image version is defined in `build.yaml` and passed at build time by the HA builder and `build.sh`. Do not add inline defaults as they drift out of sync.
 - **Architecture support**: All apps support only `aarch64` and `amd64` (hassio-addons base v19+ dropped armhf/armv7/i386)
+- **Compile Go helpers in a stage of the target platform** — no `--platform=$BUILDPLATFORM` with `GOARCH=${TARGETARCH}`. The smoke-test build in `builder.yml` passes `TARGETARCH` as the Home Assistant name (`aarch64`), which Go rejects: `unsupported GOOS/GOARCH pair linux/aarch64` (hay_cm5_fan 1.4.0, PR #100). The Supervisor passes no `TARGETARCH`, so it built fine everywhere but there
 
 ## Folder mappings (`map:`) and the addon → app rename
 

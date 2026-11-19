@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant App for controlling a GPIO-connected fan on the Home Assistant Yellow with a Raspberry Pi CM5 compute module. Unlike other apps in this repo, this app has no upstream binary — it is a pure shell-script daemon that reads CPU temperature and controls a fan via the libgpiod character device interface (`/dev/gpiochip0`).
+This is a Home Assistant App for controlling a GPIO-connected fan on the Home Assistant Yellow with a Raspberry Pi CM5 compute module. Unlike other apps in this repo, this app has no upstream binary — it is a shell-script daemon that reads CPU temperature and controls a fan via the libgpiod character device interface (`/dev/gpiochip0`), or, where the kernel owns the pin, through the serial port on that pin with a small Go helper (`fan-uart-hold/`).
 
 ## Essential Commands
 
@@ -37,6 +37,51 @@ The app uses `gpioset` from the libgpiod tools to control GPIO14 on `gpiochip0` 
 - To toggle state: kill the existing `gpioset`, start a new one with the desired value
 - When `gpioset` exits, the line is released — GPIO14/UART TX idles HIGH (fan ON = safe failsafe)
 
+### Serial break: how the fan is driven on HAOS 18.5 and later
+
+HAOS 18.5 moved the Raspberry Pi kernel from raspberrypi/linux `60ea684a8`
+(6.18.39) to `9b488bc7a` (6.18.59), which includes `11c58b576` "pinctrl: rp1:
+enable strict pinmux mode". A pin muxed to a peripheral can no longer be
+requested as a GPIO. GPIO14 is UART0 TX, so `gpioset` gets
+`unable to request lines ... Invalid argument` and `gpioinfo` shows
+`consumer="kernel"`. 1.3.1 looped on that every ~11 s for six days, logging
+"Fan turned ON" each time, before anyone looked (issue #86).
+
+`rootfs/usr/share/hay_cm5_fan/fan-control.sh` picks the method at start:
+
+| `FAN_CONTROL` | When | Fan off | Fan on |
+|---|---|---|---|
+| `gpio` | the line is free | `gpioset LINE=0` holds it | `gpioset LINE=1` holds it |
+| `serial` | `gpioinfo` says `consumer="kernel"` and the line is 14 | `fan-uart-hold /dev/ttyAMA0` holds a break (TX low) | no helper: TX idles high |
+| `none` | neither works | — | whatever the pin idles at; retried every 5 min |
+
+- A helper exists in serial mode only while the fan is OFF, so every way of
+  losing it leaves the fan ON: SIGTERM, SIGKILL (the kernel clears the break
+  when the last holder closes the port), and the daemon dying (the helper
+  watches its parent). Nothing else has `/dev/ttyAMA0` open; the console is
+  `ttyAMA2` and the radio is `ttyAMA1`.
+- `leave_on_at_shutdown: false` cannot be honoured in serial mode. The fan is on
+  whenever the app is stopped.
+- `/dev/ttyAMA0` must be in `devices:`. The AppArmor profile's blanket `file,`
+  already covers it.
+- The daemon runs under `set -euo pipefail`. `wait` on a killed helper returns
+  143, so it is `|| true`. The old code's kill-and-wait path had never run on
+  the device: at 60 °C and up the fan never switches off.
+
+**Verified on the Yellow, 2026-11-19**, with the line level read from the RP1
+registers (`/dev/gpiomem0`, GPIO14 = bit 14 of SYNC_IN at 0x10008): break
+asserted -> low, cleared -> high, port closed with the break set -> high. With
+the line held low for 90 s the CPU went from 68.0 to 73.8 °C and fell back
+after release, so the fan itself follows.
+
+**Testing without touching the installed app** (it leaves nothing behind):
+`docker create` a container from an image already on the device with
+`--device /dev/ttyAMA0` (and `--device /dev/gpiomem0:/dev/gpiomem0:r` for the
+readback, from an image with python3), `docker cp -` the files in as a tar on
+stdin, `docker start -ai` with the script on stdin, `docker rm -f`. The SSH
+app's own container can open the tty but not gpiomem.
+`tests/fan-control-test.sh` runs the same logic with no hardware.
+
 ### Temperature Reading
 
 CPU temperature is read from `/sys/class/hwmon/hwmon0/temp1_input` (millidegrees Celsius). The path is configurable in case hwmon numbering changes.
@@ -53,6 +98,9 @@ All temperature sensors include `state_class: measurement` and `device_class: te
 ### Directory Structure
 - **`/rootfs/etc/cont-init.d/cm5-fan.sh`**: S6 initialization (validate libgpiod, check `/dev/gpiochip0`)
 - **`/rootfs/etc/services.d/cm5-fan/`**: Service definition with `run` (daemon) and `finish` (crash handler)
+- **`/rootfs/usr/share/hay_cm5_fan/fan-control.sh`**: how the fan line is driven (`set_fan`, method selection, watchdog); sourced by `run`. Under `usr/share`, not `usr/lib`: the repo's `.gitignore` ignores every `lib/` directory, so a file there is never committed and the image is built without it
+- **`/fan-uart-hold/`**: Go helper that holds a serial break; stdlib only
+- **`/tests/fan-control-test.sh`**: tests `fan-control.sh` with fake GPIO tools and the real helper on a pty
 
 ### Critical Files
 - **`config.yaml`**: App configuration (version, options schema, full_access)
@@ -84,8 +132,9 @@ This app has no upstream software to track. The app IS the software. Version bum
 - Fan MUST be ON at startup before the polling loop begins
 - Fan MUST be forced ON if temperature sensor becomes unavailable
 - Fan MUST be forced ON if the `gpioset` background process dies unexpectedly
+- In serial mode the fan MUST come on if `fan-uart-hold` is lost by any route
 - `leave_on_at_shutdown: true` is the recommended and default setting
-- The app requires `full_access: true` for `/dev/gpiochip0` access
+- Device access is the `devices:` list in `config.yaml`, not `full_access`
 
 ### Hardware Constraints (Do NOT violate)
 - GPIO14 is on/off only — no hardware PWM
@@ -117,7 +166,7 @@ When updating version:
 ## Important Notes
 
 - **Never commit changes** to version numbers without testing on actual Yellow hardware
-- **full_access: true** is required — there is no lesser privilege that allows `/dev/gpiochip0` access
+- **Auto-update is on for this app on the device**, so a merge is a deployment
 - **AppArmor profile** must include `/dev/gpiochip*` and `/sys/class/hwmon/**` paths
 - The app creates entities via REST API, not via an integration — they don't survive HA restarts unless the app is running
 

@@ -1,6 +1,6 @@
 name: "HAY CM5 Fan Controller"
 description: "GPIO-based fan control with thermal management for Home Assistant Yellow with CM5"
-version: "1.3.1"
+version: "1.4.0"
 slug: "hay_cm5_fan"
 url: "https://github.com/ShobuPrime/home-assistant-apps"
 init: false
@@ -36,6 +36,10 @@ services:
 apparmor: true
 devices:
   - /dev/gpiochip0
+  # UART0, whose TX pin is GPIO14. Since HAOS 18.5 the kernel owns that pin and
+  # it cannot be claimed as a GPIO, so the fan is driven through the port: a
+  # serial break pulls the line low. Nothing else on the Yellow uses this port.
+  - /dev/ttyAMA0
   # vcgencmd's mailbox interface — supplies the official firmware throttle and
   # undervoltage flags. Previously reachable only because full_access exposed
   # the whole host /dev.

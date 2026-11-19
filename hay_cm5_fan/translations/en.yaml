@@ -58,7 +58,8 @@ configuration:
     description: >-
       When ON (default and recommended), the fan keeps running if the app stops
       or restarts, acting as a failsafe so the CPU stays cool while the app is
-      down. When OFF, the fan turns off when the app stops.
+      down. When OFF, the fan turns off when the app stops. On HAOS 18.5 and
+      later the fan always runs while the app is stopped.
   log_level:
     name: Log level
     description: >-

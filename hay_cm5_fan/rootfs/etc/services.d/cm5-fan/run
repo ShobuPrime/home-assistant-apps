@@ -2,7 +2,8 @@
 # ==============================================================================
 # Home Assistant App: HAY CM5 Fan Controller
 # Thermal monitoring daemon with hysteresis-based fan control
-# Uses libgpiod (/dev/gpiochip0) + MQTT discovery for proper HA entities
+# Drives the fan line through libgpiod, or through the serial port when the
+# kernel owns the pin (fan-control.sh), + MQTT discovery for proper HA entities
 # ==============================================================================
 
 bashio::log.info "Starting HAY CM5 Fan Controller daemon..."
@@ -50,9 +51,9 @@ fmt_temp() {
     printf '%s%d.%d%s' "${sign}" "$(( deci / 10 ))" "$(( deci % 10 ))" "${TEMP_LABEL}"
 }
 
-# State tracking
-FAN_STATE=""
-GPIOSET_PID=""
+# State tracking. FAN_STATE, FAN_CONTROL and set_fan come from fan-control.sh.
+# shellcheck source=/dev/null
+. /usr/share/hay_cm5_fan/fan-control.sh
 LAST_REPORTED_STATE=""
 LAST_REPORTED_CPU_TEMP=""
 LAST_REPORTED_FREQ=""
@@ -398,54 +399,13 @@ publish_state() {
     fi
 }
 
-# ==============================================================================
-# GPIO Management
-# ==============================================================================
-kill_gpioset() {
-    if [ -n "${GPIOSET_PID}" ] && kill -0 "${GPIOSET_PID}" 2>/dev/null; then
-        kill "${GPIOSET_PID}" 2>/dev/null
-        wait "${GPIOSET_PID}" 2>/dev/null
-    fi
-    GPIOSET_PID=""
-}
-
-set_fan() {
-    local new_state=$1
-    if [ "${new_state}" != "${FAN_STATE}" ]; then
-        kill_gpioset
-        # Retry up to 3 times if line is busy (previous container's gpioset may linger)
-        local attempt=0
-        while [ ${attempt} -lt 3 ]; do
-            gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=${new_state}" &
-            GPIOSET_PID=$!
-            sleep 0.3
-            if kill -0 "${GPIOSET_PID}" 2>/dev/null; then
-                break  # gpioset is running, line acquired
-            fi
-            attempt=$((attempt + 1))
-            [ ${attempt} -lt 3 ] && bashio::log.warning "GPIO line busy, retry ${attempt}/3..." && sleep 2
-        done
-        FAN_STATE=${new_state}
-        if [ "${new_state}" = "1" ]; then
-            bashio::log.info "Fan turned ON (gpioset PID: ${GPIOSET_PID})"
-        else
-            bashio::log.info "Fan turned OFF (gpioset PID: ${GPIOSET_PID})"
-        fi
-    fi
-}
-
 cleanup() {
     bashio::log.info "Shutdown signal received..."
-    kill_gpioset
 
     if bashio::config.true 'leave_on_at_shutdown'; then
-        bashio::log.info "Leaving fan ON for safety"
-        gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=1" &
-        sleep 0.2
+        fan_control_shutdown true
     else
-        bashio::log.info "Turning fan OFF"
-        gpioset -c "${GPIO_CHIP}" -C "hay_cm5_fan" "${GPIO_LINE}=0" &
-        sleep 0.2
+        fan_control_shutdown false
     fi
 
     # Publish offline status via MQTT
@@ -631,7 +591,9 @@ print_status_report() {
     # ── System status table ──
     local fan_str="OFF"
     [ "${FAN_STATE}" = "1" ] && fan_str="ON"
-    local fan_detail="${fan_str} (${FAN_MODE}, on>=${TEMP_ON}${TEMP_LABEL} off<=${TEMP_OFF}${TEMP_LABEL})"
+    local fan_via="via ${FAN_CONTROL}"
+    if [ "${FAN_CONTROL}" = "none" ]; then fan_via="not controllable"; fi
+    local fan_detail="${fan_str} (${FAN_MODE}, on>=${TEMP_ON}${TEMP_LABEL} off<=${TEMP_OFF}${TEMP_LABEL}, ${fan_via})"
 
     # Read CPU stats for the report
     local rpt_freq="" rpt_max="" rpt_gov="" rpt_throttle="No" rpt_undervolt="OK" rpt_util="${CPU_UTIL_PCT}%"
@@ -855,8 +817,8 @@ update_primary_entities() {
         fan_attrs=$(jq -cn \
             --arg chip "${GPIO_CHIP}" --argjson line "${GPIO_LINE}" \
             --arg mode "${FAN_MODE}" --argjson temp_on "${TEMP_ON_C}" --argjson temp_off "${TEMP_OFF_C}" \
-            --arg temp "${temp_display}" \
-            '{icon: "mdi:fan", temperature: $temp, gpio_chip: $chip, gpio_line: $line, mode: $mode, temp_on_threshold: $temp_on, temp_off_threshold: $temp_off}')
+            --arg temp "${temp_display}" --arg control "${FAN_CONTROL}" \
+            '{icon: "mdi:fan", temperature: $temp, gpio_chip: $chip, gpio_line: $line, control: $control, mode: $mode, temp_on_threshold: $temp_on, temp_off_threshold: $temp_off}')
         if publish_state "binary_sensor" "fan" "${fan_state_str}" "Fan" "${fan_attrs}"; then
             LAST_REPORTED_STATE="${fan_state_str}"
         fi
@@ -1080,6 +1042,7 @@ if [ -f "${TEMP_SENSOR}" ]; then
 fi
 
 # Turn fan ON as initial safe state (before first report so GPIO14 shows active)
+fan_control_init
 bashio::log.info "Turning fan ON (initial safe state)..."
 set_fan 1
 
@@ -1111,12 +1074,8 @@ KEEPALIVE_COUNTER=0
 FORCE_REPUBLISH=false
 
 while true; do
-    # Verify gpioset is still holding the line
-    if [ -n "${GPIOSET_PID}" ] && ! kill -0 "${GPIOSET_PID}" 2>/dev/null; then
-        bashio::log.warning "gpioset process died unexpectedly, restarting with fan ON..."
-        FAN_STATE=""
-        set_fan 1
-    fi
+    # Notice a lost helper, or look for a way to drive the fan again
+    fan_control_watchdog
 
     # Read CPU temperature
     if [ -f "${TEMP_SENSOR}" ]; then

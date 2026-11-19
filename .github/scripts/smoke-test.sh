@@ -1126,6 +1126,39 @@ case "${SLUG}" in
         done <<< "${CONFIGS}"
         pass "All ${CONFIG_COUNT} discovery configs valid (unit/device_class + UTF-8 degree sign)"
 
+        # --- Fan line control without hardware ---
+        # CI has no GPIO chip and no UART, so the daemon can drive nothing. It
+        # must say so once and back off. 1.3.1 instead retried gpioset every
+        # few seconds and logged "Fan turned ON" each time, which is how it
+        # ran unnoticed for six days on HAOS 18.5 with the kernel holding the
+        # pin (#86).
+        FAN_LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
+        if echo "${FAN_LOGS}" | grep -q "Cannot control the fan"; then
+            pass "Daemon reports that it cannot control the fan"
+        else
+            echo "${FAN_LOGS}" | sed 's/\x1b\[[0-9;]*m//g' | grep -iE "fan|gpio" | tail -8
+            fail "No 'Cannot control the fan' message — the daemon is claiming a fan state it did not set"
+        fi
+        DIED=$(echo "${FAN_LOGS}" | grep -c "died unexpectedly" || true)
+        BUSY=$(echo "${FAN_LOGS}" | grep -c "GPIO line busy" || true)
+        if [ "${DIED}" -eq 0 ] && [ "${BUSY}" -le 2 ]; then
+            pass "No gpioset retry loop (${BUSY} retries, then it backs off)"
+        else
+            fail "gpioset retry loop: ${DIED} 'died unexpectedly' and ${BUSY} 'GPIO line busy' lines"
+        fi
+
+        # The serial-break helper must be in the image and must refuse to act
+        # on something that is not a serial port.
+        set +e
+        docker exec "${CONTAINER_NAME}" /usr/bin/fan-uart-hold > /dev/null 2>&1; RC_USAGE=$?
+        docker exec "${CONTAINER_NAME}" /usr/bin/fan-uart-hold /dev/null > /dev/null 2>&1; RC_NOTTY=$?
+        set -e
+        if [ "${RC_USAGE}" -eq 2 ] && [ "${RC_NOTTY}" -eq 1 ]; then
+            pass "fan-uart-hold present and refuses a non-serial device"
+        else
+            fail "fan-uart-hold: usage exit ${RC_USAGE} (want 2), non-serial device exit ${RC_NOTTY} (want 1)"
+        fi
+
         if docker inspect "${CONTAINER_NAME}" --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
             pass "Container running (daemon stable without hardware)"
         else
