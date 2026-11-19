@@ -84,6 +84,7 @@ The repository includes comprehensive automation for managing pull requests:
 ### HAOS Release Watch
 - Daily check for new Home Assistant OS releases (`haos-release-watch.yml`)
 - Opens a per-release tracking issue (label `haos-update`) with an on-device verification checklist — CI runners don't run the HAOS kernel, so kernel/AppArmor/Docker behavior changes are only observable on the device
+- A new release's issue closes the older ones nobody has written on, since their checklist can no longer be run. One with comments stays open and is linked from the new issue. **Run the checklist; do not just close it.** 18.5's sat unread for five days while `hay_cm5_fan` could no longer drive its GPIO (#86)
 - Smoke tests additionally run each app confined by its own `apparmor.txt` when the CI runner supports AppArmor
 
 ### Auto-merge

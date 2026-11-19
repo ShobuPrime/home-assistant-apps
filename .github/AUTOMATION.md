@@ -121,6 +121,8 @@ restriction, so it reliably triggers both PR Validation and Builder workflows.
 
 **What it does:** Checks the latest `home-assistant/operating-system` release and opens a per-release tracking issue (label `haos-update`) with an on-device verification checklist. CI runners do not run the HAOS kernel, so kernel/AppArmor/Docker behavior changes can only be caught on the device — HAOS 18.1 broke the Huly add-on's Docker socket access while all CI was green. Deduped by issue title, so each release gets exactly one issue.
 
+When it opens an issue for a new release, it closes the older `haos-update` issues that nobody has commented on: once the device has moved on, their checklist can no longer be run. An older issue with comments records a finding, so it stays open and the new issue links to it.
+
 ### Huly upstream compose watch
 
 **File:** [`.github/workflows/update-huly.yml`](workflows/update-huly.yml), job `upstream-compose`

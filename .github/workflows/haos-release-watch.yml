@@ -64,11 +64,44 @@ jobs:
               '_Opened automatically by the HAOS Release Watch workflow._',
             ].join('\n');
 
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+            const { owner, repo } = context.repo;
+            const { data: created } = await github.rest.issues.create({
+              owner,
+              repo,
               title: `${marker} released — verify app compatibility on-device`,
               body,
               labels: ['haos-update'],
             });
-            console.log(`Opened tracking issue for ${marker}`);
+            console.log(`Opened tracking issue #${created.number} for ${marker}`);
+
+            // Once the device moves on, an older release's checklist can no
+            // longer be run, so its issue goes stale: #78 (18.4) sat open
+            // beside #86 (18.5). Close the ones nobody has written on. One
+            // with comments records a finding (#86: the fan app broke on
+            // 18.5), so it stays open and the new issue points at it.
+            const older = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: 'haos-update', per_page: 100,
+            });
+            const kept = [];
+            for (const issue of older) {
+              if (issue.pull_request || issue.number === created.number) continue;
+              if (issue.comments > 0) {
+                kept.push(issue.number);
+                continue;
+              }
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issue.number,
+                body: `Superseded by #${created.number} (${marker}). This release's checklist was never run.`,
+              });
+              await github.rest.issues.update({
+                owner, repo, issue_number: issue.number,
+                state: 'closed', state_reason: 'not_planned',
+              });
+              console.log(`Closed #${issue.number} as superseded`);
+            }
+            if (kept.length > 0) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: created.number,
+                body: `Still open from earlier releases, with notes: ${kept.map(n => `#${n}`).join(', ')}. Read them before closing this one.`,
+              });
+            }
