@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.13.0
+
+_2026-11-19_
+
+## What's Changed
+* docs(changelog): 0.12.0 had no npm package by `mj-bonanno` in https://github.com/scrypster/muninndb/pull/956
+* ci(release): publish the Homebrew formula and PHP SDK with app tokens by `mj-bonanno` in https://github.com/scrypster/muninndb/pull/957
+* ci(publish): run the PyPI job in the pypi-release environment by `mj-bonanno` in https://github.com/scrypster/muninndb/pull/958
+* docs(sdk/node): the Node SDK is not on npm yet by `mj-bonanno` in https://github.com/scrypster/muninndb/pull/959
+* fix(embed): load a sentence-transformers ONNX export as a user model by `mj-bonanno` in https://github.com/scrypster/muninndb/pull/962
+* fix(storage): close each re-embed clear batch once by `mj-bonanno` in https://github.com/scrypster/muninndb/pull/964
+* perf(embed): pad each batch to its longest text, not the model window by `mj-bonanno` in https://github.com/scrypster/muninndb/pull/963
+* fix(build): verify ONNX Runtime downloads against pinned hashes and fall back to a mirror by `mj-bonanno` in https://github.com/scrypster/muninndb/pull/960
+* docs(changelog): the 0.13.0 entry by `mj-bonanno` in https://github.com/scrypster/muninndb/pull/965
+
+
+**Full Changelog**: https://github.com/scrypster/muninndb/compare/v0.12.1...v0.13.0
+
+---
+
+
 ## 0.12.1
 
 _2026-11-17_
