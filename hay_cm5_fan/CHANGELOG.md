@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+_2026-11-19_
+
+- **Fan control works again on HAOS 18.5.** That release's kernel reserves GPIO14 for the serial port, so the app could no longer claim it: the fan ran all the time and the log filled with `gpioset: unable to request lines`. The app now drives the same pin through the serial port. Nothing is rewired and there is nothing to set; older HAOS releases keep using the GPIO.
+- When the fan cannot be controlled at all, the app says so once and tries again every five minutes. Before, it retried every few seconds and logged "Fan turned ON" each time.
+- Driven through the serial port, the fan runs whenever the app is stopped, whatever `leave_on_at_shutdown` is set to.
+
 ## 1.3.1
 
 _2026-10-22_

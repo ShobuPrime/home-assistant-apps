@@ -35,6 +35,26 @@ This app has been tested and verified compatible with the [Seeed Studio Aluminum
 - Control is on/off only (no hardware PWM on GPIO14)
 - UART TX idles HIGH, so the fan runs by default as a failsafe even without this app
 
+### HAOS 18.5 and later: the same pin, through the serial port
+
+GPIO14 is also the transmit pin of the Yellow's first serial port. HAOS 18.5
+ships a kernel that reserves such pins for their peripheral, so GPIO14 can no
+longer be claimed as a GPIO: `gpioset` is refused and `gpioinfo` shows the line
+as `consumer="kernel"`.
+
+The app notices this at start and drives the pin through the serial port
+(`/dev/ttyAMA0`) instead. Holding a serial "break" pulls the line low, which
+switches the fan off; releasing it lets the line idle high, which is fan on.
+Nothing is rewired and there is nothing to configure. The log says which way is
+in use:
+
+```
+Driving the fan through /dev/ttyAMA0 instead: a serial break pulls the line low.
+```
+
+Nothing else on the Yellow uses that port. Older HAOS releases keep using the
+GPIO as before.
+
 ## Configuration
 
 ### Option: `gpio_chip`
@@ -91,6 +111,8 @@ Controls fan behavior:
 Whether to leave the fan running when the app stops or restarts. Default: `true`
 
 Recommended to leave this enabled. If set to `false`, the fan will turn off when the app stops, which could allow the CPU to overheat if the app isn't restarted promptly.
+
+On HAOS 18.5 and later the fan runs whenever the app is stopped, whatever this is set to: through the serial port the fan can only be held off while the app is running.
 
 ### Option: `log_level`
 
@@ -354,7 +376,7 @@ Based on testing with the CM5 on Home Assistant Yellow:
 
 ## Security Considerations
 
-- **Full access**: This app requires `full_access: true` to access `/dev/gpiochip0`. This gives the app container elevated privileges.
+- **Device access**: the app is given three devices and nothing else: `/dev/gpiochip0` (the GPIO), `/dev/ttyAMA0` (the serial port on the same pin) and `/dev/vcio` (firmware throttle flags).
 - **AppArmor**: Custom profile restricts access to only GPIO character devices and hwmon sysfs paths
 
 ## Troubleshooting
@@ -370,7 +392,14 @@ Based on testing with the CM5 on Home Assistant Yellow:
 2. Check that `/dev/gpiochip0` exists: `ls -la /dev/gpiochip*`
 3. Verify `gpio_chip` and `gpio_line` config values (default: `gpiochip0`, line `14`)
 4. Check app logs for specific error messages
-5. Ensure `full_access: true` is set in config.yaml
+
+### "Cannot control the fan"
+
+The app could neither claim the GPIO nor use the serial port. It leaves the
+line alone, says so once, and tries again every five minutes. On the Yellow's
+default wiring the fan keeps running in the meantime. The message names the
+reason; the usual one is a `gpio_line` other than 14 on a pin the kernel has
+reserved, which the serial port cannot drive.
 
 ### Temperature Sensor Not Found
 
