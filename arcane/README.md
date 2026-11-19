@@ -70,8 +70,8 @@ This app has access to the following Home Assistant directories:
 
 ## First Time Setup
 
-1. When you first access Arcane, you'll be prompted to create an admin user
-2. Default credentials are: `arcane` / `arcane-admin` (change immediately!)
+1. Sign in as `arcane` with the password from the line `First login: ...` in this app's log
+2. Arcane asks you to set your own password straight away
 3. Configure your Docker environment and start managing containers
 
 ## Support
@@ -83,4 +83,4 @@ Got questions or found a bug? Please open an issue on the GitHub repository.
 
 ## Version
 
-Currently running Arcane 2.17.3
+Currently running Arcane 3.1.0

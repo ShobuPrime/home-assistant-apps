@@ -51,8 +51,9 @@ When enabled (default), hides Home Assistant system containers from the Arcane i
 All data is stored in `/data/arcane` and included in Home Assistant backups:
 
 - `arcane.db` - SQLite database with all settings and data
-- `.secrets` - Auto-generated encryption keys (do not delete!)
-- `projects/` - Docker Compose project files (if using Compose management)
+- `.secrets` - Auto-generated encryption key (do not delete!)
+- `data/projects/` - Docker Compose project files (if using Compose management)
+- `data/templates/` - Compose templates you save
 
 ## Features
 
@@ -91,33 +92,29 @@ All data is stored in `/data/arcane` and included in Home Assistant backups:
 ## First Time Setup
 
 1. Access Arcane through the sidebar or direct URL
-2. Default login credentials:
-   - Username: `arcane`
-   - Password: `arcane-admin`
-3. **Change the password immediately** after first login
+2. Sign in as `arcane`. Arcane generates the first password itself: open this
+   app's **Log** tab and look for the line `First login: username 'arcane',
+   password '...'`
+3. Arcane asks you to set your own password straight away. The line keeps
+   appearing on later starts, with a password that no longer works
 4. Your Docker environment is automatically detected
+
+Installs that started on Arcane 2 keep the password they already have.
 
 ## Multi-Host Management
 
-Arcane supports managing multiple Docker hosts using agents:
+Arcane can manage other Docker hosts through agents. Add an environment in
+Arcane and follow the steps it shows for the remote host. The agent connects
+out to this app, so set `app_url` to an address the remote host can reach.
 
-1. Install the Arcane agent on remote hosts:
-   ```bash
-   docker run -d \
-     --name arcane-agent \
-     -p 3553:3553 \
-     -v /var/run/docker.sock:/var/run/docker.sock \
-     ghcr.io/getarcaneapp/arcane-headless:latest
-   ```
-
-2. Add the remote environment in Arcane UI
-3. Use the Bootstrap Token for secure pairing
+Arcane 3 removed directly-connected agents. Agents set up under Arcane 2 must
+be enrolled again from Arcane.
 
 ## Security Considerations
 
 - **Protection Mode**: Must be disabled for Docker socket access
-- **Default Credentials**: Change immediately after first login
-- **Encryption Keys**: Auto-generated and stored in `/data/arcane/.secrets`
+- **First Password**: Generated on a new install and shown in the app log; Arcane makes you change it at first login
+- **Encryption Key**: Auto-generated and stored in `/data/arcane/.secrets`
 - **AppArmor**: Custom profile restricts app permissions appropriately
 
 ### Optional: Socket Proxy

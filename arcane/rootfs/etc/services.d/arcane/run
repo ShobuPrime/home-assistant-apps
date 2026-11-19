@@ -10,19 +10,24 @@ bashio::log.info 'Starting Arcane Docker Manager...'
 SECRETS_FILE="/data/arcane/.secrets"
 if [[ -f "${SECRETS_FILE}" ]]; then
     source "${SECRETS_FILE}"
-    export ENCRYPTION_KEY
-    export JWT_SECRET
 else
     bashio::log.error "Secrets file not found! Please restart the app."
     exit 1
 fi
+if [[ -z "${ENCRYPTION_KEY:-}" ]]; then
+    bashio::log.error "No ENCRYPTION_KEY in ${SECRETS_FILE}. Restore it from a backup: it decrypts the database."
+    exit 1
+fi
 
-# Set environment variables
-export GIN_MODE="release"
-export ENVIRONMENT="production"
-export PORT="3552"
+# Arcane 3 reads only ARCANE_-prefixed names and refuses to start while a
+# legacy name is set without its replacement. The base image exports LOG_LEVEL.
+unset LOG_LEVEL
+export ARCANE_ENCRYPTION_KEY="${ENCRYPTION_KEY}"
+export ARCANE_ENVIRONMENT="production"
+export ARCANE_PORT="3552"
+export ARCANE_DATABASE_URL="file:/data/arcane/arcane.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)&_txlock=immediate"
+# Not prefixed upstream.
 export DOCKER_HOST="unix:///var/run/docker.sock"
-export DATABASE_URL="file:/data/arcane/arcane.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(2500)&_txlock=immediate"
 
 # Configure PUID/PGID
 if bashio::config.has_value 'puid'; then
@@ -37,36 +42,55 @@ else
     export PGID=1000
 fi
 
-# Configure APP_URL
+# Configure the public URL
 if bashio::config.has_value 'app_url' && [[ -n "$(bashio::config 'app_url')" ]]; then
-    export APP_URL=$(bashio::config 'app_url')
-    bashio::log.info "APP_URL configured: ${APP_URL}"
+    export ARCANE_APP_URL=$(bashio::config 'app_url')
+    bashio::log.info "APP_URL configured: ${ARCANE_APP_URL}"
 else
-    export APP_URL="http://localhost:3552"
-    bashio::log.info "APP_URL using default: ${APP_URL}"
+    export ARCANE_APP_URL="http://localhost:3552"
+    bashio::log.info "APP_URL using default: ${ARCANE_APP_URL}"
 fi
 
-# Log level configuration
+# Log level. Always set, so the base image's LOG_LEVEL is never the only one.
+export ARCANE_LOG_LEVEL="info"
 if bashio::config.has_value 'log_level'; then
     case "$(bashio::config 'log_level')" in
         trace|debug)
-            export LOG_LEVEL="debug"
+            export ARCANE_LOG_LEVEL="debug"
             ;;
-        warning|error|fatal)
-            export LOG_LEVEL="error"
+        warning)
+            export ARCANE_LOG_LEVEL="warn"
             ;;
-        *)
-            export LOG_LEVEL="info"
+        error|fatal)
+            export ARCANE_LOG_LEVEL="error"
             ;;
     esac
 fi
 
 # Log configuration
 bashio::log.info "Starting Arcane with configuration:"
-bashio::log.info "  PORT: ${PORT}"
+bashio::log.info "  PORT: ${ARCANE_PORT}"
 bashio::log.info "  PUID: ${PUID}"
 bashio::log.info "  PGID: ${PGID}"
 bashio::log.info "  DOCKER_HOST: ${DOCKER_HOST}"
+
+# On a new install Arcane 3 generates the admin password into a file under
+# /data, which cannot be read from Home Assistant, so show it in this log.
+# Arcane forces a change at first login and never removes the file, so the
+# line repeats on later starts with a password that no longer works.
+# The nested subshell hands the waiter to PID 1, which reaps it; Arcane would not.
+INITIAL_PASSWORD_FILE="/data/arcane/data/initial-admin-password"
+if [[ -f "${INITIAL_PASSWORD_FILE}" ]] || [[ ! -f /data/arcane/arcane.db ]]; then
+    ( (
+        for _ in $(seq 1 60); do
+            if [[ -s "${INITIAL_PASSWORD_FILE}" ]]; then
+                bashio::log.notice "First login: username 'arcane', password '$(cat "${INITIAL_PASSWORD_FILE}")'. It stops working once you set your own."
+                break
+            fi
+            sleep 1
+        done
+    ) & )
+fi
 
 # Arcane >=1.19 drops privileges to PUID:PGID and then creates a
 # `data/` subdirectory relative to CWD (alongside the sqlite DB).

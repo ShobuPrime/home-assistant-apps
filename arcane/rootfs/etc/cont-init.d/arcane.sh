@@ -20,13 +20,20 @@ fi
 
 # Create data directory structure
 bashio::log.info "Creating data directories (owner ${PUID}:${PGID})..."
-mkdir -p /data/arcane
-mkdir -p /data/projects
+# /app/data in the image is a symlink to /data/arcane/data, which must exist
+# before Arcane starts.
+mkdir -p /data/arcane/data
 
 # Hand the data dirs to the runtime user; Arcane v1.19+ otherwise
 # fails with "create sqlite file /data/arcane/arcane.db: permission denied".
-chown -R "${PUID}:${PGID}" /data/arcane /data/projects
-chmod 755 /data/arcane /data/projects
+chown -R "${PUID}:${PGID}" /data/arcane
+chmod 755 /data/arcane
+
+# Created by this app before 3.1.0. Arcane only uses it if its Projects
+# Directory setting was pointed here by hand.
+if [[ -d /data/projects ]]; then
+    chown -R "${PUID}:${PGID}" /data/projects
+fi
 
 # Check if Arcane binary exists and is executable
 if [[ ! -f /opt/arcane/arcane ]]; then
@@ -58,18 +65,17 @@ else
     bashio::log.error "Please ensure the app has the proper permissions."
 fi
 
-# Generate secrets if not already generated
+# Generate the encryption key if not already generated. Files written before
+# Arcane 3 also hold a JWT_SECRET line, which Arcane no longer reads.
 SECRETS_FILE="/data/arcane/.secrets"
 if [[ ! -f "${SECRETS_FILE}" ]]; then
-    bashio::log.info "Generating encryption keys..."
+    bashio::log.info "Generating encryption key..."
     ENCRYPTION_KEY=$(openssl rand -base64 32)
-    JWT_SECRET=$(openssl rand -base64 32)
     echo "ENCRYPTION_KEY=${ENCRYPTION_KEY}" > "${SECRETS_FILE}"
-    echo "JWT_SECRET=${JWT_SECRET}" >> "${SECRETS_FILE}"
     chmod 600 "${SECRETS_FILE}"
-    bashio::log.info "Encryption keys generated and stored"
+    bashio::log.info "Encryption key generated and stored"
 else
-    bashio::log.info "Using existing encryption keys"
+    bashio::log.info "Using existing encryption key"
 fi
 
 # Generate Traefik reverse proxy configuration

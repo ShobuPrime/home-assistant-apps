@@ -2,7 +2,7 @@ ARG BUILD_FROM
 FROM $BUILD_FROM
 
 # Build arguments for version
-ARG ARCANE_VERSION=2.17.3
+ARG ARCANE_VERSION=3.1.0
 
 # Install requirements.
 # The base image pins libcrypto3/libssl3 in apk "world" at an exact older
@@ -41,6 +41,11 @@ RUN \
     && echo "Download complete. File size:" && ls -lh /opt/arcane/arcane \
     && chmod +x /opt/arcane/arcane \
     && echo "Arcane installed successfully"
+
+# Arcane keeps projects, templates, git known_hosts and its Docker config under
+# /app/data, the data volume of its own image. Here that would be the container
+# layer, which is discarded on every restart, so point it into /data.
+RUN mkdir -p /app && ln -s /data/arcane/data /app/data
 
 # Copy root filesystem
 COPY rootfs /
