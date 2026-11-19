@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.0.1
+
+_2026-11-19_
+
+> _App changes:_ The sidebar panel works. Arcane expects to sit at the top of a site and has no setting for anything else, so inside Home Assistant the panel stayed blank (#55). A small proxy on the ingress port now adapts the page. Port 3552 still goes straight to Arcane. The panel has its own sign-in, separate from the direct address, so you sign in there once. What it cannot do is listed under "Sidebar panel" in the documentation. Arcane itself is unchanged at 3.1.0.
+
 ## 3.1.0
 
 _2026-11-18_

@@ -698,8 +698,103 @@ case "${SLUG}" in
         fi
         ;;
 
-    arcane|dockhand)
+    dockhand)
         wait_for_health "${HEALTH_PORT}" 120
+        ;;
+
+    arcane)
+        wait_for_health "${HEALTH_PORT}" 120
+
+        # --- The sidebar panel ---
+        # Arcane cannot run under a path prefix, so ingress goes to
+        # ha-arcane-ingress, which adapts the page (arcane/CLAUDE.md, "Ingress").
+        # An upstream release can break that without breaking anything else
+        # here, and the app would still start and report healthy.
+        PANEL_PORT=$(sed -n 's/^ingress_port: *//p' "${APP_DIR}/config.yaml")
+        PANEL="/api/hassio_ingress/smoketest_Token-123"
+        panel() { docker exec "${CONTAINER_NAME}" curl -s --max-time 10 -H "X-Ingress-Path: ${PANEL}" -H "Host: ha.example:8123" "$@"; }
+
+        if [ -n "${PANEL_PORT}" ] && [ "${PANEL_PORT}" != "${HEALTH_PORT}" ]; then
+            pass "Ingress goes to the proxy on :${PANEL_PORT}, not to Arcane on :${HEALTH_PORT}"
+        else
+            fail "ingress_port is '${PANEL_PORT}': the panel would reach Arcane directly and stay blank"
+        fi
+
+        PAGE=$(panel "http://127.0.0.1:${PANEL_PORT}/")
+        # Addresses from the site root that the proxy did not move.
+        LEFT=$(grep -oE '(href|src)="/[^/"][^"]*"|import\("/[^/"][^"]*' <<< "${PAGE}" | grep -v -F "\"${PANEL}/" || true)
+        if grep -q "window.__haIngressPath=\"${PANEL}\"" <<< "${PAGE}" \
+            && grep -q "import(\"${PANEL}/_app/" <<< "${PAGE}" \
+            && [ -z "${LEFT}" ]; then
+            pass "Panel page: every address is under the ingress path, and the shim is loaded"
+        else
+            echo "${LEFT:-(no shim, or no import under the ingress path)}" | head -10 | sed 's/^/    /'
+            fail "Panel page was not adapted — Arcane's page changed shape; see ha-arcane-ingress/main.go"
+        fi
+
+        if [ "$(docker exec "${CONTAINER_NAME}" curl -s "http://127.0.0.1:${PANEL_PORT}/" | md5sum)" \
+            = "$(docker exec "${CONTAINER_NAME}" curl -s "http://127.0.0.1:${HEALTH_PORT}/" | md5sum)" ]; then
+            pass "Without Home Assistant's header the proxy changes nothing"
+        else
+            fail "The proxy changed a request that did not come through ingress"
+        fi
+
+        SHEET=$(grep -oE "href=\"${PANEL}/_app/[^\"]+\.css\"" <<< "${PAGE}" | head -1 | sed -E "s|href=\"${PANEL}||; s|\"||")
+        if [ -n "${SHEET}" ] && ! panel "http://127.0.0.1:${PANEL_PORT}${SHEET}" | grep -qE "url\([\"']?/[^/]"; then
+            pass "Style sheet: no url(/...) left pointing at the site root"
+        else
+            fail "Style sheet '${SHEET}' still names files from the site root (fonts would 404)"
+        fi
+
+        # The session: marked cookies in, unmarked ones out. A cookie from the
+        # direct port (same host name, any port) must not sign the panel in.
+        FIRST_PASSWORD=""
+        for _ in $(seq 1 30); do
+            FIRST_PASSWORD=$(docker exec "${CONTAINER_NAME}" cat /data/arcane/data/initial-admin-password 2>/dev/null || true)
+            [ -n "${FIRST_PASSWORD}" ] && break
+            sleep 1
+        done
+        LOGIN_HEADERS=$(panel -o /dev/null -D - -H 'Content-Type: application/json' \
+            -d "{\"username\":\"arcane\",\"password\":\"${FIRST_PASSWORD}\"}" "http://127.0.0.1:${PANEL_PORT}/api/auth/login" | tr -d '\r')
+        PANEL_TOKEN=$(sed -n 's/^[Ss]et-[Cc]ookie: ingress\.token=\([^;]*\).*/\1/p' <<< "${LOGIN_HEADERS}" | head -1)
+        if [ -n "${PANEL_TOKEN}" ] \
+            && grep -qi "^set-cookie: ingress\.token=[^;]*; Path=${PANEL}/;" <<< "${LOGIN_HEADERS}" \
+            && grep -qi "^set-cookie: ingress\.refresh=[^;]*; Path=${PANEL}/api/auth;" <<< "${LOGIN_HEADERS}" \
+            && ! grep -qiE '^set-cookie: (token|refresh)=' <<< "${LOGIN_HEADERS}"; then
+            pass "Signing in through the panel sets marked cookies scoped to its path"
+        else
+            grep -i '^set-cookie' <<< "${LOGIN_HEADERS}" | sed -E 's/=[^;]{12,};/=<value>;/; s/^/    /'
+            fail "Signing in through the panel did not set ingress.token / ingress.refresh under ${PANEL}/"
+        fi
+        whoami() { panel -o /dev/null -w '%{http_code}' "$@" "http://127.0.0.1:${PANEL_PORT}/api/auth/bootstrap"; }
+        MARKED=$(whoami -H "Cookie: ingress.token=${PANEL_TOKEN}")
+        UNMARKED=$(whoami -H "Cookie: token=${PANEL_TOKEN}")
+        if [ "${MARKED}" = "200" ] && [ "${UNMARKED}" = "401" ]; then
+            pass "The panel accepts its own session cookie and ignores the direct port's"
+        else
+            fail "Panel session: own cookie answered ${MARKED} (want 200), a direct-port cookie ${UNMARKED} (want 401)"
+        fi
+
+        # The same, in a real browser: sign in, move around, reload, sign out.
+        # This is the check that notices an upstream change in how the web app
+        # addresses the server. It needs Chrome; a CI runner has it.
+        APP_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "${CONTAINER_NAME}" | awk '{print $1}')
+        BROWSER_TEST=(python3 "${APP_DIR}/tests/ingress_test.py" --ingress "http://${APP_IP}:${PANEL_PORT}"
+            --direct "http://${APP_IP}:${HEALTH_PORT}" --password "${FIRST_PASSWORD}" --container "${CONTAINER_NAME}")
+        BROWSER_RC=0
+        "${BROWSER_TEST[@]}" || BROWSER_RC=$?
+        if [ "${BROWSER_RC}" = "1" ]; then
+            info "Panel browser test failed once; running it again"
+            BROWSER_RC=0
+            "${BROWSER_TEST[@]}" || BROWSER_RC=$?
+        fi
+        if [ "${BROWSER_RC}" = "0" ]; then
+            pass "Panel works in a browser behind a Home Assistant stand-in"
+        elif [ "${BROWSER_RC}" = "2" ] && [ -z "${CI:-}" ]; then
+            info "No Chrome or Chromium here — panel browser test skipped (CI runs it)"
+        else
+            fail "Panel browser test failed (exit ${BROWSER_RC}) — see the FAIL lines above"
+        fi
         ;;
 
     portainer_ee_lts|portainer_ee_sts)

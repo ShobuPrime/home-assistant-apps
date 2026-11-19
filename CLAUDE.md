@@ -357,6 +357,25 @@ The transferable parts, if another app needs the same treatment:
   the `HEALTHCHECK` and the `watchdog:` both stay green while it has no Docker
   access at all. `rm -f` the socket path in the service's `run` script.
 
+## An app built for the site root can still run under ingress
+
+Arcane has no sub-path setting and compares the page's path with `/login`, so
+neither a rewritten base path nor a plain proxy works. `arcane/ha-arcane-ingress`
+does it with a proxy plus a script in the page; `arcane/CLAUDE.md` ("Ingress")
+has the design. What transfers to another app:
+
+- **Mimic Home Assistant exactly when testing.** It drops `Accept-Encoding` from
+  the request and the charset from `Content-Type`, keeps `Host`, and adds
+  `X-Ingress-Path`. `arcane/tests/ingress_test.py` has a stand-in written from
+  Core's and Supervisor's source, and counts requests that leave the prefix.
+- **Always run the control.** The same page without the fix must fail, or the
+  test proves nothing.
+- **Cookies are per host, not per port.** A cookie the app sets on its direct
+  port also arrives through ingress on the same host name. Scope and mark the
+  ingress ones.
+- **A `__Host-` cookie cannot be scoped to a path**, and a plain-HTTP test never
+  shows one. Check what the app does over HTTPS before rewriting `Path`.
+
 ## Home Assistant Core is NOT running when your app's init script runs
 
 Supervisor starts apps in stages and Core starts *between* them
@@ -429,7 +448,7 @@ build, run, wait for health, `docker stop`, check exit code and grep for
 | `portainer_ee_lts` | 3.0s | clean | 10 (default) | Re-measured 2026-07-31 with the nginx socket shim added. |
 | `portainer_ee_sts` | 3.0s | clean | 10 (default) | Re-measured 2026-07-31 with the nginx socket shim added. |
 | `dockhand` | 3.6s | clean | 10 (default) | |
-| `arcane` | 3.6s | clean | 10 (default) | |
+| `arcane` | 4.4s | clean | 10 (default) | Re-measured 2026-11-19 with the ingress proxy added. |
 | `muninndb` | 3.7s | clean | **120** | Empty DB; shutdown backup ran in 126ms. |
 | `dockge` | 5.6s | clean | 10 (default) | |
 | `huly` | 24-25s | clean | **120** | Also backup downtime (`backup: cold`). |

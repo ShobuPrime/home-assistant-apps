@@ -40,6 +40,9 @@ The update script fetches the latest release from GitHub and updates all relevan
 ### Directory Structure
 - **`/rootfs/etc/cont-init.d/`**: S6 initialization scripts that run on container start
 - **`/rootfs/etc/services.d/arcane/`**: Service definition with `run` script and `finish` handler
+- **`/rootfs/etc/services.d/arcane-ingress/`**: runs `ha-arcane-ingress` as `nobody`
+- **`/ha-arcane-ingress/`**: the ingress proxy (Go, stdlib only) and `shim.js`, the script it adds to Arcane's page
+- **`/tests/ingress_test.py`**: opens the panel in a real browser behind a stand-in for Home Assistant
 
 ### Critical Files
 - **`config.yaml`**: App configuration (version, ports, ingress, options schema)
@@ -56,8 +59,62 @@ Arcane only supports:
 armv7/armhf is NOT supported by upstream Arcane.
 
 ### Port Configuration
-- **3552**: Web interface (main port, used for ingress)
+- **3552**: Web interface, straight to Arcane
 - **3553**: Agent communication port
+- **3554**: `ha-arcane-ingress`, the ingress port. Not published
+
+## Ingress (the sidebar panel)
+
+Arcane only works at the top of a site, and upstream closed the request for a
+sub-path without adding one (getarcaneapp/arcane#576). `ha-arcane-ingress`
+listens on 3554 and adapts requests that carry Home Assistant's
+`X-Ingress-Path`. Everything else, and ports 3552 and 3553, pass untouched.
+
+**Not SvelteKit's `base`.** The page reads `base` at run time, so the proxy
+could set it. But Arcane compares the page's path with `/login` and `/logout`
+(`+layout.ts`, `api-service.ts`), and under a base those never match: sign-in
+loops. Arcane has to see root-relative paths.
+
+The proxy (`main.go`):
+
+| For | It |
+|---|---|
+| pages | moves `href="/..."`, `src="/..."` and `import("/...")` under the prefix, drops the manifest link, loads `shim.js` ahead of the first script |
+| style sheets | moves `url(/...)` under the prefix (the fonts) |
+| `Set-Cookie` | renames to `ingress.<name>`, scopes `Path` to the prefix, adds `Secure` when Home Assistant was reached over HTTPS |
+| `Cookie` | passes on only `ingress.*`, mark removed |
+| `Location` | moves a root-relative redirect under the prefix |
+
+The shim (`shim.js`), in the page:
+
+1. Removes the prefix from the page's own address (`history.replaceState`), and opens `/login` rather than `/`: Arcane's `/` answers a signed-out visitor with a full page load.
+2. Puts the prefix back on what goes to the server: `fetch`, `Request`, XHR, WebSocket, the `src`/`href` of images, icons and scripts, POST forms.
+3. Sends full page loads (`location.reload()`, `location.replace('/login?...')`) to the prefixed address, through the Navigation API.
+
+Facts that cost time. Each has a test:
+
+- **Cookies are shared across ports.** `host:3552` and `host:8123` are one cookie jar, so an unmarked `token; Path=/` from the direct port also arrives through ingress. Hence the mark and the filter: signing out of the panel would otherwise leave you signed in.
+- **A `__Host-` cookie may only have `Path=/`.** Arcane names its cookie `__Host-token` when it believes the request was HTTPS. The proxy does not pass `X-Forwarded-Proto` on, so Arcane uses the plain names here, and the proxy adds `Secure` itself.
+- **Re-addressing a `Request` that has a body turns the body into a stream**, which Chrome uploads only over HTTP/2: the sign-in POST failed with `ERR_ALPN_NEGOTIATION_FAILED`. The shim wraps the `Request` constructor instead.
+- **Home Assistant drops the charset from `Content-Type`.** The shim goes after `<meta charset>`, which browsers look for in the first 1024 bytes, and is ASCII only.
+- **"Log out" is a POST form to `/logout`** that the browser submits by itself.
+- **The browser's reload button fires no `navigate` event.** In the panel that is fine: Home Assistant's page reloads and frames the app again. In a tab of its own the reload asks Home Assistant for the unprefixed address.
+
+Not covered: OIDC and passkeys (untested), links Arcane shows for outside use, and a session running out in a browser without the Navigation API (Safari before 26.2, Firefox before 147).
+
+### Testing it
+
+`go test ./...` in `ha-arcane-ingress/`, and `tests/ingress_test.py`: a real
+browser behind a stand-in for Home Assistant ingress. The stand-in follows
+Core's and Supervisor's own source, so it drops `Accept-Encoding` and the
+charset as they do. It first runs a control: the same page with no proxy must
+stay blank. The smoke test runs it on every build, so an upstream change that
+breaks the panel fails the bot PR instead of reaching a device.
+
+```bash
+python3 arcane/tests/ingress_test.py --ingress http://<container ip>:3554 \
+    --direct http://<container ip>:3552 --password <first password> --shots /tmp/shots
+```
 
 ## Development Guidelines
 
@@ -96,7 +153,7 @@ is lost on every restart.
 - Build completes successfully
 - Service starts without errors
 - Web UI accessible on port 3552
-- Ingress access works through Home Assistant sidebar
+- Ingress access works through Home Assistant sidebar (`tests/ingress_test.py`)
 - Docker containers visible in Arcane
 - Configuration changes apply correctly
 - Data persists in `/data/arcane` across restarts
@@ -109,7 +166,7 @@ is lost on every restart.
 - **Ingress** integration requires WebSocket support (ingress_stream: true)
 - **AppArmor profile** is critical for security - modifications require careful testing
 - **First password**: a new install gets a generated password in `/data/arcane/data/initial-admin-password`; the run script prints it to the app log. `arcane-admin` was Arcane 2
-- **Ingress is broken upstream-side**: the web app requests `/_app/...`, `/service-worker.js` and `/app.webmanifest` from the site root, outside the ingress path, on 2.17.3 and 3.1.0 alike (checked 2026-11-18 behind a prefix-stripping proxy). Only direct access on 3552 works
+- **Ingress needs `ha-arcane-ingress`**: pointed at Arcane itself, the panel is blank (see "Ingress" above)
 - **Encryption keys** in `.secrets` must not be deleted or the database becomes inaccessible
 
 ## Common Issues and Troubleshooting
@@ -125,16 +182,16 @@ is lost on every restart.
 2. Check architecture compatibility (amd64/aarch64 only)
 3. Ensure Docker socket is accessible
 
-### Issue: WebSocket/Ingress Not Working
+### Issue: The Sidebar Panel Is Blank After an Arcane Update
 
 **Symptoms:**
-- Real-time updates don't work
-- Connection errors in browser console
+- The panel is blank or shows Home Assistant itself; port 3552 works
+- The smoke test fails in the panel section
 
 **Solution:**
-1. Verify `ingress_stream: true` in config.yaml
-2. Check Home Assistant ingress configuration
-3. Try direct access via port 3552
+1. Run `tests/ingress_test.py` with `--shots` and read its FAIL lines
+2. "Panel page was not adapted": Arcane's page changed shape; fix the patterns in `main.go`
+3. "no request went to Home Assistant itself" fails: the web app addresses the server in a new way; add it to `shim.js`
 
 ### Issue: Database Errors
 

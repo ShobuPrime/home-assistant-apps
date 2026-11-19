@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Arcane Docker Manager
+# Serves Arcane's web UI under Home Assistant ingress (ha-arcane-ingress/main.go)
+# ==============================================================================
+
+# It only relays requests to Arcane on 127.0.0.1, so it needs no privileges.
+exec s6-setuidgid nobody /usr/bin/ha-arcane-ingress
