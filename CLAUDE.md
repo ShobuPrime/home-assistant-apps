@@ -49,6 +49,8 @@ The repository uses the `home-assistant/builder` action for automated app builds
 
 Without proper `--docker-hub` and `--image` flags, the builder will generate invalid image tags like `/:version` instead of `username/image:version`.
 
+**The Builder builds each app for one architecture.** `builder.yml` picks amd64 when `build.yaml` has an amd64 base image, and aarch64 under QEMU only otherwise (`hay_cm5_fan`). A green Builder therefore says nothing about arm64 for every other app. To check arm64, build the changed stages on an arm64 machine with no image output: `docker buildx build --output type=cacheonly --target <stage> -`, with the Dockerfile on stdin when the stages copy nothing from the context (done for `lemonade` in PR #103).
+
 ## Automated PR Management
 
 The repository includes comprehensive automation for managing pull requests:
