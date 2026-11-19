@@ -100,9 +100,10 @@ still need glibc.
 So the image stays on the repo-standard Alpine base and bundles a glibc
 closure:
 
-1. Stage `glibc-provider` (`ubuntu:26.04`) downloads the Lemonade
-   "embeddable" archive and copies the `ldd` closure of `lemond` + `lemonade`
-   into `/glibc/lib`, plus the ELF loader.
+1. Stage `lemonade-archive` (the app's base image) downloads the Lemonade
+   "embeddable" archive. Stage `glibc-provider` (`ubuntu:26.04`) copies the
+   `ldd` closure of `lemond` + `lemonade` into `/glibc/lib`, plus the ELF
+   loader.
 2. The Alpine runtime stage copies that to `/opt/glibc/lib` and puts the loader
    at the exact path baked into the binaries (`/lib64/ld-linux-x86-64.so.2` on
    amd64, `/lib/ld-linux-aarch64.so.1` on aarch64).
@@ -127,6 +128,12 @@ Rules that follow from this:
   `lemond` and inherits it, which is exactly what it needs.
 - The closure is computed with `ldd`, not hand-listed, so a new upstream
   dependency cannot silently go missing.
+- **The Ubuntu package step is small on purpose** (root CLAUDE.md "A distro's
+  package server at build time"): no `ARG` in the `glibc-provider` stage,
+  `main` only, apt's mirror list, and no curl there. A library from outside
+  `main` needs its component added to the sources line. A new mirror must be
+  plain http (the image has no CA certificates) and carry both architectures:
+  check `dists/resolute-updates/main/binary-arm64/Packages.xz` on it.
 
 ### The web app under ingress
 

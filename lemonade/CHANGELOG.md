@@ -4,6 +4,8 @@
 
 _2026-11-18_
 
+> _Maintenance (2026-11-19):_ Updates are less exposed to a failing Ubuntu server. On 2026-11-19 that server was failing and an update sat at "installing 0%" for 19 minutes. The build now downloads about 4.5 MB from it instead of 34 MB, reuses that step between Lemonade versions, and switches to a mirror when the server does not answer. Nothing in the running app changes and no rebuild is needed.
+
 > _App changes:_ No change to how the app works. This is the first release here since 2026.45.3, so the notes for 2026.46.2 follow below. The container backends added in 2026.46.2 need an AMD Strix Halo GPU and Podman or Docker beside the server; in this app they are listed as unsupported and nothing else changes. The `ctx_size` option is now described for what `0` does: it selects Lemonade's Auto tune, which on the CPU gives 4096 tokens in this release rather than a larger window, so the default stays 8192. The bundled llama.cpp moves from b11846 to b12109.
 
 ## Headline

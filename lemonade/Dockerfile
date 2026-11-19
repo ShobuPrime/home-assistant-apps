@@ -3,41 +3,18 @@ ARG BUILD_FROM
 ARG LEMONADE_VERSION=2026.47.1
 
 # ---------------------------------------------------------------------------
-# Stage 1: Fetch Lemonade and collect the glibc runtime it needs
+# Stage 0: Fetch Lemonade
 #
-# Upstream ships no musl build of `lemond`, and the llama.cpp backends
-# Lemonade downloads at runtime are glibc builds too, so a glibc runtime has to
-# come along. Rather than switching this app to a Debian base image (which
-# would cost ~45 MB of base alone and diverge from every other app in this
-# repo), we bundle just the glibc closure into the standard Alpine base — the
-# same approach muninndb already uses here.
+# The "embeddable" archive is the right artifact: just `lemond`, the `lemonade`
+# CLI and `resources/`, with no systemd unit and no distro package dependencies.
 #
-# The donor's glibc must be at least what lemond and the backends it downloads
-# were linked against, and that moves without notice. 2026.45.3's amd64 lemond
-# needed GLIBC_2.43 (built on `ubuntu-latest`), which ruled out Debian trixie
-# (2.41). 2026.47.1 pinned that job to `ubuntu-24.04` and needs 2.38; the
-# ort-server backend needs 2.39. Ubuntu 26.04 (2.43) covers them and is a
-# pinned LTS.
+# Fetched on the app's own base image because it already has curl and CA
+# certificates. The Ubuntu stage below then installs libraries only.
 # ---------------------------------------------------------------------------
-FROM mirror.gcr.io/library/ubuntu:26.04 AS glibc-provider
+FROM $BUILD_FROM AS lemonade-archive
 
 ARG LEMONADE_VERSION
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        libdrm-amdgpu1 \
-        libgcc-s1 \
-        libgomp1 \
-        libssl3t64 \
-        libstdc++6 \
-        libzstd1 \
-        zlib1g \
-    && rm -rf /var/lib/apt/lists/*
-
-# The "embeddable" archive is the right artifact: just `lemond`, the `lemonade`
-# CLI and `resources/`, with no systemd unit and no distro package dependencies.
 RUN \
     ARCH="$(uname -m)" \
     && if [ "${ARCH}" = "aarch64" ]; then \
@@ -56,6 +33,67 @@ RUN \
     && rm /tmp/lemonade.tar.gz \
     && chmod +x /opt/lemonade/lemond /opt/lemonade/lemonade \
     && test -f /opt/lemonade/resources/server_models.json
+
+# ---------------------------------------------------------------------------
+# Stage 1: Collect the glibc runtime Lemonade needs
+#
+# Upstream ships no musl build of `lemond`, and the llama.cpp backends
+# Lemonade downloads at runtime are glibc builds too, so a glibc runtime has to
+# come along. Rather than switching this app to a Debian base image (which
+# would cost ~45 MB of base alone and diverge from every other app in this
+# repo), we bundle just the glibc closure into the standard Alpine base — the
+# same approach muninndb already uses here.
+#
+# The donor's glibc must be at least what lemond and the backends it downloads
+# were linked against, and that moves without notice. 2026.45.3's amd64 lemond
+# needed GLIBC_2.43 (built on `ubuntu-latest`), which ruled out Debian trixie
+# (2.41). 2026.47.1 pinned that job to `ubuntu-24.04` and needs 2.38; the
+# ort-server backend needs 2.39. Ubuntu 26.04 (2.43) covers them and is a
+# pinned LTS.
+# ---------------------------------------------------------------------------
+FROM mirror.gcr.io/library/ubuntu:26.04 AS glibc-provider
+
+# Ubuntu's package server is the one download in this build that no registry
+# cache covers. On 2026-11-19 it was failing, and this step took 18 minutes of
+# a 19-minute build on the device. So:
+#   - No ARG in this stage: the layer is reused between Lemonade versions and
+#     rebuilt only when the Ubuntu image changes.
+#   - `main` only: 4 MB of package lists, not 27 MB.
+#   - A mirror list: apt goes to the next server when one does not answer.
+#     Packages are signature-checked whichever server sends them. The mirrors
+#     are plain http because this image has no CA certificates.
+RUN set -eu \
+    && CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME}")" \
+    && printf '%s\tpriority:%s\n' \
+        http://archive.ubuntu.com/ubuntu/ 1 \
+        http://azure.archive.ubuntu.com/ubuntu/ 2 \
+        http://mirrors.edge.kernel.org/ubuntu/ 3 \
+        > /etc/apt/mirrors.list \
+    && printf '%s\n' \
+        'Types: deb' \
+        'URIs: mirror+file:/etc/apt/mirrors.list' \
+        "Suites: ${CODENAME} ${CODENAME}-updates ${CODENAME}-security" \
+        'Components: main' \
+        'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
+        > /etc/apt/sources.list.d/ubuntu.sources \
+    # Give up on a silent server after 15s (default 30), and fail here rather
+    # than at the install when no server has the package lists.
+    && printf '%s\n' \
+        'Acquire::http::Timeout "15";' \
+        'APT::Update::Error-Mode "any";' \
+        > /etc/apt/apt.conf.d/80-build \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libdrm-amdgpu1 \
+        libgcc-s1 \
+        libgomp1 \
+        libssl3t64 \
+        libstdc++6 \
+        libzstd1 \
+        zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=lemonade-archive /opt/lemonade /opt/lemonade
 
 # Collect the closure with `ldd` rather than a hand-written library list, so a
 # new upstream dependency can't silently go missing.
@@ -191,7 +229,7 @@ RUN \
 
 # Bundled glibc runtime + the Lemonade binaries
 COPY --from=glibc-provider /glibc /opt/glibc
-COPY --from=glibc-provider /opt/lemonade /opt/lemonade
+COPY --from=lemonade-archive /opt/lemonade /opt/lemonade
 
 # HA bridge (static, CGO-free — needs none of the glibc closure above)
 COPY --from=bridge-builder /ha-lemonade-bridge /opt/ha-lemonade-bridge/ha-lemonade-bridge
@@ -259,7 +297,7 @@ ARG BUILD_NAME
 ARG BUILD_REF
 ARG BUILD_REPOSITORY
 ARG BUILD_VERSION
-# Re-declared: the global ARG was consumed by the glibc-provider stage.
+# Re-declared: a global ARG is visible only in a stage that declares it.
 ARG LEMONADE_VERSION
 
 # Labels

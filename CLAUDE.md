@@ -279,6 +279,34 @@ the same limit — a Docker Hub timeout there failed a master Builder run while
 every Dockerfile was already mirrored. Any `docker run`/`docker pull` in CI
 takes the mirror as well.
 
+## A distro's package server at build time: small, cached, with a fallback
+
+`apt-get update && apt-get install` in a build stage downloads from the
+distro's own servers, on the device, and no registry cache covers it. On
+2026-11-19 Ubuntu's archive was failing for everyone. Lemonade's update sat at
+"installing 0%" for 19 minutes, 18 of them in that step (the Supervisor shows
+no percentage for a build).
+
+`lemonade/Dockerfile`'s `glibc-provider` stage is the pattern:
+
+- **No `ARG` above the package step.** Every `RUN` after an `ARG` runs again
+  when its value changes, so a version ARG at the top of the stage downloads
+  the packages again on every bump.
+- **Fetch only the lists you use.** Ubuntu's `main` is 4 MB; all four
+  components are 27 MB.
+- **Give apt a mirror list** (`mirror+file:`). It moves to the next server when
+  one does not answer. A server that answers slowly is not a failure to apt,
+  so only the smaller download helps there.
+- **Keep tools out of that stage.** curl and CA certificates added 26 packages
+  to it to download one archive; the app's base image already has both.
+
+Together: 4.5 MB from Ubuntu instead of 34 MB. Measured on amd64 with servers
+made unreachable (`--add-host <name>:192.0.2.1`): normal 7s, main server silent
+62s, two of three silent 97s, all three a clear failure after 54s.
+
+`muninndb`'s `source` stage has the same kind of step against Debian's server
+and has not been changed.
+
 ## dockerd rejects Docker API calls that arrive through HA's ingress
 
 Any app that hands the Docker socket to a web UI reachable through Home
