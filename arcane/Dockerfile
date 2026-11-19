@@ -1,4 +1,14 @@
 ARG BUILD_FROM
+
+# ha-arcane-ingress: makes Arcane's web UI work under Home Assistant ingress
+# (ha-arcane-ingress/main.go). Built in a stage of the target platform, like
+# the other apps' Go helpers.
+FROM mirror.gcr.io/library/golang:1.27.3-alpine AS ingress-builder
+WORKDIR /src
+COPY ha-arcane-ingress/go.mod ha-arcane-ingress/*.go ha-arcane-ingress/shim.js ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ha-arcane-ingress . \
+    && test -x /ha-arcane-ingress
+
 FROM $BUILD_FROM
 
 # Build arguments for version
@@ -46,6 +56,8 @@ RUN \
 # /app/data, the data volume of its own image. Here that would be the container
 # layer, which is discarded on every restart, so point it into /data.
 RUN mkdir -p /app && ln -s /data/arcane/data /app/data
+
+COPY --from=ingress-builder /ha-arcane-ingress /usr/bin/ha-arcane-ingress
 
 # Copy root filesystem
 COPY rootfs /

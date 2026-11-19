@@ -1,10 +1,11 @@
 name: "Arcane Docker Manager"
 description: "Modern Docker management UI - lightweight alternative to Portainer"
-version: "3.1.0"
+version: "3.1.0.1"
 slug: "arcane"
 init: false
 ingress: true
-ingress_port: 3552
+# ha-arcane-ingress, not Arcane itself: Arcane cannot run under a path prefix.
+ingress_port: 3554
 ingress_stream: true
 panel_icon: mdi:docker
 panel_title: Arcane

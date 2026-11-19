@@ -38,13 +38,37 @@ When enabled (default), hides Home Assistant system containers from the Arcane i
 
 ## Access Methods
 
-1. **Via Sidebar**: Click the Arcane icon in Home Assistant (uses ingress)
+1. **Via Sidebar**: Click the Arcane icon in Home Assistant
 2. **Direct HTTP**: `http://[your-ip]:3552`
+
+Both show the same Arcane. Each has its own sign-in.
+
+### Sidebar panel
+
+Arcane is built to sit at the top of a site, and Home Assistant shows a panel
+under a longer address. A small proxy in this app bridges the two. Only the
+sidebar uses it; port 3552 goes straight to Arcane.
+
+- **Separate sign-in.** Signing in or out in the sidebar does not change the
+  direct address, and the other way round.
+- **Links for use elsewhere.** A webhook URL or an agent's setup command is
+  built from the address you are looking at. Copy those from the direct
+  address.
+- **Single sign-on (OIDC) and passkeys** have not been tested in the panel.
+  Use the direct address for them.
+- **Reloading.** Reload the Home Assistant page as usual. A page of Arcane
+  opened in a tab of its own, such as a link opened in a new tab, works but
+  does not survive that tab being reloaded.
+- **Older browsers** (Safari and iOS before 26.2, Firefox before 147): when
+  your Arcane session runs out, the panel can show Home Assistant itself
+  instead of the sign-in form. Open the panel again.
 
 ## Port Information
 
 - **3552**: Main web interface
 - **3553**: Agent communication port (for multi-host setups)
+
+The sidebar reaches the app on a third port, 3554, inside Home Assistant only.
 
 ## Data Persistence
 
@@ -148,13 +172,19 @@ If the database becomes corrupted:
 2. Delete `/data/arcane/arcane.db`
 3. Restart the app (you'll need to reconfigure)
 
+### The Sidebar Panel Is Blank or Shows Home Assistant
+
+1. Reload the Home Assistant page and open the panel again
+2. Check that the direct address `http://[your-ip]:3552` works. If it does,
+   only the panel is affected: report it, and use the direct address meanwhile
+3. Look in this app's log for lines starting with `ingress:`
+
 ### WebSocket Connection Issues
 
 If real-time updates aren't working:
 
-1. Check if ingress is properly configured
-2. Verify no firewall is blocking WebSocket connections
-3. Try accessing directly via port 3552
+1. Verify no firewall is blocking WebSocket connections
+2. Try accessing directly via port 3552
 
 ## Updating
 
