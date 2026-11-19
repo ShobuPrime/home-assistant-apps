@@ -35,6 +35,15 @@ if [[ -d /data/projects ]]; then
     chown -R "${PUID}:${PGID}" /data/projects
 fi
 
+# /builds is Arcane's default place for build workspaces, as in its own image.
+chown "${PUID}:${PGID}" /builds
+
+# Directory settings an early release of this app left pointing where Arcane
+# cannot write. Run as Arcane's user, so the database files stay its own.
+while IFS= read -r line; do
+    bashio::log.notice "${line}"
+done < <(s6-setuidgid "${PUID}:${PGID}" /usr/share/arcane/migrate-settings.sh /data/arcane/arcane.db 2>&1)
+
 # Check if Arcane binary exists and is executable
 if [[ ! -f /opt/arcane/arcane ]]; then
     bashio::log.error "Arcane binary not found at /opt/arcane/arcane!"

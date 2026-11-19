@@ -22,6 +22,9 @@ ARG ARCANE_VERSION=3.1.0
 # those world entries and upgrades the whole TLS stack to the repo version in one
 # transaction (no version pinning). Listing the libs explicitly is required:
 # under apk-tools 3, `apk upgrade [--available]` does not override an exact pin.
+#
+# sqlite is here for usr/share/arcane/migrate-settings.sh only and goes with it
+# (LEGACY UNTIL 2027-06-01).
 RUN \
     apk upgrade --no-cache \
     && apk add --no-cache --upgrade \
@@ -30,7 +33,8 @@ RUN \
         jq \
         openssl \
         libcrypto3 \
-        libssl3
+        libssl3 \
+        sqlite
 
 # Download and install Arcane
 # Release assets are raw binaries named: arcane_linux_amd64, arcane_linux_arm64
@@ -52,10 +56,13 @@ RUN \
     && chmod +x /opt/arcane/arcane \
     && echo "Arcane installed successfully"
 
-# Arcane keeps projects, templates, git known_hosts and its Docker config under
-# /app/data, the data volume of its own image. Here that would be the container
-# layer, which is discarded on every restart, so point it into /data.
-RUN mkdir -p /app && ln -s /data/arcane/data /app/data
+# Upstream's image provides two directories and Arcane's defaults point at
+# them: /app/data (its data volume: projects, templates, git known_hosts, its
+# Docker config) and /builds (build workspaces). /app/data would be the
+# container layer here, discarded on every restart, so it leads into /data.
+# tests/upstream_paths.py reads the defaults out of the binary and fails the
+# smoke test when a release adds a path this image does not provide.
+RUN mkdir -p /app /builds && ln -s /data/arcane/data /app/data
 
 COPY --from=ingress-builder /ha-arcane-ingress /usr/bin/ha-arcane-ingress
 
@@ -65,7 +72,8 @@ COPY rootfs /
 # Ensure scripts are executable
 RUN chmod a+x /etc/cont-init.d/*.sh \
     && chmod a+x /etc/services.d/*/run \
-    && chmod a+x /etc/services.d/*/finish
+    && chmod a+x /etc/services.d/*/finish \
+    && chmod a+x /usr/share/arcane/*.sh
 
 # Build arguments
 ARG BUILD_ARCH

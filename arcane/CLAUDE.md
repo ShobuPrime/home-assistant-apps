@@ -43,6 +43,8 @@ The update script fetches the latest release from GitHub and updates all relevan
 - **`/rootfs/etc/services.d/arcane-ingress/`**: runs `ha-arcane-ingress` as `nobody`
 - **`/ha-arcane-ingress/`**: the ingress proxy (Go, stdlib only) and `shim.js`, the script it adds to Arcane's page
 - **`/tests/ingress_test.py`**: opens the panel in a real browser behind a stand-in for Home Assistant
+- **`/tests/upstream_paths.py`**: reads Arcane's default paths out of its binary and checks the image provides them
+- **`/rootfs/usr/share/arcane/migrate-settings.sh`** and **`/tests/migrate-settings-test.sh`**: move a stored path an early release left behind (until 2027-06-01)
 
 ### Critical Files
 - **`config.yaml`**: App configuration (version, ports, ingress, options schema)
@@ -142,12 +144,54 @@ Arcane 3 reads only `ARCANE_`-prefixed names (`services.d/arcane/run`):
 Legacy names are every `ARCANE_*` setting with the prefix removed, so check a
 new base-image variable against that list.
 
-### `/app/data`
-Upstream treats `/app/data` as its data volume: projects, templates, git
-`known_hosts`, its Docker config. The image symlinks it to `/data/arcane/data`
-and cont-init creates the target first, because `MkdirAll` through a dangling
-symlink fails. Without the symlink all of it lands in the container layer and
-is lost on every restart.
+### Upstream's paths
+Arcane's defaults point at two directories its own image provides. This image
+provides the same two:
+
+| Path | What Arcane keeps there | Here |
+|---|---|---|
+| `/app/data` | projects, templates, swarm sources, git `known_hosts`, its Docker config | symlink to `/data/arcane/data`. cont-init creates the target first: `MkdirAll` through a dangling symlink fails |
+| `/builds` | build workspaces | a directory owned by `PUID`, lost on restart, as in upstream's image with no volume there |
+
+`tests/upstream_paths.py` reads every path default out of the binary, where
+they are struct tags (`key:"projectsDirectory" default:"/app/data/projects"`),
+and the smoke test fails when one is not provided or is new. That is how a
+change to upstream's layout gets noticed. Answer it by providing the path and
+adding it to `KNOWN`, not by keeping an old path alive.
+
+Upstream reads a setting from the environment (`ARCANE_<SNAKE_CASE_KEY>`), then
+the `settings` table, then the default. A new install stores no directory
+rows. An environment value locks the setting in the UI, so the app sets none
+for directories.
+
+### A stored path from an early release (until 2027-06-01)
+Until early 2026 the app ran Arcane from `/opt/arcane`. Arcane makes a relative
+directory setting absolute against its working directory and stores it, so
+those installs hold `projectsDirectory = /opt/arcane/data/projects`. Arcane has
+since run as `PUID` from `/data/arcane` and cannot create that folder: `mkdir
+/opt/arcane/data: permission denied` in the log every few minutes, and creating
+a project returns 500. Found on a device on 2026-11-19, the same on 2.17.3 and
+3.1.0.
+
+`usr/share/arcane/migrate-settings.sh` runs from cont-init as `PUID` and
+rewrites values under `/opt/arcane/data` to the same path under `/app/data`
+(3.1.0.2). It changes no other value, copies files first if there are any, and
+never keeps Arcane from starting. It carries `LEGACY UNTIL 2027-06-01`: after
+that date the smoke test fails until the script, its call and its tests are
+removed (root CLAUDE.md, "Legacy handling has an end date"). DOCS.md has the
+manual fix.
+
+No test on new data shows the failure, because a new install has no such row.
+`tests/migrate-settings-test.sh` covers the script. The smoke test also stores
+the old path in Arcane's own database and starts Arcane on the result.
+busybox `cp -n` skips a folder that exists instead of filling it, which is why
+the script copies file by file.
+
+### After an unclean stop Arcane 3 takes two minutes to come back
+Measured 2026-11-19 after a `docker rm -f`: 123 s of `Waiting for the previous
+actor host registration to expire` before `/api/health` answered, and Docker
+marked the container unhealthy on the way. A normal stop (SIGTERM, 4 s) leaves
+nothing to wait for. Not changed here.
 
 ### Testing Checklist
 - Build completes successfully

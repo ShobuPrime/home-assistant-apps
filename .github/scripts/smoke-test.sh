@@ -83,6 +83,20 @@ echo "  Docker API: ${NEEDS_DOCKER}"
 echo ""
 
 # ---------------------------------------------------------------------------
+# Legacy handling past its date
+# ---------------------------------------------------------------------------
+# Code kept only for installs an old release made carries a removal date
+# (CLAUDE.md, "Legacy handling has an end date"). Past it, the app stops
+# building here until that code is gone.
+if EXPIRED=$("${SCRIPT_DIR}/check-legacy-markers.sh" "${APP_DIR}"); then
+    pass "No legacy handling past its removal date"
+else
+    echo "${EXPIRED}"
+    echo -e "  ${RED}FAIL${NC}: legacy handling is past its removal date. Remove it, or move the date and say why."
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
 # Create network and start mock Supervisor
 # ---------------------------------------------------------------------------
 docker network create "${NETWORK_NAME}" > /dev/null 2>&1
@@ -704,6 +718,55 @@ case "${SLUG}" in
 
     arcane)
         wait_for_health "${HEALTH_PORT}" 120
+
+        # --- Upstream's paths ---
+        # Arcane's defaults name directories its own image provides. Read them
+        # out of the binary and check this image provides each one
+        # (arcane/tests/upstream_paths.py). A release that adds a path stops here.
+        if python3 "${APP_DIR}/tests/upstream_paths.py" --container "${CONTAINER_NAME}"; then
+            pass "Every path Arcane uses by default is provided"
+        else
+            fail "A default path of Arcane's is missing here, or is new (see PROBLEM above)"
+        fi
+        DENIED=$(docker logs "${CONTAINER_NAME}" 2>&1 | grep -E '(mkdir|create directory) .*permission denied' | head -3 || true)
+        if [ -z "${DENIED}" ] && docker exec "${CONTAINER_NAME}" test -d /data/arcane/data/projects; then
+            pass "Arcane created its projects directory in /data"
+        else
+            echo "${DENIED:-(no /data/arcane/data/projects)}" | sed 's/^/    /'
+            fail "Arcane could not create a directory it needs (see above)"
+        fi
+
+        # --- Settings left by an early release of this app ---
+        # Goes away with arcane/rootfs/usr/share/arcane/migrate-settings.sh.
+        if docker exec -i "${CONTAINER_NAME}" bash -s -- /usr/share/arcane/migrate-settings.sh \
+            < "${APP_DIR}/tests/migrate-settings-test.sh"; then
+            pass "Settings migration: every case in tests/migrate-settings-test.sh"
+        else
+            fail "Settings migration test failed (see FAIL above)"
+        fi
+        # The same on Arcane's own database: stop Arcane, store the old path,
+        # run the step the way cont-init does, start Arcane again.
+        ARCANE_USER=$(docker exec "${CONTAINER_NAME}" stat -c '%u:%g' /data/arcane/arcane.db)
+        asql() { docker exec -u "${ARCANE_USER}" "${CONTAINER_NAME}" sqlite3 -batch /data/arcane/arcane.db "$1"; }
+        docker exec "${CONTAINER_NAME}" s6-svc -wD -T 30000 -d /run/service/arcane
+        asql "insert or replace into settings (key, value) values ('projectsDirectory', '/opt/arcane/data/projects');"
+        MIGRATED=$(docker exec "${CONTAINER_NAME}" s6-setuidgid "${ARCANE_USER}" \
+            /usr/share/arcane/migrate-settings.sh /data/arcane/arcane.db 2>&1 || true)
+        STORED=$(asql "select value from settings where key = 'projectsDirectory';")
+        RESTARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        docker exec "${CONTAINER_NAME}" s6-svc -u /run/service/arcane
+        wait_for_health "${HEALTH_PORT}" 120
+        sleep 5
+        DENIED=$(docker logs --since "${RESTARTED_AT}" "${CONTAINER_NAME}" 2>&1 | grep 'permission denied' | head -3 || true)
+        UNCHECKED=$(docker logs "${CONTAINER_NAME}" 2>&1 | grep -E 'were not checked|migrate-settings\.sh' | head -3 || true)
+        if [ "${STORED}" = "/app/data/projects" ] \
+            && grep -q "moved from /opt/arcane/data/projects to /app/data/projects" <<< "${MIGRATED}" \
+            && [ -z "${DENIED}" ] && [ -z "${UNCHECKED}" ]; then
+            pass "An install with the old projects path is moved to /app/data/projects, and Arcane starts on it"
+        else
+            printf 'stored: %s\nthe step said: %s\n%s\n%s\n' "${STORED}" "${MIGRATED}" "${DENIED}" "${UNCHECKED}" | sed 's/^/    /'
+            fail "The old projects path was not migrated cleanly"
+        fi
 
         # --- The sidebar panel ---
         # Arcane cannot run under a path prefix, so ingress goes to
