@@ -49,6 +49,8 @@ The repository uses the `home-assistant/builder` action for automated app builds
 
 Without proper `--docker-hub` and `--image` flags, the builder will generate invalid image tags like `/:version` instead of `username/image:version`.
 
+**The Builder builds each app for one architecture.** `builder.yml` picks amd64 when `build.yaml` has an amd64 base image, and aarch64 under QEMU only otherwise (`hay_cm5_fan`). A green Builder therefore says nothing about arm64 for every other app. To check arm64, build the changed stages on an arm64 machine with no image output: `docker buildx build --output type=cacheonly --target <stage> -`, with the Dockerfile on stdin when the stages copy nothing from the context (done for `lemonade` in PR #103).
+
 ## Automated PR Management
 
 The repository includes comprehensive automation for managing pull requests:
@@ -278,6 +280,34 @@ the mock Supervisor and an MQTT broker with `docker run`, and those pulls hit
 the same limit — a Docker Hub timeout there failed a master Builder run while
 every Dockerfile was already mirrored. Any `docker run`/`docker pull` in CI
 takes the mirror as well.
+
+## A distro's package server at build time: small, cached, with a fallback
+
+`apt-get update && apt-get install` in a build stage downloads from the
+distro's own servers, on the device, and no registry cache covers it. On
+2026-11-19 Ubuntu's archive was failing for everyone. Lemonade's update sat at
+"installing 0%" for 19 minutes, 18 of them in that step (the Supervisor shows
+no percentage for a build).
+
+`lemonade/Dockerfile`'s `glibc-provider` stage is the pattern:
+
+- **No `ARG` above the package step.** Every `RUN` after an `ARG` runs again
+  when its value changes, so a version ARG at the top of the stage downloads
+  the packages again on every bump.
+- **Fetch only the lists you use.** Ubuntu's `main` is 4 MB; all four
+  components are 27 MB.
+- **Give apt a mirror list** (`mirror+file:`). It moves to the next server when
+  one does not answer. A server that answers slowly is not a failure to apt,
+  so only the smaller download helps there.
+- **Keep tools out of that stage.** curl and CA certificates added 26 packages
+  to it to download one archive; the app's base image already has both.
+
+Together: 4.5 MB from Ubuntu instead of 34 MB. Measured on amd64 with servers
+made unreachable (`--add-host <name>:192.0.2.1`): normal 7s, main server silent
+62s, two of three silent 97s, all three a clear failure after 54s.
+
+`muninndb`'s `source` stage has the same kind of step against Debian's server
+and has not been changed.
 
 ## dockerd rejects Docker API calls that arrive through HA's ingress
 
