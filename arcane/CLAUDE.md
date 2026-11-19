@@ -72,13 +72,25 @@ armv7/armhf is NOT supported by upstream Arcane.
 - Encryption keys are auto-generated on first start and stored in `/data/arcane/.secrets`
 
 ### Environment Variables
-Arcane requires these environment variables:
-- `ENCRYPTION_KEY`: 32-byte encryption key (auto-generated)
-- `JWT_SECRET`: JWT signing secret (auto-generated)
-- `PORT`: Application port (3552)
-- `DOCKER_HOST`: Docker socket location
-- `DATABASE_URL`: SQLite database path
-- `PUID`/`PGID`: User/Group ID for file permissions
+Arcane 3 reads only `ARCANE_`-prefixed names (`services.d/arcane/run`):
+- `ARCANE_ENCRYPTION_KEY`: from `ENCRYPTION_KEY` in `/data/arcane/.secrets` (auto-generated)
+- `ARCANE_PORT`: Application port (3552)
+- `ARCANE_DATABASE_URL`: SQLite database path
+- `ARCANE_APP_URL`, `ARCANE_LOG_LEVEL`, `ARCANE_ENVIRONMENT`
+- `DOCKER_HOST`, `PUID`/`PGID`: not prefixed upstream
+
+**It refuses to start while a legacy name is set without its `ARCANE_` twin**
+(`backend/internal/config/schema/legacy.go`). The base image exports
+`LOG_LEVEL`, so the run script unsets it and always sets `ARCANE_LOG_LEVEL`.
+Legacy names are every `ARCANE_*` setting with the prefix removed, so check a
+new base-image variable against that list.
+
+### `/app/data`
+Upstream treats `/app/data` as its data volume: projects, templates, git
+`known_hosts`, its Docker config. The image symlinks it to `/data/arcane/data`
+and cont-init creates the target first, because `MkdirAll` through a dangling
+symlink fails. Without the symlink all of it lands in the container layer and
+is lost on every restart.
 
 ### Testing Checklist
 - Build completes successfully
@@ -96,7 +108,8 @@ Arcane requires these environment variables:
 - **Protection mode** must be disabled for the app to function
 - **Ingress** integration requires WebSocket support (ingress_stream: true)
 - **AppArmor profile** is critical for security - modifications require careful testing
-- **Default credentials** are `arcane`/`arcane-admin` - users must change on first login
+- **First password**: a new install gets a generated password in `/data/arcane/data/initial-admin-password`; the run script prints it to the app log. `arcane-admin` was Arcane 2
+- **Ingress is broken upstream-side**: the web app requests `/_app/...`, `/service-worker.js` and `/app.webmanifest` from the site root, outside the ingress path, on 2.17.3 and 3.1.0 alike (checked 2026-11-18 behind a prefix-stripping proxy). Only direct access on 3552 works
 - **Encryption keys** in `.secrets` must not be deleted or the database becomes inaccessible
 
 ## Common Issues and Troubleshooting
