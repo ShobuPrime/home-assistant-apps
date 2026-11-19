@@ -156,7 +156,7 @@ is simply skipped. See DOCS.md for the full behaviour.
 
 How much conversation the model can consider at once, in tokens. Defaults to
 8192 to match Home Assistant. If you raise it in the integration, raise it here
-too. Set to 0 to use the model's own default.
+too. 0 selects Lemonade's Auto tune instead: 4096 on the CPU in this release.
 
 ### Option: `max_loaded_models`
 
@@ -198,4 +198,4 @@ Got questions or found a bug? Please open an issue on the GitHub repository.
 
 ## Version
 
-Currently running Lemonade 2026.45.3
+Currently running Lemonade 2026.47.1

@@ -1,6 +1,6 @@
 # Global ARGs must be declared before the first FROM
 ARG BUILD_FROM
-ARG LEMONADE_VERSION=2026.45.3
+ARG LEMONADE_VERSION=2026.47.1
 
 # ---------------------------------------------------------------------------
 # Stage 1: Fetch Lemonade and collect the glibc runtime it needs
@@ -12,10 +12,12 @@ ARG LEMONADE_VERSION=2026.45.3
 # repo), we bundle just the glibc closure into the standard Alpine base — the
 # same approach muninndb already uses here.
 #
-# The donor's glibc must be at least what lemond was linked against, and that
-# moves: upstream builds amd64 on `ubuntu-latest` and arm64 on `ubuntu-24.04-arm`.
-# 2026.45.3's amd64 lemond needs GLIBC_2.43, which ruled out Debian trixie (2.41).
-# Ubuntu 26.04 matches that runner and is a pinned LTS.
+# The donor's glibc must be at least what lemond and the backends it downloads
+# were linked against, and that moves without notice. 2026.45.3's amd64 lemond
+# needed GLIBC_2.43 (built on `ubuntu-latest`), which ruled out Debian trixie
+# (2.41). 2026.47.1 pinned that job to `ubuntu-24.04` and needs 2.38; the
+# ort-server backend needs 2.39. Ubuntu 26.04 (2.43) covers them and is a
+# pinned LTS.
 # ---------------------------------------------------------------------------
 FROM mirror.gcr.io/library/ubuntu:26.04 AS glibc-provider
 
