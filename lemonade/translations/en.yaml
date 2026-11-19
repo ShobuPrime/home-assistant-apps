@@ -82,9 +82,10 @@ configuration:
     description: >-
       How many tokens of conversation the model can consider at once. Defaults
       to 8192 to match what Home Assistant's Ollama integration asks for, so
-      the two agree out of the box. Lower it only if you are short on memory —
-      if it is smaller than what Home Assistant requests, long conversations
-      get truncated. Set to 0 to use each model's own default.
+      the two agree out of the box. Lower it only if you are short on memory:
+      a conversation longer than this fails with an error, it is not
+      shortened. 0 selects Lemonade's Auto tune instead of a fixed size: on
+      the CPU that is 4096 in this release, half the default.
   max_loaded_models:
     name: Maximum loaded models
     description: >-

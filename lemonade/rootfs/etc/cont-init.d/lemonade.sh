@@ -55,8 +55,9 @@ fi
 # as options are asserted on every start.
 # ------------------------------------------------------------------------------
 CTX_SIZE="$(bashio::config 'ctx_size' '4096')"
-# Lemonade uses -1 for "let the model decide"; expose that as 0 in the UI
-# because the add-on schema only accepts non-negative integers.
+# -1 is Lemonade's "Auto tune context size"; exposed as 0 because the app schema
+# only accepts non-negative integers. On the CPU it resolves to 4096, not to
+# what fits in memory (see lemonade/CLAUDE.md), so 8192 stays the default.
 if [[ "${CTX_SIZE}" -eq 0 ]]; then
     CTX_SIZE=-1
 fi

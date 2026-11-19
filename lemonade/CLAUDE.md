@@ -109,11 +109,13 @@ closure:
 
 Rules that follow from this:
 
-- **The donor's glibc must cover what `lemond` was linked against, and that
-  moves.** Upstream builds amd64 on `ubuntu-latest` and arm64 on
-  `ubuntu-24.04-arm`, so the two differ: 2026.45.3 needs GLIBC_2.43 on amd64 and
-  2.38 on arm64, with nothing in the release notes. Hence Ubuntu 26.04. The
-  build fails on a mismatch. `readelf -d` will not show it, only `readelf -V`.
+- **The donor's glibc must cover what `lemond` and its downloaded backends were
+  linked against, and that moves.** 2026.45.3's amd64 `lemond` needed GLIBC_2.43
+  (built on `ubuntu-latest`) against 2.38 on arm64, with nothing in the release
+  notes. 2026.47.1 pinned the amd64 job to `ubuntu-24.04` and both need 2.38;
+  the `ort-server` backend needs 2.39. Hence Ubuntu 26.04 (2.43). The build
+  fails on a mismatch for `lemond`; a backend only fails when it starts.
+  `readelf -d` will not show it, only `readelf -V`.
 - **`libgomp1` must be copied explicitly.** Every llama.cpp build links OpenMP,
   but those binaries do not exist at build time so `ldd` cannot discover the
   dependency. Without it, model loading fails with
@@ -130,14 +132,16 @@ Rules that follow from this:
 
 `ha-addon-shim.js` (in `rootfs/`) is the only change to upstream's web app, and
 it does nothing outside `/api/hassio_ingress/<token>`. See `UPDATE_GUIDE.md`.
-Do not go back to patching bundles: since 2026.45.3 the client's code is
-duplicated across about 14 webpack chunks.
+Do not go back to patching bundles: the client's code moves between releases
+(about 14 chunks in 2026.45.3, `startup-chat.bundle.js` in 2026.47.1).
 
 The build and smoke test cannot prove the panel works. To check an upstream UI
 change, put a prefix-stripping proxy in front of the image, open
 `/api/hassio_ingress/<token>/web-app/#/monitor/logs` in a browser, and look for
 requests outside the prefix. `/favicon.ico` is expected. Run a control with the
-shim removed, or a clean result proves nothing.
+shim removed, or a clean result proves nothing. Put the proxy's own origin in
+`allowed_origins` first: the origin gate otherwise refuses the log WebSocket
+and the panel reads "Not connected to log stream", which is the test, not the UI.
 
 ### AppArmor: signals must be receivable
 
@@ -317,13 +321,34 @@ reveals it. The only signal is `s6-svwait: fatal: timed out` in the log, which
 
 Two things that look like they should work a certain way, and don't:
 
-- **`options.num_ctx` from the Ollama API is ignored.** Lemonade accepts the
-  request (HTTP 200) but does not resize or reload the context; the model keeps
-  the window it was loaded with. Verified on a running server by sending
-  `num_ctx: 2048` against a model loaded at 8192 — no reload, `n_ctx` unchanged.
-  So `ctx_size` in `config.yaml` is the *only* thing that sets the window, and
-  it defaults to 8192 to match HA's `DEFAULT_NUM_CTX`. Do not document
-  per-request `num_ctx` as working.
+- **`options.num_ctx` from the Ollama API is ignored while the model is loaded,
+  and applied when that request is what loads it.** Sending `num_ctx: 2048`
+  against a model loaded at 8192 changes nothing (HTTP 200, no reload). After
+  an unload, the same request loads the model at 2048; with no `num_ctx` it
+  loads at the app's `ctx_size` (run on 2026.47.1). So `ctx_size` sets the
+  window for whatever this app preloads, and Home Assistant's own value takes
+  over whenever its request finds the model evicted. Both default to 8192
+  (`DEFAULT_NUM_CTX`), which is why this stays invisible. Do not document
+  per-request `num_ctx` as resizing a loaded model.
+- **A prompt longer than the window is rejected, not truncated.** At a 2048
+  window a 7226-token request returned HTTP 500 over the Ollama API (what Home
+  Assistant uses) and 400 `context_length_exceeded` over the OpenAI API, both
+  with `request (7226 tokens) exceeds the available context size (2048
+  tokens)` (2026.47.1, llama.cpp b12109). A too-small window is an outage for
+  Assist, not a quality loss.
+- **"Auto tune context size" (`ctx_size: -1`, app option `0`) is 4096 on the
+  CPU, not "as much as fits".** `auto_tune.h` gets a memory total only from an
+  Apple Silicon device, an AMD iGPU or an AMD dGPU's GTT; a CPU model on
+  anything else has none, so `resolve_auto_ctx_size` returns
+  `AUTO_CTX_FALLBACK` (4096; 8192 for embedding models). Same code in 2026.45.3
+  and 2026.47.1. Run on 2026.47.1 with the option at `0`: `memory undetectable,
+  returning 4096`, then `--ctx-size 4096`, with and without GPU sysfs visible.
+  So it halves this app's default, and the Web UI checkbox does the same per
+  model (per-model options survive restarts). **2026.48 changes this**: their
+  PR #4182 (in `candidate-v2026.48.0`) adds a physical-RAM branch, so auto then
+  sizes from free RAM up to the model's full window (128000 for LFM2.5,
+  262144 for LFM3), gigabytes of KV cache. No gate flags either behaviour.
+  Measure on the device before defaulting it on.
 - **Tool calling works far better than an earlier note here claimed.** That note
   said the 230M model "rarely uses it" and answered in prose even with
   `tool_choice: "required"`. That was wrong, and the cause was the test: those
@@ -355,7 +380,8 @@ Two things that look like they should work a certain way, and don't:
 
 Compare like with like before calling something a regression: check `in=` on
 lemond's `Telemetry` log line. Decode speed depends on context size, not just
-settings. These are LFM2.5-230M Q4_K_M, llama.cpp b11846.
+settings. These are LFM2.5-230M Q4_K_M, llama.cpp b11846. 2026.47.1 bundles
+b12109, which has not been measured.
 
 | Context | 4 threads (upstream default) | `--threads 2 --threads-batch 4 --poll 0 --poll-batch 50` |
 |---|---|---|
@@ -395,6 +421,29 @@ settings. These are LFM2.5-230M Q4_K_M, llama.cpp b11846.
 - Sustained load reaches 85°C and clocks start to dip, so let the CPU cool to the
   same temperature between benchmark runs. `--prio 2` fails to start in the
   container.
+
+### Container backends (2026.46.2+) are not wired up, on purpose
+
+Six backends ship as OCI images instead of binaries: `llamacpp:nathanw`,
+`llamacpp:halobox`, `rocmfpx:rocm`, `gufo:rocm`, `ds4:rocm`, `halogen:rocm`.
+Upstream's design is `docs/dev/specs/container-backends.md` in their repo.
+
+- **Nothing here can run one.** All six are gated to Linux with an AMD Strix
+  Halo iGPU (`gfx1151`) and their images are `linux/amd64` only. On this app
+  they report `unsupported` / `Unsupported GPU` in `/api/v1/system-info` and
+  lemond never looks for a container tool. Verified on 2026.47.1.
+- **HAOS rules out five of the six even on a Strix Halo.** Its x86-64 kernel is
+  built without `CONFIG_HSA_AMD`, so there is no `/dev/kfd` and no ROCm. Only
+  `llamacpp:nathanw` (Vulkan, `/dev/dri`) could work.
+- **lemond expects to run on the host.** It shells out to `podman` or `docker`,
+  bind-mounts model files by the paths it sees itself, and with Docker dials the
+  backend at its address on a per-container `--internal` network. From inside
+  this container, the host socket would get paths that do not exist on the host
+  and a network lemond cannot reach, and it costs Protection mode and the
+  security rating (8 to 1). A nested engine needs privileges Supervisor does
+  not grant.
+- **Revisit when** upstream ships running container backends from its own
+  Docker image (their PR #4189), or adds a backend for hardware HAOS supports.
 
 ### Configuration Handling
 

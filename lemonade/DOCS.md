@@ -187,13 +187,22 @@ keep memory free while idle, at the cost of a slow first request.
 ### Option: `ctx_size`
 
 How much conversation the model can consider at once, in tokens. Defaults to
-8192, which matches what Home Assistant's Ollama integration asks for. `0` uses
-the model's own default.
+8192, which matches what Home Assistant's Ollama integration asks for.
 
-**This setting is what actually applies.** If you raise the context size inside
-the Home Assistant integration, raise it here too — the value Home Assistant
-sends is ignored, and if this one is lower, long conversations get silently cut
-short.
+`0` hands the choice to Lemonade's **Auto tune context size**, the same setting
+as the checkbox on a model's page in the Web UI. In this release it cannot
+measure memory when the model runs on the CPU, which is how this app runs it,
+and falls back to 4096 tokens (8192 for embedding models) — half the default
+here. Lemonade 2026.48 is due to size it from free memory instead, up to the
+model's full window, which can take gigabytes. Keep a fixed number, and leave
+the checkbox unticked, unless you have checked what it picks on your device.
+
+**Keep this and Home Assistant's value the same.** A model this app loaded
+keeps the size set here, whatever Home Assistant sends. When Home Assistant's
+request is the one that loads the model, for example after it was unloaded to
+make room for another, the size Home Assistant sends is used instead. A request
+longer than the window is not shortened: it fails with `request (N tokens)
+exceeds the available context size`.
 
 ### Option: `max_loaded_models`
 
@@ -386,6 +395,14 @@ load can reach 85°C, where the CPU starts to throttle, so good cooling helps.
 Memory use is approximately the model size plus the context window — about
 300 MB resident for the default configuration.
 
+## Container backends
+
+Lemonade 2026.46 added backends that run as containers (Halogen, Gufo, the
+Strix Halo toolboxes, DwarfStar4). They need an AMD Strix Halo GPU and Podman or
+Docker next to the server, and their images exist for x86-64 only. This app
+provides neither, so the Backends page lists them as unsupported and nothing
+else is affected. Models run on the llama.cpp backends as before.
+
 ## Security Considerations
 
 - **Protection Mode**: Can stay enabled. This app does not need the Docker
@@ -428,12 +445,19 @@ Please open an issue with the log line.
 2. Make sure `api_key` is blank — the Ollama integration cannot send one.
 3. Use the URL without a trailing path, e.g. `http://homeassistant.local:13305`.
 
-### Responses are slow or truncated
+### Responses are slow
 
 **Solution:**
 1. Lower `ctx_size` — a smaller context is faster and uses less memory.
 2. Keep `preload_model` on so the model is not loaded per request.
 3. Consider the Q4_K_M quantization if you switched to Q8_0.
+
+### Requests fail with "exceeds the available context size"
+
+The conversation, including Home Assistant's instructions and the list of
+exposed devices, is longer than the context window. Raise `ctx_size` here and
+the context size in Home Assistant's Ollama integration to the same number, or
+expose fewer entities.
 
 ## Updating
 
