@@ -276,6 +276,9 @@ main() {
     log "${YELLOW}Update available: $CURRENT_VERSION -> $LATEST_VERSION${NC}"
 
     CHANGELOG=$(get_changelog "$LATEST_VERSION")
+    # Releases this bump skips: their notes belong in CHANGELOG.md too, and
+    # their Breaking Changes sections in the check that reads this.
+    CHANGELOG="${CHANGELOG}$(skipped_release_notes "${UPSTREAM_REPO}" "$CURRENT_VERSION" "$LATEST_VERSION")"
 
     if [ "$CHECK_ONLY" = "true" ]; then
         if [ "$JSON_OUTPUT" = "true" ]; then

@@ -75,3 +75,39 @@ strip_revision() {
 ver_lt() {
     [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$1" ]
 }
+
+# Release notes for every stable release strictly between $2 (shipping) and $3
+# (the bump target), newest first, each under its own "## <version>" heading.
+# $1 is owner/repo. Prints nothing when no release was skipped.
+#
+# A bump that skips releases used to carry only the target's notes: Lemonade
+# 2026.46.2 was parked, 2026.47.1 superseded it, and 46.2's notes would never
+# have reached CHANGELOG.md or the breaking-changes check. Append this to the
+# target's notes so both see the whole range.
+skipped_release_notes() {
+    local repo="$1" current="$2" latest="$3"
+    local releases version
+    if ! releases=$(gh_api "https://api.github.com/repos/${repo}/releases?per_page=50"); then
+        printf '\n\n---\n\n_The notes for releases between %s and %s could not be fetched; read them upstream._\n' \
+            "${current}" "${latest}"
+        return 0
+    fi
+
+    while IFS= read -r version; do
+        [ -n "${version}" ] || continue
+        ver_lt "${current}" "${version}" && ver_lt "${version}" "${latest}" || continue
+        printf '\n\n---\n\n## %s\n\n_%s upstream. Not shipped by this app: %s carries its changes._\n\n' \
+            "${version}" \
+            "$(printf '%s' "${releases}" | jq -r --arg v "${version}" \
+                '[.[] | select(.tag_name == $v or .tag_name == "v" + $v)][0].published_at[0:10]')" \
+            "${latest}"
+        # Same treatment as the target's notes: no CRs, and @mentions become
+        # code spans so an automated PR never pings upstream.
+        printf '%s' "${releases}" | jq -r --arg v "${version}" \
+                '[.[] | select(.tag_name == $v or .tag_name == "v" + $v)][0].body // ""' \
+            | sed 's/\r//g' | sed 's/@\([a-zA-Z0-9_-]*\)/`\1`/g'
+    done < <(printf '%s' "${releases}" \
+        | jq -r '.[] | select(.draft == false and .prerelease == false) | .tag_name | ltrimstr("v")' \
+        | sort -rV)
+    return 0
+}
