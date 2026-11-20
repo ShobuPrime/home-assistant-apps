@@ -543,9 +543,43 @@ same directory. Arcane 2.17.3 → 3.1.0 was checked this way: database migrated,
 old password accepted, and a registry token encrypted by 2.17.3 arrived intact
 at a capture server.
 
+Data made by the previous version is still not a long-lived install. Arcane
+3.1.0 passed this test, and on a device first installed in early 2026 it could
+not create projects: the settings table still held a path an old release had
+stored (`arcane` 3.1.0.2). When a real install is at hand, read its settings
+read-only and compare them with what the test created.
+
 The smoke test did catch Arcane 3, but only because Arcane refuses to start on
 its renamed settings. A major that starts and silently ignores an old setting,
 such as an encryption key, would pass and auto-merge.
+
+## Legacy handling has an end date
+
+Code that exists only for installs an old release made (a settings migration,
+a path rewrite, a compatibility branch) follows three rules:
+
+- **Migrate, do not alias.** Move the install to what upstream uses today. A
+  symlink or fallback that keeps the old path working carries upstream's past
+  layout for good, and the next upstream change stacks on top of it.
+- **Touch only what a release wrote.** Rewrite a value this app or upstream
+  stored as a default. A value a person chose stays, even an odd one. Copy
+  files before changing where they are looked for, never over an existing
+  file, and let the app start whatever happens.
+- **Give it a date.** Put `LEGACY UNTIL YYYY-MM-DD` in a comment on the code
+  and its tests. `.github/scripts/check-legacy-markers.sh` runs in the smoke
+  test: after the date that app's build fails until the code is gone, or the
+  date is moved with a reason. Six months is the usual span. Put the manual
+  fix in DOCS.md for whoever updates later than that.
+
+The other half is noticing upstream's changes when they happen. Where an app
+depends on upstream's layout, read that layout from the artifact itself and
+check it in the smoke test, so a bot PR stops instead of merging.
+`arcane/tests/upstream_paths.py` reads Arcane's default paths out of its binary
+and fails on one the image does not provide.
+
+First use: `arcane` 3.1.0.2 (2026-11-19). An install from early 2026 held a
+projects directory under `/opt/arcane`, stored when the app still ran Arcane
+from there, and could not create projects.
 
 ## Notes
 

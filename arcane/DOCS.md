@@ -172,6 +172,15 @@ If the database becomes corrupted:
 2. Delete `/data/arcane/arcane.db`
 3. Restart the app (you'll need to reconfigure)
 
+### Creating a Project Fails With "permission denied"
+
+The app's log names a folder Arcane cannot create, such as
+`mkdir /opt/arcane/data: permission denied`. An install from early 2026 has
+that folder stored as its projects directory. Version 3.1.0.2 and later
+change it on the next start and say so in the log. To do it by hand: in
+Arcane, open **Settings**, find **Projects Directory** and set it to
+`/app/data/projects`.
+
 ### The Sidebar Panel Is Blank or Shows Home Assistant
 
 1. Reload the Home Assistant page and open the panel again

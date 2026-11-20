@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.0.2
+
+_2026-11-19_
+
+> _App changes:_ Creating a project works again on installs from early 2026. Those had `/opt/arcane/data/projects` stored as the projects directory, a folder Arcane can no longer create: the log read `mkdir /opt/arcane/data: permission denied` and creating a project failed. On its first start this release changes that stored path to `/app/data/projects`, where Arcane keeps projects today, and says so in the log. A path you chose yourself is left alone. `/builds`, where Arcane prepares image builds, now exists too. Nothing changes for newer installs. Arcane itself is unchanged at 3.1.0.
+
 ## 3.1.0.1
 
 _2026-11-19_
