@@ -1,10 +1,11 @@
 name: "Dockhand"
 description: "Modern Docker management UI with real-time container orchestration and Compose stack management"
-version: "1.0.58"
+version: "1.0.58.1"
 slug: "dockhand"
 init: false
 ingress: true
-ingress_port: 3000
+# ha-ingress-adapter, not Dockhand itself: Dockhand expects the site root.
+ingress_port: 8099
 ingress_stream: true
 panel_icon: mdi:docker
 panel_title: Dockhand
@@ -30,7 +31,6 @@ map:
   - share:rw
 options:
   log_level: info
-  port: 3000
   puid: 0
   pgid: 0
   traefik_enable: false
@@ -39,7 +39,6 @@ options:
   traefik_certresolver: "cloudflare"
 schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
-  port: port?
   puid: int?
   pgid: int?
   traefik_enable: bool?

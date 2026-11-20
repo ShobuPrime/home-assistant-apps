@@ -4,25 +4,17 @@ configuration:
     description: >-
       How much detail Dockhand writes to its log. Leave on "info" unless you are
       troubleshooting, in which case use "debug" or "trace".
-  port:
-    name: Web interface port
-    description: >-
-      The TCP port Dockhand listens on internally. Default is 3000. Access
-      through the Home Assistant sidebar (ingress) always uses 3000, so this
-      mainly matters for direct browser access. Change it only if 3000 conflicts
-      with another service.
   puid:
     name: User ID (PUID)
     description: >-
-      The Linux user ID Dockhand runs as. Default is 0 (root), which is required
-      for Docker socket access. Change only if you understand the file-permission
-      implications.
+      The Linux user ID Dockhand runs as. Default is 0 (root). With another ID,
+      Dockhand takes ownership of its data folders for that user and gives it
+      access to Docker.
   pgid:
     name: Group ID (PGID)
     description: >-
-      The Linux group ID Dockhand runs as. Default is 0 (root), which is required
-      for Docker socket access. Change only if you understand the file-permission
-      implications.
+      The Linux group ID Dockhand runs as. Default is 0 (root). It goes with
+      the user ID above.
   traefik_enable:
     name: Enable Traefik integration
     description: >-

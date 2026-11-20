@@ -10,12 +10,10 @@ bashio::log.info 'Starting Dockhand...'
 export NODE_ENV="production"
 export DATA_DIR="/data/dockhand"
 
-# Configure custom port
-if bashio::config.has_value 'port'; then
-    export PORT=$(bashio::config 'port')
-else
-    export PORT=3000
-fi
+# Not an option: Home Assistant publishes, health-checks and watches this
+# port. The port it is reached on from outside is set in the app's Network
+# settings.
+export PORT=3000
 
 # Configure PUID/PGID (Dockhand uses these for socket permissions)
 if bashio::config.has_value 'puid'; then
@@ -52,20 +50,12 @@ bashio::log.info "  DATA_DIR: ${DATA_DIR}"
 bashio::log.info "  PUID: ${PUID}"
 bashio::log.info "  PGID: ${PGID}"
 
-# Change to the dockhand directory
-cd /opt/dockhand
+# What upstream's image sets, and its start script expects.
+export HOST="0.0.0.0"
+export HOME="/home/dockhand"
 
-# Run Dockhand using the Bun runtime bundled with the app
-# Dockhand uses Bun as its JavaScript runtime
-if [[ -f /opt/dockhand/node_modules/.bin/bun ]]; then
-    exec /opt/dockhand/node_modules/.bin/bun run /opt/dockhand/build/index.js
-elif command -v bun &> /dev/null; then
-    exec bun run /opt/dockhand/build/index.js
-elif command -v node &> /dev/null; then
-    # Fallback to Node.js if Bun is not available
-    bashio::log.warning "Bun not found, falling back to Node.js"
-    exec node /opt/dockhand/build/index.js
-else
-    bashio::log.error "No JavaScript runtime found! Please check the Dockerfile."
-    exit 1
-fi
+# Start Dockhand the way upstream's image does: its own script picks the
+# command and its flags, takes ownership of the data folders for PUID and
+# drops to that user. This is not reproduced here, so that it follows upstream.
+cd /app
+exec /usr/local/bin/docker-entrypoint.sh

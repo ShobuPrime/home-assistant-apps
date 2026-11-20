@@ -12,6 +12,8 @@ IMAGE_NAME="${2:?Usage: smoke-test.sh <app-dir> <image-name>}"
 NETWORK_NAME="smoke-test-net"
 SUPERVISOR_NAME="smoke-test-supervisor"
 MQTT_NAME="smoke-test-mqtt"
+# Compose project a Docker manager app deploys and removes through its own API.
+STACK_PROBE="smoke-test-stack"
 CONTAINER_NAME="smoke-test-$(basename "${APP_DIR}")"
 # Scratch container the Portainer apps start/stop through their Docker socket
 # shim. Created inside the test, removed by cleanup() either way.
@@ -38,6 +40,8 @@ cleanup() {
             --format '{{.ID}}' 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
         docker network rm huly_ha_huly_net 2>/dev/null || true
     fi
+    docker ps -aq --filter "label=com.docker.compose.project=${STACK_PROBE}" 2>/dev/null | xargs -r docker rm -f > /dev/null 2>&1 || true
+    docker network ls -q --filter "label=com.docker.compose.project=${STACK_PROBE}" 2>/dev/null | xargs -r docker network rm > /dev/null 2>&1 || true
     docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm -f "${SHIM_PROBE}" "${SHIM_PROBE}-big" 2>/dev/null || true
     docker rm -f "${SUPERVISOR_NAME}" 2>/dev/null || true
@@ -714,6 +718,114 @@ case "${SLUG}" in
 
     dockhand)
         wait_for_health "${HEALTH_PORT}" 120
+        in_app() { docker exec "${CONTAINER_NAME}" "$@"; }
+        dockhand_api() { in_app curl -s --max-time 30 "$@"; }
+        DOCKHAND="http://127.0.0.1:${HEALTH_PORT}"
+
+        # --- Started the way upstream starts it ---
+        # Upstream's own script picks the command. Its server.js is what
+        # serves the container shell; the bundle it wraps does not.
+        if docker top "${CONTAINER_NAME}" -eo pid,args | grep -qE 'node .* /app/server\.js'; then
+            pass "Dockhand runs upstream's entry point (server.js)"
+        else
+            docker top "${CONTAINER_NAME}" -eo pid,args | grep -i node || true
+            fail "Dockhand is not running /app/server.js"
+        fi
+
+        # --- Stacks ---
+        # Dockhand deploys a stack with `docker compose`, the plugin form.
+        COMPOSE_VERSION=$(in_app docker compose version --short 2>/dev/null || true)
+        if [ -n "${COMPOSE_VERSION}" ] && in_app docker buildx version > /dev/null 2>&1; then
+            pass "docker compose (${COMPOSE_VERSION}) and buildx are there"
+        else
+            fail "docker compose or buildx is missing: Dockhand cannot deploy a stack"
+        fi
+        # A relative path in a stack is a path on the host to the Docker
+        # daemon, so Dockhand has to know where its data folder is there.
+        HOST_DIR=$(docker logs "${CONTAINER_NAME}" 2>&1 | sed -n 's/.*Host data directory detected: \(.*\)$/\1/p' | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')
+        if [ "${HOST_DIR}" = "${SMOKE_DATA_DIR}/dockhand" ]; then
+            pass "Dockhand found its data folder on the host"
+        else
+            fail "Dockhand detected '${HOST_DIR:-nothing}' as its data folder on the host (want ${SMOKE_DATA_DIR}/dockhand)"
+        fi
+        # The same requests its web UI sends: add the local Docker, then
+        # create and start a stack that mounts a folder next to its compose file.
+        dockhand_api -o /dev/null -X POST -H 'Content-Type: application/json' \
+            -d '{"name":"local","connectionType":"socket","socketPath":"/var/run/docker.sock"}' "${DOCKHAND}/api/environments"
+        DOCKHAND_ENV=$(dockhand_api "${DOCKHAND}/api/environments" | grep -o '"id":[0-9]*' | head -n 1 | cut -d: -f2)
+        STACK_YAML='services:\n  web:\n    image: '"${PLAIN_IMAGE:-mirror.gcr.io/library/python:3-slim}"'\n    command: sleep 600\n    volumes:\n      - ./conf:/conf\n'
+        dockhand_api -o /dev/null -X POST -H 'Content-Type: application/json' \
+            -d "{\"name\":\"${STACK_PROBE}\",\"compose\":\"${STACK_YAML}\",\"start\":true}" "${DOCKHAND}/api/stacks?env=${DOCKHAND_ENV:-1}"
+        STACK_UP=""
+        for _ in $(seq 1 30); do
+            if [ "$(docker inspect -f '{{.State.Running}}' "${STACK_PROBE}-web-1" 2>/dev/null)" = "true" ]; then
+                STACK_UP="yes"
+                break
+            fi
+            sleep 2
+        done
+        STACK_MOUNT=$(docker inspect -f '{{range .Mounts}}{{.Source}}{{end}}' "${STACK_PROBE}-web-1" 2>/dev/null || true)
+        if [ -n "${STACK_UP}" ] && [[ "${STACK_MOUNT}" == "${SMOKE_DATA_DIR}/dockhand/stacks/"* ]]; then
+            pass "Dockhand deployed a stack, and its relative folder is mounted from the host's path"
+        else
+            docker logs "${CONTAINER_NAME}" 2>&1 | grep -E "\[Stack:${STACK_PROBE}\]" | tail -n 8 || true
+            fail "Stack through Dockhand: running='${STACK_UP:-no}', mounted from '${STACK_MOUNT:-nothing}'"
+        fi
+        dockhand_api -o /dev/null -X POST "${DOCKHAND}/api/stacks/${STACK_PROBE}/down?env=${DOCKHAND_ENV:-1}"
+        STACK_GONE=""
+        for _ in $(seq 1 20); do
+            if [ -z "$(docker ps -aq --filter "label=com.docker.compose.project=${STACK_PROBE}")" ]; then
+                STACK_GONE="yes"
+                break
+            fi
+            sleep 2
+        done
+        if [ -n "${STACK_GONE}" ]; then
+            pass "Dockhand took the stack down again"
+        else
+            fail "The stack's containers are still there after Dockhand's down"
+        fi
+
+        # --- The sidebar panel ---
+        # Dockhand expects the site root and forbids framing, so ingress goes
+        # to ha-ingress-adapter (dockhand/ha-ingress-adapter/main.go).
+        PANEL_PORT=$(sed -n 's/^ingress_port: *//p' "${APP_DIR}/config.yaml")
+        if [ -n "${PANEL_PORT}" ] && [ "${PANEL_PORT}" != "${HEALTH_PORT}" ]; then
+            pass "Ingress goes to the adapter on :${PANEL_PORT}, not to Dockhand on :${HEALTH_PORT}"
+        else
+            fail "ingress_port is '${PANEL_PORT}': the panel would reach Dockhand directly and stay empty"
+        fi
+        framing() { in_app curl -s --max-time 10 -o /dev/null -D - "$@" | tr -d '\r' | grep -iE '^(x-frame-options|content-security-policy):' | tr 'A-Z' 'a-z' | sort | tr '\n' ' '; }
+        OWN_FRAMING=$(framing "${DOCKHAND}/")
+        PANEL_FRAMING=$(framing -H "X-Ingress-Path: /api/hassio_ingress/smoketest_Token-123" "http://127.0.0.1:${PANEL_PORT}/")
+        if [[ "${OWN_FRAMING}" == *"x-frame-options: deny"* ]] && [[ "${PANEL_FRAMING}" == *"x-frame-options: sameorigin"* ]] \
+            && [[ "${PANEL_FRAMING}" == *"frame-ancestors 'self'"* ]]; then
+            pass "Framing: forbidden on Dockhand's own port, allowed to Home Assistant's origin through the panel"
+        else
+            fail "Framing headers: own port '${OWN_FRAMING}', through the panel '${PANEL_FRAMING}'"
+        fi
+
+        # The same, in a real browser behind a stand-in for Home Assistant.
+        # This is the check that notices an upstream change in how the web app
+        # addresses the server. It needs Chrome; a CI runner has it.
+        docker run -d --name "${SHIM_PROBE}" "${PLAIN_IMAGE:-mirror.gcr.io/library/python:3-slim}" sleep 600 > /dev/null
+        APP_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "${CONTAINER_NAME}" | awk '{print $1}')
+        BROWSER_TEST=(python3 "${APP_DIR}/tests/ingress_test.py" --ingress "http://${APP_IP}:${PANEL_PORT}"
+            --direct "http://${APP_IP}:${HEALTH_PORT}" --container "${SHIM_PROBE}")
+        BROWSER_RC=0
+        "${BROWSER_TEST[@]}" || BROWSER_RC=$?
+        if [ "${BROWSER_RC}" = "1" ]; then
+            info "Panel browser test failed once; running it again"
+            BROWSER_RC=0
+            "${BROWSER_TEST[@]}" || BROWSER_RC=$?
+        fi
+        if [ "${BROWSER_RC}" = "0" ]; then
+            pass "Panel works in a browser behind a Home Assistant stand-in"
+        elif [ "${BROWSER_RC}" = "2" ] && [ -z "${CI:-}" ]; then
+            info "No Chrome or Chromium here — panel browser test skipped (CI runs it)"
+        else
+            fail "Panel browser test failed (exit ${BROWSER_RC}) — see the FAIL lines above"
+        fi
         ;;
 
     arcane)

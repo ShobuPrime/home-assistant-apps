@@ -6,6 +6,14 @@ ARG BUILD_FROM
 # Dockhand publishes versioned tags as fnsys/dockhand:vX.Y.Z
 FROM mirror.gcr.io/fnsys/dockhand:v${DOCKHAND_VERSION} AS dockhand-source
 
+# ha-ingress-adapter: makes Dockhand's web UI work under Home Assistant ingress
+# (ha-ingress-adapter/main.go). Built in a stage of the target platform.
+FROM mirror.gcr.io/library/golang:1.27.3-alpine AS ingress-builder
+WORKDIR /src
+COPY ha-ingress-adapter/go.mod ha-ingress-adapter/*.go ha-ingress-adapter/shim.js ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ha-ingress-adapter . \
+    && test -x /ha-ingress-adapter
+
 # Stage 2: Build final image
 FROM ${BUILD_FROM}
 
@@ -23,6 +31,8 @@ RUN \
         curl \
         jq \
         docker-cli \
+        docker-cli-buildx \
+        docker-cli-compose \
         nodejs \
         npm \
         sqlite \
@@ -30,14 +40,22 @@ RUN \
         musl \
         musl-utils \
         openssh-client \
+        su-exec \
         tini
 
 # Alpine's Node already trusts the system CA bundle, which `apk upgrade` keeps
 # current. Set explicitly so it still holds if the Node build changes.
 ENV NODE_OPTIONS="--use-openssl-ca"
 
-# Copy Dockhand application from source image
+# Copy Dockhand application from source image, with the script upstream starts
+# it by. That script names /app, where upstream's image keeps the application.
 COPY --from=dockhand-source /app /opt/dockhand
+COPY --from=dockhand-source /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN ln -s /opt/dockhand /app \
+    && mkdir -p /home/dockhand \
+    && if ! grep -q '/app/server.js' /usr/local/bin/docker-entrypoint.sh || [ ! -f /app/server.js ]; then \
+        echo "Upstream no longer starts /app/server.js: read its docker-entrypoint.sh and adjust services.d/dockhand/run" >&2; exit 1; \
+    fi
 
 # Rebuild native Node.js modules for Alpine (musl)
 # Upstream Dockhand uses Wolfi (glibc) — better-sqlite3 native addon
@@ -51,14 +69,20 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
 # NODE_OPTIONS does not change) to a remote environment's custom CA. Use the
 # system store instead; fail if any use is left unpatched.
 # BusyBox grep has no --include, so find picks the files.
+# server.js, the entry point, imports the name instead of reading it off `tls`.
 RUN find /opt/dockhand/build -name '*.js' -exec sed -i -E \
         's/([A-Za-z_$][A-Za-z0-9_$]*)\.rootCertificates\b/\1.getCACertificates("system")/g' {} + \
-    && left="$(find /opt/dockhand/build -name '*.js' \
+    && sed -i -E \
+        -e "s/\brootCertificates( *\} *from 'node:tls')/getCACertificates\1/" \
+        -e 's/\.\.\.rootCertificates\b/...getCACertificates("system")/g' /opt/dockhand/server.js \
+    && left="$(find /opt/dockhand/build /opt/dockhand/server.js -name '*.js' \
         -exec grep -lE "rootCertificates|getCACertificates\\([\"']bundled" {} + || true)" \
     && if [ -n "${left}" ]; then echo "Unpatched Node root store use: ${left}" >&2; exit 1; fi
 
 # Create required directories
 RUN mkdir -p /opt/dockhand/data /opt/dockhand/data/db /opt/dockhand/data/stacks
+
+COPY --from=ingress-builder /ha-ingress-adapter /usr/bin/ha-ingress-adapter
 
 # Copy root filesystem
 COPY rootfs /

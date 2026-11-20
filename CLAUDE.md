@@ -394,14 +394,33 @@ The transferable parts, if another app needs the same treatment:
 Arcane has no sub-path setting and compares the page's path with `/login`, so
 neither a rewritten base path nor a plain proxy works. `arcane/ha-arcane-ingress`
 does it with a proxy plus a script in the page; `arcane/CLAUDE.md` ("Ingress")
-has the design. What transfers to another app:
+has the design.
+
+`dockhand/ha-ingress-adapter` is the same proxy and script with nothing of one
+app in them: the app's address comes from `UPSTREAM_URL`, and
+`INGRESS_OPEN_AT` names a page to open in place of `/`. Use it for the next
+app that needs this.
+
+What transfers to another app:
 
 - **Mimic Home Assistant exactly when testing.** It drops `Accept-Encoding` from
   the request and the charset from `Content-Type`, keeps `Host`, and adds
-  `X-Ingress-Path`. `arcane/tests/ingress_test.py` has a stand-in written from
-  Core's and Supervisor's source, and counts requests that leave the prefix.
+  `X-Ingress-Path`. `.github/scripts/ingress_harness.py` has a stand-in written
+  from Core's and Supervisor's source and a browser driver, and counts requests
+  that leave the prefix. Each app's `tests/ingress_test.py` brings its own
+  checks.
 - **Always run the control.** The same page without the fix must fail, or the
   test proves nothing.
+- **A page can be drawn and still be broken.** Dockhand's shell rendered while
+  every data request went to Home Assistant. Count the requests that leave the
+  prefix; do not judge by what is on screen.
+- **An app that forbids framing shows nothing in a panel.** The adapter turns
+  `X-Frame-Options` into `SAMEORIGIN` and `frame-ancestors` into `'self'`, for
+  ingress requests only. Home Assistant serves a panel from its own origin, so
+  that allows Home Assistant and no other site, and the app's own port keeps
+  its protection.
+- **Entry imports written relative to the page** (`import("./_app/...")`) have
+  to name the prefix too, because the page's address has lost it by then.
 - **Cookies are per host, not per port.** A cookie the app sets on its direct
   port also arrives through ingress on the same host name. Scope and mark the
   ingress ones.
