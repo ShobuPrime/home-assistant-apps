@@ -1,0 +1,10 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant App: Dockge
+# Serves Dockge's web UI under Home Assistant ingress
+# (ha-ingress-adapter/main.go)
+# ==============================================================================
+# It only relays requests to Dockge on 127.0.0.1, so it needs no privileges.
+export UPSTREAM_URL="http://127.0.0.1:5001"
+export INGRESS_LISTEN=":8099"
+exec s6-setuidgid nobody /usr/bin/ha-ingress-adapter

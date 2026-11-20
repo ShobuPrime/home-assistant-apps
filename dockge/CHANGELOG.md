@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0.2
+
+_2026-11-20_
+
+- **Dockge can manage stacks.** The app had no Docker client, and Dockge does everything with `docker compose`, so it could list, deploy and start nothing. The app now has `docker`, `docker compose` and `buildx`.
+- **Stacks are kept.** They were in `/opt/stacks` inside the container, which Home Assistant replaces at every restart and update, so they were lost each time. They now live in this app's data folder and are part of its backups. The `stacks_dir` option is gone.
+- **A stack's relative folders (`./config`) are mounted from the stack's folder.** Docker looks for them on the host, so the app gives Dockge the host's name for its data folder.
+- **The sidebar panel works.** Dockge's page asked for its files and its connection from the site root, which under the sidebar is Home Assistant itself. A small adapter now serves the panel. Dockge's own port is unchanged.
+- **`hide_hassio_containers` does what it says.** It had no effect. Compose projects whose containers Home Assistant manages are now left out of Dockge's list. An app marks the containers it starts for itself with `io.github.shobuprime.app-managed=true`.
+
+Same Dockge as 1.5.0.
+
 ## 1.5.0.1
 
 _2026-10-22_

@@ -51,6 +51,9 @@ cleanup() {
     docker rm -f "${SHIM_PROBE}" "${SHIM_PROBE}-big" 2>/dev/null || true
     docker ps -aq --filter "name=^${HIDE_PREFIX}-" 2>/dev/null | xargs -r docker rm -f > /dev/null 2>&1 || true
     docker image ls -q --filter label=smoke-test-prune=1 2>/dev/null | sort -u | xargs -r docker rmi -f > /dev/null 2>&1 || true
+    for project in "${HIDE_PREFIX}-mine" "${HIDE_PREFIX}-child"; do
+        docker network ls -q --filter "label=com.docker.compose.project=${project}" 2>/dev/null | xargs -r docker network rm > /dev/null 2>&1 || true
+    done
     docker rm -f "${SUPERVISOR_NAME}" 2>/dev/null || true
     docker rm -f "${MQTT_NAME}" 2>/dev/null || true
     docker network rm "${NETWORK_NAME}" 2>/dev/null || true
@@ -1771,6 +1774,122 @@ case "${SLUG}" in
         else
             docker logs "${CONTAINER_NAME}" 2>&1 | tail -20
             fail "Container exited"
+        fi
+        ;;
+
+    dockge)
+        wait_for_health "${HEALTH_PORT}" 120
+        in_app() { docker exec "${CONTAINER_NAME}" "$@"; }
+        from_log() { docker logs "${CONTAINER_NAME}" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | sed -n "s/.*$1: \(.*\)$/\1/p" | tail -n 1; }
+
+        # --- A Docker client: Dockge does everything with it ---
+        COMPOSE_VERSION=$(in_app docker compose version --short 2>/dev/null || true)
+        if [ -n "${COMPOSE_VERSION}" ] && in_app docker buildx version > /dev/null 2>&1; then
+            pass "docker compose (${COMPOSE_VERSION}) and buildx are there"
+        else
+            fail "docker compose or buildx is missing: Dockge can do nothing"
+        fi
+
+        # --- Stacks: in the data folder, under the host's name for it ---
+        # Compose hands the daemon a stack's relative folders (./conf) as
+        # absolute paths, and the daemon looks for them on the host.
+        STACKS_DIR=$(from_log "Stacks directory")
+        if [ "${STACKS_DIR}" = "${SMOKE_DATA_DIR}/stacks" ] && [ "$(in_app readlink "${SMOKE_DATA_DIR}")" = "/data" ]; then
+            pass "Stacks are kept in the data folder, under the host's name for it"
+        else
+            fail "Dockge keeps its stacks in '${STACKS_DIR:-nothing}' (want ${SMOKE_DATA_DIR}/stacks, a link to /data)"
+        fi
+
+        # --- What Home Assistant manages stays out of Dockge ---
+        # Dockge lists Compose projects, through ha-docker-filter
+        # (dockge/ha-docker-filter). A project whose containers carry the mark
+        # an app puts on what it starts for itself is left out; the raw
+        # socket, as control, lists it.
+        FILTER_SOCK="/run/docker-filter/docker.sock"
+        DOCKGE_DOCKER=$(from_log DOCKER_HOST)
+        FILTER_UID=$(in_app sh -c "stat -c %u /proc/\$(pgrep -o -f ^/usr/bin/ha-docker-filter)" 2>/dev/null || true)
+        SOCK_MODE=$(in_app stat -c '%a' "${FILTER_SOCK}" 2>/dev/null || true)
+        if [ "${DOCKGE_DOCKER}" = "unix://${FILTER_SOCK}" ] && [ -n "${FILTER_UID}" ] && [ "${FILTER_UID}" != "0" ] && [ "${SOCK_MODE}" = "660" ]; then
+            pass "Dockge reaches Docker through ha-docker-filter, which runs unprivileged"
+        else
+            fail "Dockge was started with DOCKER_HOST '${DOCKGE_DOCKER:-unset}', the filter runs as uid '${FILTER_UID:-none}', its socket has mode '${SOCK_MODE:-none}'"
+        fi
+        PROXY_UID=$(in_app sh -c "stat -c %u /proc/\$(pgrep -o -f ^/usr/bin/ha-ingress-adapter)" 2>/dev/null || true)
+        as_proxy() { docker exec -u "${PROXY_UID}" "${CONTAINER_NAME}" curl -s --max-time 5 --unix-socket "$1" http://docker/_ping 2>/dev/null || true; }
+        if [ -n "${PROXY_UID}" ] && [ "${PROXY_UID}" != "0" ] && [ "${PROXY_UID}" != "${FILTER_UID}" ] \
+            && [ "$(as_proxy "${FILTER_SOCK}")" != "OK" ] && [ "$(as_proxy /run/docker.sock)" != "OK" ]; then
+            pass "The panel adapter's user (uid ${PROXY_UID}) cannot reach Docker, through the filter or directly"
+        else
+            fail "The panel's adapter runs as uid '${PROXY_UID:-none}' (the filter as '${FILTER_UID:-none}') and gets '$(as_proxy "${FILTER_SOCK}")' through the filter, '$(as_proxy /run/docker.sock)' from Docker"
+        fi
+
+        # Two projects, started with Compose on the raw socket.
+        for standin in mine child; do
+            mark=""
+            [ "${standin}" = "child" ] && mark='    labels:\n      io.github.shobuprime.app-managed: "true"\n'
+            in_app sh -c "printf 'services:\n  web:\n    image: ${PLAIN_IMAGE}\n    command: sleep 600\n${mark}' > /tmp/${standin}.yaml"
+            in_app /usr/bin/docker -H unix:///run/docker.sock compose -p "${HIDE_PREFIX}-${standin}" -f "/tmp/${standin}.yaml" up -d > /dev/null 2>&1 \
+                || fail "Could not start the '${standin}' Compose project for the hide check"
+        done
+        projects() { docker exec -e DOCKER_HOST="$1" "${CONTAINER_NAME}" docker compose ls --all --format json 2>/dev/null || true; }
+        RAW_PROJECTS=$(projects unix:///run/docker.sock)
+        DOCKGE_PROJECTS=$(projects "${DOCKGE_DOCKER}")
+        if listed "${RAW_PROJECTS}" mine && listed "${RAW_PROJECTS}" child \
+            && listed "${DOCKGE_PROJECTS}" mine && ! listed "${DOCKGE_PROJECTS}" child; then
+            pass "Compose, as Dockge runs it, lists somebody's own project and not the marked one (the raw socket lists both)"
+        else
+            printf 'raw: %s\nas Dockge: %s\n' "$(echo "${RAW_PROJECTS}" | head -c 300)" "$(echo "${DOCKGE_PROJECTS}" | head -c 300)"
+            fail "The Compose project list through the filter is wrong (see above)"
+        fi
+
+        # --- The sidebar panel, and a stack deployed by Dockge itself ---
+        # Dockge's page and its socket.io connection expect the site root, so
+        # ingress goes to ha-ingress-adapter. The browser test signs in through
+        # the panel, reads the stack list, and has Dockge deploy a stack whose
+        # ./conf folder must be mounted from the host's data folder.
+        PANEL_PORT=$(sed -n 's/^ingress_port: *//p' "${APP_DIR}/config.yaml")
+        if [ -n "${PANEL_PORT}" ] && [ "${PANEL_PORT}" != "${HEALTH_PORT}" ]; then
+            pass "Ingress goes to the adapter on :${PANEL_PORT}, not to Dockge on :${HEALTH_PORT}"
+        else
+            fail "ingress_port is '${PANEL_PORT}': the panel would reach Dockge directly and stay empty"
+        fi
+        # The app made /data/stacks as root, so the folder is made from inside.
+        in_app mkdir -p "/data/stacks/${STACK_PROBE}/conf"
+        APP_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "${CONTAINER_NAME}" | awk '{print $1}')
+        BROWSER_TEST=(python3 "${APP_DIR}/tests/ingress_test.py" --ingress "http://${APP_IP}:${PANEL_PORT}"
+            --direct "http://${APP_IP}:${HEALTH_PORT}" --listed "${HIDE_PREFIX}-mine" --hidden "${HIDE_PREFIX}-child"
+            --deploy "${STACK_PROBE}" --image "${PLAIN_IMAGE}")
+        BROWSER_RC=0
+        "${BROWSER_TEST[@]}" || BROWSER_RC=$?
+        if [ "${BROWSER_RC}" = "1" ]; then
+            info "Panel browser test failed once; running it again"
+            docker ps -aq --filter "label=com.docker.compose.project=${STACK_PROBE}" | xargs -r docker rm -f > /dev/null 2>&1 || true
+            BROWSER_RC=0
+            "${BROWSER_TEST[@]}" || BROWSER_RC=$?
+        fi
+        if [ "${BROWSER_RC}" = "0" ]; then
+            pass "Panel works in a browser behind a Home Assistant stand-in"
+        elif [ "${BROWSER_RC}" = "2" ] && [ -z "${CI:-}" ]; then
+            info "No Chrome or Chromium here — panel browser test skipped (CI runs it); deploying the stack with Compose instead"
+            in_app sh -c "printf 'services:\n  web:\n    image: ${PLAIN_IMAGE}\n    command: sleep 600\n    volumes:\n      - type: bind\n        source: ./conf\n        target: /conf\n        bind:\n          create_host_path: false\n' > '${STACKS_DIR}/${STACK_PROBE}/compose.yaml'"
+            docker exec -w "${STACKS_DIR}/${STACK_PROBE}" -e DOCKER_HOST="${DOCKGE_DOCKER}" "${CONTAINER_NAME}" docker compose up -d > /dev/null 2>&1 || true
+        else
+            fail "Panel browser test failed (exit ${BROWSER_RC}) — see the FAIL lines above"
+        fi
+        STACK_UP=$(docker inspect -f '{{.State.Running}}' "${STACK_PROBE}-web-1" 2>/dev/null || true)
+        STACK_MOUNT=$(docker inspect -f '{{range .Mounts}}{{.Source}}{{end}}' "${STACK_PROBE}-web-1" 2>/dev/null || true)
+        if [ "${STACK_UP}" = "true" ] && [ "${STACK_MOUNT}" = "${SMOKE_DATA_DIR}/stacks/${STACK_PROBE}/conf" ]; then
+            pass "The stack runs, and its ./conf is mounted from the host's data folder"
+        else
+            fail "The deployed stack: running='${STACK_UP:-no}', ./conf mounted from '${STACK_MOUNT:-nothing}' (want ${SMOKE_DATA_DIR}/stacks/${STACK_PROBE}/conf)"
+        fi
+
+        FILTER_ERRORS=$(docker logs "${CONTAINER_NAME}" 2>&1 | grep -E '^ha-docker-filter: (GET|POST|PUT|HEAD|DELETE) ' | grep -v 'context canceled' | head -5 || true)
+        if [ -z "${FILTER_ERRORS}" ]; then
+            pass "The filter passed every request without an error"
+        else
+            echo "${FILTER_ERRORS}" | sed 's/^/    /'
+            fail "ha-docker-filter logged errors (see above)"
         fi
         ;;
 

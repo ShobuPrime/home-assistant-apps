@@ -4,142 +4,112 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant App for Dockge, a self-hosted Docker Compose stack manager. The app provides a web interface for managing Docker Compose stacks through Home Assistant.
-
-### Development History
-- Initially created with full custom build (Dockerfile, S6 scripts, etc.)
-- Simplified to use official `louislam/dockge` Docker image directly
-- Removed all user configuration options for simplicity
-- Data automatically persists in `/data/stacks`
-
-## Lessons Learned from Home Assistant App Development
-
-### Critical Base Image Selection
-- **ALWAYS** use `ghcr.io/hassio-addons/base:18.0.3` or latest
-- **NEVER** use the old `ghcr.io/home-assistant/*-base` images (they are outdated)
-- The hassio-addons base images include Bashio and S6-overlay pre-configured
-
-### Docker Socket Access Pattern
-- Must set `docker_api: true` in config.yaml
-- Protection mode MUST be disabled by users
-- Always check socket existence in init scripts before starting services
-- AppArmor profile must include `/run/docker.sock rw,` (plus `/var/run/docker.sock rw,`) — the Supervisor mounts the socket at `/run/docker.sock` and `/var/run` is a symlink to `/run`; AppArmor matches the resolved path, so a `/var/run/docker.sock`-only rule never applies (HAOS 18.1+ enforces this and denies all Docker API access)
-- Do NOT use nested child profiles (`profile foo { ... }` inside the main profile with `cx ->` transitions) — HAOS 18.1's kernel (6.18) denies AF_UNIX socket connects from processes confined by child profiles regardless of the rules they contain (verified with parser 3.1.7 and 4.1.7). Keep the profile flat, like the Portainer/Arcane/Dockhand profiles
-
-### S6-Overlay Best Practices
-- All scripts must use `#!/usr/bin/with-contenv bashio` shebang
-- Init scripts in `/rootfs/etc/cont-init.d/` run before services
-- Service scripts in `/rootfs/etc/services.d/{service}/run`
-- Always make scripts executable with `chmod +x`
-- Use Bashio functions for all logging and config reading
-
-### Essential config.yaml Settings for Privileged Apps
-```yaml
-hassio_api: true
-hassio_role: manager
-docker_api: true
-apparmor: true
-privileged:
-  - SYS_RAWIO
-  - NET_ADMIN
-  - SYS_ADMIN
-  - SYS_PTRACE
-  - SYS_MODULE
-  - DAC_READ_SEARCH
-```
-
-### Using Official Docker Images vs Building Custom
-- When the upstream project provides an official multi-arch Docker image, use it directly with the `image:` field in config.yaml
-- This is much simpler than building a custom image and ensures you get official updates
-- Example: `image: "louislam/dockge"` in config.yaml
-- Only build custom images when you need to add HA-specific integrations or the upstream doesn't provide suitable images
-- **Trade-off**: You lose ability to customize environment variables or startup behavior
-- **Example**: Dockge 1.5.0 console feature requires `DOCKGE_ENABLE_CONSOLE=true` which we can't set dynamically
-
-### WebSocket Support for Ingress
-- Dockge uses WebSockets for real-time updates
-- Must set `ingress_stream: true` in config.yaml for WebSocket support
-- Without this, ingress will fail with "websocket error" messages
-
-### Data Persistence in HAOS
-- ALWAYS store persistent data under `/data/` in Home Assistant apps
-- Don't provide user options for paths if they must be under `/data/` anyway
-- Use environment variables in config.yaml to pass hardcoded paths to the container
-- If you must allow custom paths, validate they start with `/data/`
-- **Important Path Mapping Pattern**: When mapping volumes, the host path is `/data` + container path
-  - Example: Container path `/opt/stacks` → Host path `/data/opt/stacks`
-  - Example: Container path `/app/data` → Host path `/data/app/data`
-
-### Automatic Update Scripts
-- Create update scripts similar to `update-dockge-version.sh` for easy version management
-- Script should support `--check-only`, `--json`, and `--yes` flags
-- Automatically update config.yaml version and fetch changelogs
-- Keep backups of modified files with timestamps
-
-### Common Pitfalls to Avoid
-1. Forgetting to make scripts executable (when building custom)
-2. Using relative paths instead of absolute paths
-3. Not checking for Docker socket before starting
-4. Using wrong base images (see above)
-5. Not using Bashio for config reading (when building custom)
-6. Building custom images when official ones would work
+This is a Home Assistant App for Dockge, a Docker Compose stack manager. It
+copies Dockge from upstream's image onto the repository's Alpine base and runs
+it from its TypeScript source with `tsx`, as upstream does.
 
 ## Essential Commands
 
-### Testing
-Since this app uses the official Dockge Docker image, no building is required. To test locally:
 ```bash
-# Test with docker directly
-docker run --rm -it -p 5001:5001 -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/data:/app/data louislam/dockge:1
+# Build (there is no build.sh)
+docker build --build-arg BUILD_FROM=ghcr.io/hassio-addons/base:21.0.11 \
+    --build-arg BUILD_ARCH=amd64 --build-arg BUILD_VERSION=<version> \
+    -t local/amd64-addon-local_dockge:<version> dockge
+
+# Full smoke test with a mock Supervisor (from repo root)
+.github/scripts/smoke-test.sh dockge local/amd64-addon-local_dockge:<version>
 ```
+
+## Version Scheme and Updates
+
+Upstream's last release is 1.5.0 (2025-03-30). No workflow watches for a new
+one. A bump changes the `FROM` tag and `ARG DOCKGE_VERSION` in the Dockerfile,
+`args` in `build.yaml` and `version` in `config.yaml` together, and needs the
+smoke test, which checks the parts of Dockge this app depends on.
 
 ## Architecture and Key Components
 
-### Simplified Structure (using official image)
-This app now uses the official `louislam/dockge:1` Docker image directly, which greatly simplifies the app:
-
-### Critical Files
-- **`config.yaml`**: App configuration with image reference, ports, ingress settings
-- **`translations/en.yaml`**: Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options)
-- **`apparmor.txt`**: Security profile for Docker socket access
-- **No build files needed**: Uses official Docker image directly
+### Directory Structure
+- **`/rootfs/etc/cont-init.d/dockge.sh`**: data folders, the link from the host's name for `/data`, Traefik
+- **`/rootfs/etc/services.d/dockge/`**: points Dockge at its stacks and at the filter, runs it
+- **`/rootfs/etc/services.d/dockge-filter/`**: runs `ha-docker-filter` under a user of its own when `hide_hassio_containers` is on
+- **`/rootfs/etc/services.d/dockge-ingress/`**: runs `ha-ingress-adapter` as `nobody`
+- **`/rootfs/usr/local/bin/docker`**: wrapper that gives Compose the host's name for a stack's folder
+- **`/ha-docker-filter/`, `/ha-ingress-adapter/`**: copies of helpers other apps carry too; CI fails a PR that changes one copy and not the others
+- **`/tests/ingress_test.py`**: opens the panel in a real browser behind a stand-in for Home Assistant
 
 ### Port Configuration
-- **5001**: Web interface
+- **5001**: Dockge's web interface
+- **8099**: `ha-ingress-adapter`, the ingress port. Not published
 
-## Development Guidelines
+## Dockge does everything with the docker CLI
 
-### Configuration Handling
-- Uses environment variables passed through config.yaml
-- Protection mode must be disabled for Docker socket access
-- Stacks directory is hardcoded to `/data/stacks` for data persistence
+Dockge never opens the Docker socket itself. Listing, deploying, logs and the
+terminal are all `docker compose ...` processes, plain children or in a
+pseudo-terminal, and both inherit Dockge's environment. Until 1.5.0.2 the
+image had no `docker` at all, and the app could do nothing. Alpine's
+`docker-cli`, `docker-cli-compose` and `docker-cli-buildx` work on aarch64
+(checked on a device for another app, 2026-11-20).
 
-### Version Updates
-When updating Dockge version:
-1. Run `./update-dockge-version.sh` to check for updates
-2. The script automatically updates config.yaml and creates changelog
-3. Test the new version before committing
+## Stacks and the host's name for /data
 
-### Console Feature Limitation
-- Dockge 1.5.0+ disables console by default for security
-- Cannot dynamically set `DOCKGE_ENABLE_CONSOLE` with official image
-- Would require custom Dockerfile to enable (trade-off: lose automatic updates)
+Compose turns a stack's relative folders (`./config`) into absolute paths and
+hands them to the Docker daemon, which looks for them on the host. Upstream
+mounts the stacks folder at the same path on both sides ("Left Stacks Path ===
+Right Stacks Path"), which an app cannot ask for. So:
 
-### Testing Checklist
-- App installs successfully
-- Service starts without errors
-- Web UI accessible on port 5001
-- Docker socket is accessible
-- Can create and manage Docker Compose stacks
-- Stacks persist in configured directory
-- Ingress integration works properly
+- cont-init reads this container's mounts through the socket and finds the
+  host's path for `/data` (on HAOS `/mnt/data/supervisor/addons/data/<slug>`).
+  It makes that path a link to `/data` inside the container and writes it to
+  `/run/dockge/host-data`.
+- Dockge's stacks folder is `<that path>/stacks`.
+- That is not enough by itself. Dockge starts Compose with the stack's folder
+  as working directory, the kernel reports the folder by its real name
+  (`/data/stacks/x`), and Go's `os.Getwd` takes `PWD` only when `PWD` names
+  the same folder. Node does not set `PWD`. So `/usr/local/bin/docker`, which
+  is ahead of `/usr/bin` on `PATH`, sets `PWD` to the host's name and runs
+  the real `docker`.
+
+Without the wrapper, a relative folder becomes `/data/stacks/x/config` on the
+host, which Docker creates there or fails on. The smoke test's stack uses
+`create_host_path: false`, so a regression fails instead of leaving a folder
+on the machine running the test.
+
+`stacks_dir` was removed in 1.5.0.2: its default, `/opt/stacks`, was in the
+container's layer and lost at every restart, and no other folder gets the
+host-path treatment.
+
+## Hiding what Home Assistant manages
+
+Dockge lists Compose projects only (`docker compose ls`), never single
+containers. With `hide_hassio_containers` on, `DOCKER_HOST` points the CLI at
+`ha-docker-filter`, which leaves containers carrying Home Assistant's marks out
+of the container list, so a project made of them is not listed. Root
+`CLAUDE.md`, "Telling Home Assistant's containers from the user's", has the
+rule and where the filter's design is written down. Dockge has no prune, so
+the filter's prune handling does not come into play here.
+
+Dockge waits for the filter to answer before it starts: a hard stop leaves
+the filter's socket behind in `/run`, the container's own layer.
+
+## The sidebar panel
+
+Dockge's page loads `/assets/...`, draws its logo with `<object
+data="/icon.svg">` and opens socket.io at `/socket.io`, all from the site
+root. Under ingress that is Home Assistant. `ha-ingress-adapter` (root
+`CLAUDE.md`, "An app built for the site root can still run under ingress")
+serves the ingress port and keeps all of it under the ingress path. Dockge
+sends no framing headers.
+
+The browser test reaches Dockge's root component as
+`document.querySelector('#app')._vnode.component.proxy`: a production Vue
+build has no `__vue_app__._instance`. It signs in through Dockge's own socket
+events and deploys a stack with `emitAgent('', 'deployStack', ...)`, as the
+editor does.
 
 ## Important Notes
 
-- **Official Image**: This app uses the official `louislam/dockge` image
 - **Protection mode** must be disabled for Docker socket access
-- **Ingress** integration uses port 5001
-- **AppArmor profile** is critical for security
-- **Docker socket** access is required at `/var/run/docker.sock`
-- **Stack files** stored in configurable directory (default `/data/stacks`)
-- **No custom build process** - significantly simpler than building from source
+- **The console page stays off** (`DOCKGE_ENABLE_CONSOLE` unset): it would be
+  a root shell in this container, next to the real socket
+- **Stack names** must match `^[a-z0-9_-]+$` (Dockge's rule)

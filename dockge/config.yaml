@@ -1,10 +1,11 @@
 name: "Dockge"
 description: "A fancy, easy-to-use and reactive self-hosted docker compose.yaml stack-oriented manager"
-version: "1.5.0.1"
+version: "1.5.0.2"
 slug: "dockge"
 init: false
 ingress: true
-ingress_port: 5001
+# ha-ingress-adapter, not Dockge itself: Dockge expects the site root.
+ingress_port: 8099
 ingress_stream: true
 panel_icon: mdi:docker
 panel_title: Dockge
@@ -30,7 +31,6 @@ map:
   - share:rw
 options:
   log_level: info
-  stacks_dir: /opt/stacks
   hide_hassio_containers: true
   traefik_enable: false
   traefik_domain: ""
@@ -38,7 +38,6 @@ options:
   traefik_certresolver: "cloudflare"
 schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
-  stacks_dir: str?
   hide_hassio_containers: bool?
   traefik_enable: bool?
   traefik_domain: str?
