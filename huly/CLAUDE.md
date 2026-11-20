@@ -45,6 +45,12 @@ The stack pulls 14 images anonymously on every version change, so the repo's "ne
 straight from Docker Hub" rule applies to these runtime pulls too. Docker Hub's limit failed
 every CI smoke test from 2026-09-28 until they moved. Keep new images on the mirror.
 
+**Every service carries `labels: *app-managed`** (`io.github.shobuprime.app-managed=true`, set
+once at the top of the template). The Supervisor does not know these containers, so the label is
+how a Docker manager tells they are this app's to start and stop (root `CLAUDE.md`, "Telling
+Home Assistant's containers from the user's"). A new service needs the line too; the smoke test
+fails on a container without it.
+
 **The template is a copy of upstream `huly-selfhost/compose.yml`, and the version check does
 not watch it.** `update-huly.yml`'s `upstream-compose` job opens a `huly-upstream` issue for
 every upstream commit to that file after the one in `.github/upstream/huly-compose.ref`.

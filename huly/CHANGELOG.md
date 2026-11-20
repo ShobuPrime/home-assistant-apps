@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.426.3
+
+_2026-11-20_
+
+- The containers of the stack are labelled `io.github.shobuprime.app-managed=true`. A Docker manager that goes by this label leaves them out of its lists: they are this app's to start and stop, and stopping one from outside breaks Huly.
+
+Same Huly as 0.7.426. The label is applied the next time the stack starts.
+
 ## 0.7.426.2
 
 _2026-11-07_
