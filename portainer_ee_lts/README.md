@@ -84,12 +84,11 @@ to Portainer via the `LICENSE_KEY` environment variable.
 
 ### Option: `hide_hassio_containers`
 
-When enabled (default), hides Home Assistant system containers from the Portainer 
-interface. This includes supervisor, core, audio, dns, multicast, cli, observer, 
-and app containers.
+When enabled (default), the containers Home Assistant manages are left out of
+Portainer's container list. It hides them; it does not lock them.
 
-**Note**: Due to Portainer's caching, toggling this option may require manual
-intervention. See the documentation for details.
+Turning it off does not show them again: remove the entries under Settings →
+Hidden containers. See the documentation for details.
 
 ## Folder Access
 
@@ -104,9 +103,10 @@ These folders are accessible from within Portainer and can be mounted as volumes
 
 ## First Time Setup
 
-1. When you first access Portainer, you'll need to create an admin user
-2. Choose "Get Started" to connect to the local Docker environment
-3. You'll now have access to all your Docker containers, images, volumes, and networks
+1. Open Portainer. It asks for a setup token: copy it from the app's Log tab, the line `setup_token=...` printed at start
+2. Create the admin user
+3. Choose "Get Started" to connect to the local Docker environment
+4. You'll now have access to your Docker containers, images, volumes, and networks
 
 ## Known Issues
 

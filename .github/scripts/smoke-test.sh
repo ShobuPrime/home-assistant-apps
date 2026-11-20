@@ -16,6 +16,11 @@ CONTAINER_NAME="smoke-test-$(basename "${APP_DIR}")"
 # Scratch container the Portainer apps start/stop through their Docker socket
 # shim. Created inside the test, removed by cleanup() either way.
 SHIM_PROBE="smoke-test-shim-probe"
+# Stand-ins for Home Assistant's containers, which the Portainer apps must hide.
+HIDE_PREFIX="smoke-test-hide"
+# The mock Supervisor's image. The stand-ins use it too: it is pulled anyway
+# and, unlike an app image, carries no io.hass label of its own.
+PLAIN_IMAGE="mirror.gcr.io/library/python:3-slim"
 MAX_WAIT=120
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -40,6 +45,7 @@ cleanup() {
     fi
     docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm -f "${SHIM_PROBE}" "${SHIM_PROBE}-big" 2>/dev/null || true
+    docker ps -aq --filter "name=^${HIDE_PREFIX}-" 2>/dev/null | xargs -r docker rm -f > /dev/null 2>&1 || true
     docker rm -f "${SUPERVISOR_NAME}" 2>/dev/null || true
     docker rm -f "${MQTT_NAME}" 2>/dev/null || true
     docker network rm "${NETWORK_NAME}" 2>/dev/null || true
@@ -137,7 +143,7 @@ docker run -d \
     "${SUPERVISOR_ENV[@]}" \
     -v "${SCRIPT_DIR}/mock-supervisor.py:/mock-supervisor.py:ro" \
     -v "$(pwd)/${APP_DIR}:/app:ro" \
-    mirror.gcr.io/library/python:3-slim \
+    "${PLAIN_IMAGE}" \
     python3 /mock-supervisor.py /app 80 > /dev/null
 
 # Wait for mock supervisor to be ready
@@ -166,6 +172,8 @@ pass "Mock Supervisor running"
 DOCKER_ARGS=(
     "--network" "${NETWORK_NAME}"
     "-e" "SUPERVISOR_TOKEN=smoke-test-token"
+    # The Supervisor puts this label on every container it starts.
+    "--label" "supervisor_managed="
 )
 
 # Run the app CONFINED by its real AppArmor profile when the runner supports
@@ -1002,6 +1010,76 @@ case "${SLUG}" in
             fail "nginx logged errors while proxying the Docker API"
         fi
         pass "Shim proxied every request without logging an error"
+
+        # --- Hidden containers ---
+        # hide_hassio_containers (default on) keeps the containers Home Assistant
+        # manages out of Portainer's list with three exact label pairs. Each
+        # stand-in carries what the real thing carries: two the Supervisor
+        # started, the Supervisor itself, and one an app started for itself
+        # ("child"). "mine" is somebody's own stack.
+        # The list is read through Portainer's API, where the filter lives. The
+        # raw socket is the control: it must show all five.
+        hide_standin() {
+            local name="${HIDE_PREFIX}-$1"; shift
+            docker run -d --name "${name}" "$@" "${PLAIN_IMAGE}" sleep 600 > /dev/null
+        }
+        hide_standin core       --label supervisor_managed= --label io.hass.type=core
+        hide_standin app        --label supervisor_managed= --label io.hass.type=app
+        hide_standin supervisor --label io.hass.type=supervisor
+        hide_standin child      --label io.github.shobuprime.app-managed=true
+        hide_standin mine       --label com.docker.compose.project=mine
+
+        PT_URL="http://127.0.0.1:${HEALTH_PORT}/api"
+        PT_LOGIN='{"Username":"admin","Password":"smoke-test-Passw0rd"}'
+        pt_curl() { docker exec "${CONTAINER_NAME}" curl -s --max-time 15 "$@"; }
+        # Since 2.45 the first administrator needs the token Portainer prints at start.
+        PT_SETUP=$(docker logs "${CONTAINER_NAME}" 2>&1 | sed -n 's/.*setup_token=\([0-9a-f]*\).*/\1/p' | tail -n 1)
+        PT_INIT=$(pt_curl -X POST -H 'Content-Type: application/json' -H "X-Setup-Token: ${PT_SETUP}" \
+            -d "${PT_LOGIN}" "${PT_URL}/users/admin/init" || true)
+        PT_AUTH=$(pt_curl -X POST -H 'Content-Type: application/json' -d "${PT_LOGIN}" "${PT_URL}/auth" || true)
+        PT_JWT=$(echo "${PT_AUTH}" | sed -n 's/.*"jwt":"\([^"]*\)".*/\1/p')
+        if [ -z "${PT_JWT}" ]; then
+            echo "admin init answered: $(echo "${PT_INIT}" | head -c 200)"
+            echo "auth answered: $(echo "${PT_AUTH}" | head -c 200)"
+            fail "Could not sign in to Portainer's API, so its container list cannot be read"
+        fi
+        # Portainer adds the local environment (--host) shortly after it starts
+        # answering, so wait for it instead of assuming it is there.
+        PT_ENV=""
+        for _ in $(seq 1 30); do
+            PT_ENVS=$(pt_curl -H "Authorization: Bearer ${PT_JWT}" "${PT_URL}/endpoints" || true)
+            PT_ENV=$(echo "${PT_ENVS}" | grep -o '"Id":[0-9]*' | head -n 1 | cut -d: -f2)
+            [ -n "${PT_ENV}" ] && break
+            sleep 2
+        done
+        if [ -z "${PT_ENV}" ]; then
+            echo "environments answered: $(echo "${PT_ENVS}" | head -c 300)"
+            docker logs "${CONTAINER_NAME}" 2>&1 | grep -iE "environment|endpoint|snapshot" | tail -n 5
+            fail "Portainer has no environment after 60s, so its container list cannot be read"
+        fi
+        PT_LIST=$(pt_curl -H "Authorization: Bearer ${PT_JWT}" "${PT_URL}/endpoints/${PT_ENV}/docker/containers/json?all=1")
+        RAW_LIST=$(pt_curl --unix-socket /run/docker.sock 'http://localhost/containers/json?all=1')
+        listed() { echo "$1" | grep -q "\"/${HIDE_PREFIX}-$2\""; }
+
+        for standin in core app supervisor child mine; do
+            if ! listed "${RAW_LIST}" "${standin}"; then
+                fail "Control: the raw socket does not list the '${standin}' stand-in, so the hide test proves nothing"
+            fi
+        done
+        pass "Control: the raw socket lists all five stand-ins"
+
+        if listed "${PT_LIST}" mine; then
+            pass "Portainer lists a container of somebody's own stack"
+        else
+            echo "${PT_LIST}" | head -c 400
+            fail "Portainer does not list the 'mine' stand-in. Its list could not be read, or the filter hides too much"
+        fi
+        for standin in core app supervisor child; do
+            if listed "${PT_LIST}" "${standin}"; then
+                fail "Portainer lists the '${standin}' stand-in. hide_hassio_containers no longer covers it (see services.d/portainer/run)"
+            fi
+        done
+        pass "Portainer hides what the Supervisor starts, the Supervisor itself and what an app starts for itself"
 
         # A shim that cannot come back is worse than no shim. nginx unlinks its
         # listen socket only on a CLEAN exit, so a SIGKILL/OOM/unclean container

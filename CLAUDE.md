@@ -408,6 +408,47 @@ has the design. What transfers to another app:
 - **A `__Host-` cookie cannot be scoped to a path**, and a plain-HTTP test never
   shows one. Check what the app does over HTTPS before rewriting `Path`.
 
+## Telling Home Assistant's containers from the user's
+
+The Docker manager apps leave out what Home Assistant manages
+(`hide_hassio_containers`). Three marks decide it, and none is a list that
+goes stale:
+
+- label `supervisor_managed`, empty value: the Supervisor sets it on every
+  container it starts (since 2022.07.1) and finds its own events by it
+- `io.hass.type=supervisor`: the Supervisor's own container, which HAOS starts
+- `io.github.shobuprime.app-managed=true`: this repository's convention. An
+  app that starts containers of its own (a compose stack, a helper) labels
+  them, because the Supervisor does not know them and stopping one from a
+  manager breaks the app
+
+**A manager app never names another app.** It knows the marks. An app opts in
+by labelling what it starts, so a new app needs no change in any manager.
+
+**Not by `io.hass.type` in general.** It is an image label, and three things
+follow. Some images carry none, so a list of its values misses their
+containers: the list shipping before this, even with `app` added, missed one
+of a device's 24. Other images carry one although anybody can run them, so a
+list would also hide somebody's own container started from such an image. And
+the values get added to: `app` arrived in 2026.04, and the list written before
+it hid fewer than half. No name rule either: `app_db` would be somebody's
+database.
+
+The first two marks matched all 24 Home Assistant containers on a device and
+none of its 20 others (2026-11-20).
+
+Portainer's `--hide-label` matches name and value exactly and filters only its
+container list: a hidden container is still reachable by ID, and counters,
+images and networks are untouched. The Supervisor writes `supervisor_managed`
+with an empty value and reads it back by name only, so nothing on its side
+would notice the value changing. The Portainer apps therefore take the value
+from their own container at start, which the Supervisor started too, and warn
+when the label is missing.
+
+The smoke test starts every app with that label, as the Supervisor does, and
+reads Portainer's list through its API, with stand-in containers and a control
+on the raw socket.
+
 ## Home Assistant Core is NOT running when your app's init script runs
 
 Supervisor starts apps in stages and Core starts *between* them

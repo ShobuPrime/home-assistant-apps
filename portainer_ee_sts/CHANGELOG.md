@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.44.0.2
+
+_2026-11-20_
+
+- **`hide_hassio_containers` hides all of Home Assistant's containers again.** It matched a fixed list of container types, and Home Assistant has added one since, so many of its containers were shown. It now matches the mark Home Assistant itself puts on every container it starts, which a new type cannot slip past.
+- A container labelled `io.github.shobuprime.app-managed=true` is hidden as well. An app that starts containers of its own can mark them this way.
+- The option's text and DOCS say what it is: Portainer's own "Hidden containers" list. It hides, it does not lock; switching it off leaves Portainer's stored list in place.
+- README: the first visit asks for Portainer's setup token, which is printed in the app's log.
+
+Same Portainer as 2.44.0. The new list applies at the next start; nothing to do by hand.
+
 ## 2.44.0.1
 
 _2026-10-22_
