@@ -26,13 +26,13 @@ Sets a secret for Portainer agents when managing remote Docker environments.
 
 ### Option: `hide_hassio_containers`
 
-When enabled (default), hides Home Assistant system containers from the Portainer interface.
-- `true`: Hide all containers with `io.hass.type` labels (supervisor, core, audio, dns, multicast, cli, observer, addon)
-- `false`: Show all containers
+When enabled (default), the containers Home Assistant manages are left out of Portainer's container list. Your own containers and stacks are not affected.
 
-**Important**: Due to how Portainer caches settings, changes to this option may require manual intervention:
-1. If changing from `true` to `false`: Go to Portainer Settings → Hidden containers to unhide them
-2. If changing from `false` to `true`: The containers will be hidden automatically on next restart
+- **It hides, it does not lock.** This is Portainer's own "Hidden containers" list. A hidden container can still be reached by its ID, and the counters, images and networks are not filtered.
+- **Turning it off does not show them again.** Portainer keeps its stored list. Remove the entries under Settings → Hidden containers.
+- **While it is on, the app sets that list at every start.** Entries added by hand under Settings → Hidden containers are replaced at the next restart.
+
+A container counts as managed by Home Assistant when the Supervisor started it, or when it carries the label `io.github.shobuprime.app-managed=true`, which an app puts on containers it starts for itself.
 
 ## Access Methods
 

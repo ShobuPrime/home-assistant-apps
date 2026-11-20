@@ -74,7 +74,8 @@ The app supports multiple architectures with naming differences from Portainer:
 - Read options using `bashio::config` functions
 - Protection mode must be disabled for Docker socket access
 - SSL option controls custom certificate usage only (HTTPS always available)
-- Hidden container settings are cached by Portainer in `/data/portainer/.hide_hassio_containers`
+- `hide_hassio_containers` passes three `--hide-label` pairs (`services.d/portainer/run`): `supervisor_managed=<value>`, `io.hass.type=supervisor`, `io.github.shobuprime.app-managed=true`. Portainer matches name and value exactly and only filters the container list. The value of `supervisor_managed` is read from this app's own container at start, because the Supervisor started it too; a missing label is a warning in the log. Not by `io.hass.type` in general: see root `CLAUDE.md`, "Telling Home Assistant's containers from the user's"
+- Given any `--hide-label`, Portainer replaces its stored list at every start; given none, the stored list stays. `/data/portainer/.hide_hassio_containers` is this app's own marker of the last option value, not Portainer's
 
 ### Critical: Docker Socket Shim
 
@@ -194,7 +195,7 @@ The app includes a Home Assistant integration package for automatic update detec
 - **Protection mode** must be disabled for the app to function
 - **Ingress** integration requires specific port configuration (9443 for HTTPS)
 - **AppArmor profile** is critical for security - modifications require careful testing
-- **Hidden containers** feature requires manual cache clearing in Portainer UI if changed
+- **Hidden containers**: switching the option off leaves Portainer's stored list in place; remove the entries under Settings → Hidden containers
 - **CSP environment variable** (`CSP=false`) is required for Portainer 2.33.0+ to work with Home Assistant ingress
 
 ## Common Issues and Troubleshooting

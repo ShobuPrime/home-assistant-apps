@@ -24,12 +24,12 @@ configuration:
       free tier (up to the node limit). Stored as a secret and never written to
       the log.
   hide_hassio_containers:
-    name: Hide Home Assistant system containers
+    name: Hide Home Assistant's containers
     description: >-
-      When ON (default), hides Supervisor, Core, and app containers (anything
-      with an io.hass.type label) from the Portainer UI to reduce clutter. Note:
-      Portainer caches this setting — switching it OFF later may require manually
-      un-hiding containers in Portainer's Settings.
+      When ON (default), the containers Home Assistant manages are left out of
+      Portainer's container list, so the list shows your own. Turning it OFF
+      later does not bring them back: remove the entries in Portainer under
+      Settings → Hidden containers.
   traefik_enable:
     name: Enable Traefik reverse-proxy route
     description: >-

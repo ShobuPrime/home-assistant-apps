@@ -104,9 +104,10 @@ CURRENT_SETTING=$(bashio::config 'hide_hassio_containers')
 if bashio::fs.file_exists "${HIDE_SETTING_FILE}"; then
     PREVIOUS_SETTING=$(cat "${HIDE_SETTING_FILE}")
     if [[ "${CURRENT_SETTING}" != "${PREVIOUS_SETTING}" ]]; then
-        bashio::log.warning "hide_hassio_containers setting changed from ${PREVIOUS_SETTING} to ${CURRENT_SETTING}"
-        bashio::log.info "Note: Portainer caches hidden labels. You may need to manually show/hide containers in Portainer UI."
-        bashio::log.info "To reset: Go to Settings → Hidden containers in Portainer to manage visibility."
+        bashio::log.warning "hide_hassio_containers changed from ${PREVIOUS_SETTING} to ${CURRENT_SETTING}"
+        if [[ "${CURRENT_SETTING}" != "true" ]]; then
+            bashio::log.info "Portainer keeps its stored list. To show the containers again, remove the entries under Settings → Hidden containers."
+        fi
     fi
 fi
 

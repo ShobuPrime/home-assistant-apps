@@ -41,20 +41,35 @@ if bashio::config.has_value 'license_key'; then
     bashio::log.info "License key configured for Business Edition"
 fi
 
-# Hide Home Assistant containers option
-bashio::log.info "hide_hassio_containers config value: $(bashio::config 'hide_hassio_containers')"
+# Leave the containers Home Assistant manages out of Portainer's list.
+# Portainer matches a label's name and value exactly:
+#   supervisor_managed=<value>   set by the Supervisor on what it starts
+#   io.hass.type=supervisor      the Supervisor's own container
+#   io.github.shobuprime.app-managed=true
+#                                set by an app on what it starts for itself
+# Not by io.hass.type in general: that is an image label. Some images have
+# none, and others carry one although anybody can run them.
+# Given any --hide-label, Portainer replaces its stored list at every start.
 if bashio::config.true 'hide_hassio_containers'; then
-    bashio::log.info "Hiding Home Assistant system containers"
+    bashio::log.info "Hiding the containers Home Assistant manages"
+    # The Supervisor started this container too, so the value it gives the
+    # label is read here, not assumed: a wrong guess would hide nothing.
+    managed_value=""
+    own_id="$(sed -n 's|.*docker/containers/\([a-f0-9]\{64\}\).*|\1|p' /proc/self/mountinfo 2>/dev/null | head -n 1)" || true
+    own_labels="$(curl -s --max-time 5 --unix-socket /run/docker.sock \
+        "http://localhost/containers/${own_id:-none}/json" 2>/dev/null | jq -c '.Config.Labels // empty' 2>/dev/null)" || true
+    if [[ -n "${own_labels}" ]]; then
+        if jq -e 'has("supervisor_managed")' <<< "${own_labels}" > /dev/null; then
+            managed_value="$(jq -r '.supervisor_managed' <<< "${own_labels}")"
+        else
+            bashio::log.warning "This container has no supervisor_managed label, so what the Supervisor starts cannot be told apart and stays listed."
+        fi
+    fi
+    options+=("--hide-label=supervisor_managed=${managed_value}")
     options+=("--hide-label=io.hass.type=supervisor")
-    options+=("--hide-label=io.hass.type=addon")
-    options+=("--hide-label=io.hass.type=core")
-    options+=("--hide-label=io.hass.type=audio")
-    options+=("--hide-label=io.hass.type=dns")
-    options+=("--hide-label=io.hass.type=multicast")
-    options+=("--hide-label=io.hass.type=cli")
-    options+=("--hide-label=io.hass.type=observer")
+    options+=("--hide-label=io.github.shobuprime.app-managed=true")
 else
-    bashio::log.info "NOT hiding Home Assistant system containers"
+    bashio::log.info "Not hiding the containers Home Assistant manages"
 fi
 
 # Log level configuration
