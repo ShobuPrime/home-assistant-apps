@@ -1,5 +1,45 @@
 # Changelog
 
+## 3.1.1
+
+_2026-11-20_
+
+> [!NOTE]
+> This release fixes several backup, container, and project issues, including overlapping scheduled backups now running in turn instead of being skipped. It also includes frontend fixes and refactors, including removing the ky HTTP client and migrating E2E tests to vite-plus.
+
+### Backups and volumes
+
+- Run overlapping scheduled system backups in turn instead of skipping them (#4876) (`neurekadev`)
+- Run overlapping scheduled backups of the same volume in turn (#4879) (`neurekadev`)
+- Restore a new volume's root owner and mode from the archive (#4887) (`neurekadev`)
+- Skip missing volumes in project transfer and archive validation (#4893) (`kmendell`)
+- Mount the Rustic CA bundle from the data directory instead of copying it into the container (#4875) (`neurekadev`)
+
+### Containers, images, and environments
+
+- Skip update checks for Podman localhost images (#4873) (`kmendell`)
+- Clear the pending redeploy when Arcane refuses to redeploy itself (#4905) (`astronaute77`)
+- Show unreachable picked environments inline instead of erroring (#4908) (`kmendell`)
+
+### Projects
+
+- Support Compose job runs in projects (#4877) (`kmendell`)
+
+### Frontend
+
+- Quote download filenames and fix the share download flow (#4871) (`kmendell`)
+- Align table row action button and hover corners (#4882) (`kmendell`)
+- Align container create and edit page headers (#4892) (`kmendell`)
+- Set up frontend telemetry reactively instead of blocking load (#4891) (`kmendell`)
+
+### Refactors
+
+- Clean up frontend queries and remove the ky HTTP client (5 commit 4fbe070017b6bc82119aeabd6ee0003dd4544125) (`kmendell`)
+- Migrate Playwright E2E tests to the vite-plus test runner (#4896) (`kmendell`)
+
+---
+
+
 ## 3.1.0.2
 
 _2026-11-19_
