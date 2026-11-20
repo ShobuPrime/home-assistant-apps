@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant App for Dockhand Docker Manager that provides modern Docker container management through the Home Assistant interface. The app uses Home Assistant's S6-overlay init system and follows standard HA app conventions.
+This is a Home Assistant App for Dockhand, a Docker management web UI with
+Compose stacks. The app uses Home Assistant's S6-overlay init system and
+follows standard HA app conventions.
 
 ## Essential Commands
 
@@ -13,146 +15,170 @@ This is a Home Assistant App for Dockhand Docker Manager that provides modern Do
 # Build the app locally (auto-detects architecture)
 ./build.sh
 
-# Test the app locally
-docker run --rm -it -p 3000:3000 -v /var/run/docker.sock:/var/run/docker.sock local/{arch}-addon-local_dockhand:{version}
+# Full smoke test with a mock Supervisor (from repo root)
+.github/scripts/smoke-test.sh dockhand local/amd64-addon-local_dockhand:<version>
+
+# The adapter's unit tests
+(cd ha-ingress-adapter && go test ./...)
 ```
 
 ### Version Management
+The bot does it every day (`.github/workflows/update-dockhand.yml`). The same
+check by hand, from this directory:
 ```bash
-# Check for Dockhand updates
-./update-dockhand-version.sh --check-only
-
-# Apply update with confirmation
-./update-dockhand-version.sh --yes
-
-# Get JSON output for automation
-./update-dockhand-version.sh --check-only --json
+APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-dockhand.sh
 ```
 
 ## Dockhand Version Scheme
 
-Dockhand uses semantic versioning: `[MAJOR].[MINOR].[PATCH]`
-
-**Version Source**: Dockhand publishes version information in their changelog.json file:
-- https://raw.githubusercontent.com/Finsys/dockhand/main/src/lib/data/changelog.json
-
-**Note**: While Dockhand uses semantic versioning internally, the Docker Hub image (`fnsys/dockhand`) only has a `latest` tag - no version-specific tags exist. The app version tracks the Dockhand version from changelog.json.
-
-The update script fetches the latest version from changelog.json and updates all relevant files. The GitHub Actions workflow runs daily to check for updates.
+Semantic versioning, `[MAJOR].[MINOR].[PATCH]`. The update script reads the
+latest version from upstream's `src/lib/data/changelog.json`. The image is
+`fnsys/dockhand:v<version>`, pulled through `mirror.gcr.io`.
 
 ## Architecture and Key Components
 
 ### Directory Structure
-- **`/rootfs/etc/cont-init.d/`**: S6 initialization scripts that run on container start
-- **`/rootfs/etc/services.d/dockhand/`**: Service definition with `run` script and `finish` handler
+- **`/rootfs/etc/cont-init.d/`**: creates `/data/dockhand` and links it as the app's data folder
+- **`/rootfs/etc/services.d/dockhand/`**: sets the environment and runs upstream's start script
+- **`/rootfs/etc/services.d/dockhand-ingress/`**: runs `ha-ingress-adapter` as `nobody`
+- **`/ha-ingress-adapter/`**: the proxy behind the sidebar panel (Go, stdlib only) and `shim.js`, the script it adds to the page
+- **`/tests/ingress_test.py`**: opens the panel in a real browser behind a stand-in for Home Assistant
 
 ### Critical Files
-- **`config.yaml`**: App configuration (version, ports, ingress, options schema)
-- **`translations/en.yaml`**: Plain-English config-option names + descriptions shown in the HA Configuration tab (kept in sync with `config.yaml`'s options)
-- **`build.yaml`**: Build configuration with base images per architecture
-- **`Dockerfile`**: Multi-stage build that extracts Dockhand from official Docker image
-- **`apparmor.txt`**: Security profile for Docker socket access
+- **`config.yaml`**: version, ports, ingress, options schema
+- **`translations/en.yaml`**: option names and descriptions shown in the Configuration tab
+- **`build.yaml`**: base images per architecture
+- **`Dockerfile`**: takes the application and its start script out of upstream's image
+- **`apparmor.txt`**: security profile
 
 ### Architecture Support
-Dockhand only supports:
-- `amd64` (x86_64)
-- `aarch64` (arm64)
-
-armv7/armhf is NOT supported by upstream Dockhand.
+`amd64` and `aarch64`, as upstream.
 
 ### Port Configuration
-- **3000**: Web interface (HTTP, used for ingress)
+- **3000**: Dockhand's web interface. Fixed: the published port, the health check and the watchdog name it. There was a `port` option until 1.0.58.1, and any other value broke all three
+- **8099**: `ha-ingress-adapter`, the ingress port. Not published
+
+## Started the way upstream starts it
+
+The Dockerfile copies `/app` and `/usr/local/bin/docker-entrypoint.sh` from
+upstream's image, and the service script ends in `exec` of that script. It
+picks the command (`node ... /app/server.js`), takes ownership of the data
+folders for `PUID`, adds that user to the Docker socket's group and drops to
+it. None of that is reproduced here, so it follows upstream.
+
+- **`/app` is a link to `/opt/dockhand`**, because the script names `/app`.
+  The build fails if the script stops naming `/app/server.js`: read the new
+  script before changing the service.
+- **`server.js` is the entry point, not `build/index.js`.** It wraps the bundle
+  and serves the container shell's WebSocket. Until 1.0.58.1 the app ran the
+  bundle alone and the shell could not work.
+- **`docker` and `docker-compose` are not copied from upstream's image.** Its
+  binaries are linked against glibc. Alpine's `docker-cli`,
+  `docker-cli-compose` and `docker-cli-buildx` are used. Dockhand calls
+  `docker compose` in the plugin form, which works on arm64 with these
+  packages (checked on a device, 2026-11-20).
+- **The system CA store is patched in** (`Dockerfile`), in the bundle and in
+  `server.js`. The build fails on a use it did not reach.
+- **Dockhand finds its data folder on the host by itself**, from its own
+  container's mounts. A relative path in a stack is a host path to the Docker
+  daemon, so stacks depend on it. The smoke test deploys a stack with one and
+  checks where it was mounted from.
+
+## The sidebar panel
+
+Two things kept the panel empty, and each alone is enough:
+
+1. Dockhand sends `X-Frame-Options: DENY` and `frame-ancestors 'none'` (since
+   1.0.57). A panel is a frame.
+2. Its web interface calls `/api/...` from the site root. Under ingress that is
+   Home Assistant, not Dockhand. Only the page shell loads.
+
+`ha-ingress-adapter` listens on the ingress port and adapts requests that
+carry Home Assistant's `X-Ingress-Path`. Root `CLAUDE.md`, "An app built for
+the site root can still run under ingress", has what it does. For Dockhand:
+
+- **Framing is relaxed for those requests only**, to `SAMEORIGIN` and
+  `frame-ancestors 'self'`. Home Assistant serves the panel from its own
+  origin, so that allows Home Assistant and nothing else. Dockhand's own port
+  keeps refusing. `DISABLE_FRAME_PROTECTION` is not set: it would lift the
+  protection everywhere.
+- **The page's entry imports are relative** (`import("./_app/...")`). The
+  adapter rewrites them to name the prefix, because the page's address has
+  lost it by the time they run.
+- **A new install has no environment.** The user adds the local socket once
+  (DOCS.md, "First Start").
+
+Not covered: Dockhand's own sign-in inside the panel (untested), and a panel
+opened in a tab of its own, which the browser's reload button takes to an
+address that belongs to Home Assistant.
+
+### Testing it
+
+`go test ./...` in `ha-ingress-adapter/`, and `tests/ingress_test.py`. The
+stand-in for Home Assistant and the browser driver are shared, in
+`.github/scripts/ingress_harness.py`. The test first runs a control: the same
+page with nothing adapting it must stay empty.
+
+```bash
+python3 dockhand/tests/ingress_test.py --ingress http://<container ip>:8099 \
+    --direct http://<container ip>:3000 --container <a running container> --shots /tmp/shots
+```
 
 ## Development Guidelines
-
-### S6-Overlay Integration
-- Use Bashio library for all configuration reading and logging
-- Service scripts must be executable and use proper S6 conventions
-- Exit codes: 0 for success, non-zero triggers restart with backoff
 
 ### Configuration Handling
 - Read options using `bashio::config` functions
 - Protection mode must be disabled for Docker socket access
-- Data is stored in `/data/dockhand` with symlink from `/opt/dockhand/data`
+- Data is stored in `/data/dockhand`
 
 ### Environment Variables
-Dockhand uses these environment variables:
-- `PORT`: Application port (3000)
-- `DATA_DIR`: Persistent data location (/data/dockhand)
-- `PUID`/`PGID`: User/Group ID for file permissions
-- `NODE_ENV`: Runtime environment (production)
-- `LOG_LEVEL`: Logging verbosity
+Set by the service script: `PORT`, `HOST`, `DATA_DIR`, `PUID`, `PGID`, `HOME`,
+`NODE_ENV`, `LOG_LEVEL`. Upstream's script reads `PUID`, `PGID` and `DATA_DIR`.
+
+### Traefik
+`generate-traefik-config.sh` routes to the ingress port by default. Here that
+is the adapter, which is not published, so cont-init passes `TRAEFIK_PORT`:
+the host port of 3000. It also sets `S6_KEEP_ENV=1` for that call: the script
+starts through `with-contenv`, which empties the environment first, so a
+variable passed without it never arrives.
 
 ### Testing Checklist
-- Build completes successfully (multi-stage Docker build)
-- Service starts without errors
-- Web UI accessible on port 3000
-- Ingress access works through Home Assistant sidebar
-- Docker containers visible in Dockhand
-- Configuration changes apply correctly
+- Build completes
+- The smoke test passes: entry point, a stack deployed and removed through
+  Dockhand's API, framing headers, the panel in a browser
 - Data persists in `/data/dockhand` across restarts
-- Update script correctly identifies latest version
 
 ## Important Notes
 
 - **Never commit changes** to version numbers without testing
 - **Protection mode** must be disabled for the app to function
-- **Ingress** integration requires WebSocket support (ingress_stream: true)
-- **AppArmor profile** is critical for security - modifications require careful testing
-- **No CSP configuration** - Unlike Portainer 2.33+, Dockhand does not set restrictive CSP headers, so no CSP workaround is needed
-- **No label filtering** - Dockhand does NOT support hiding containers by labels like Portainer's `--hide-label` flag
-
-## Key Differences from Portainer App
-
-### CSP (Content Security Policy)
-- **Portainer**: Requires `CSP=false` environment variable for versions 2.33.0+ to work with ingress
-- **Dockhand**: No CSP configuration needed - does not set restrictive headers by default
-
-### Container Label Filtering
-- **Portainer**: Supports `--hide-label=io.hass.type=supervisor` and similar flags to hide HA containers
-- **Dockhand**: **NOT SUPPORTED** - No mechanism to hide containers by labels. Only UI-level filtering by container name/image/stack
-
-### Architecture
-- **Portainer**: Supports amd64, aarch64, armhf, armv7, i386
-- **Dockhand**: Only amd64 and aarch64
-
-### Build Method
-- **Portainer**: Downloads release tarball directly from GitHub
-- **Dockhand**: Multi-stage Docker build extracting from official `fnsys/dockhand` image
+- **Authentication is off by default** in Dockhand, and its port is published.
+  It logs a warning about that at every start
+- **Home Assistant's own containers are listed.** Dockhand's hide label has to
+  sit on the hidden container, which it did not create
 
 ## Common Issues and Troubleshooting
 
-### Issue: Dockhand Not Starting
+### Issue: The Sidebar Panel Is Empty After a Dockhand Update
 
 **Symptoms:**
-- App fails to start
-- Logs show application not found or permission errors
+- The panel is blank or shows no data; port 3000 works
+- The smoke test fails in the panel section
 
 **Solution:**
-1. Verify the Dockerfile multi-stage build completed correctly
-2. Check architecture compatibility (amd64/aarch64 only)
-3. Ensure Docker socket is accessible
+1. Run `tests/ingress_test.py` with `--shots` and read its FAIL lines
+2. "no request went to Home Assistant itself" fails: the web interface addresses the server in a new way; add it to `shim.js`
+3. The page shows nothing at all: its shell changed shape; fix the patterns in `main.go`
 
-### Issue: WebSocket/Ingress Not Working
+### Issue: The Build Fails After a Dockhand Update
 
 **Symptoms:**
-- Real-time updates don't work
-- Terminal access fails
-- Connection errors in browser console
+- "Upstream no longer starts /app/server.js"
+- "Unpatched Node root store use"
 
 **Solution:**
-1. Verify `ingress_stream: true` in config.yaml
-2. Check Home Assistant ingress configuration
-3. Try direct access via port 3000
-
-### Issue: Home Assistant Containers Visible
-
-**Symptoms:**
-- All HA system containers visible in Dockhand
-- Want to hide supervisor, core, audio, dns containers
-
-**Note:**
-This is a **known limitation** of Dockhand. Unlike Portainer, there is no CLI flag or configuration to hide containers by labels. The only workaround is to use the search/filter functionality in the UI to find specific containers.
+1. Read upstream's `docker-entrypoint.sh` in the new image and adjust `services.d/dockhand/run`
+2. Extend the `sed` in the Dockerfile to the new use of the root store
 
 ### Issue: Database Errors
 

@@ -12,19 +12,19 @@ The `log_level` option controls the level of log output by the app:
 - `error`: Runtime errors
 - `fatal`: Critical errors
 
-### Option: `port`
-
-The port Dockhand listens on internally. Default is `3000`.
-
-Change this if you have a port conflict with another service. Note that ingress always uses port 3000 internally, so this option is primarily useful for direct access.
-
 ### Option: `puid`
 
-The user ID to run Dockhand as. Default is `0` (root) for Docker socket access.
+The user ID to run Dockhand as. Default is `0` (root).
+
+With another ID, Dockhand's own start script takes ownership of its data folders for that user and gives it access to the Docker socket. Stack folders created while it ran as root stay root-owned until you change their owner once.
 
 ### Option: `pgid`
 
-The group ID to run Dockhand as. Default is `0` (root) for Docker socket access.
+The group ID to run Dockhand as. Default is `0` (root).
+
+## First Start
+
+Dockhand starts with no environment. Under **Settings > Environments**, add one of type **Unix socket** with the path `/var/run/docker.sock`. That is the Docker of this Home Assistant host.
 
 ## Features
 
@@ -54,8 +54,10 @@ The group ID to run Dockhand as. Default is `0` (root) for Docker socket access.
 
 ## Access Methods
 
-1. **Via Sidebar**: Click the Dockhand icon in Home Assistant (uses ingress)
+1. **Via Sidebar**: Click the Dockhand icon in Home Assistant
 2. **Direct HTTP**: `http://[your-ip]:3000`
+
+Dockhand forbids other sites from showing it in a frame. That stays so on its own port. Through the sidebar it allows Home Assistant, and nothing else, to frame it.
 
 ## Data Persistence
 
@@ -73,36 +75,29 @@ Dockhand authentication is **disabled by default** on first launch. You can enab
 
 ## Updating
 
-The app tracks Dockhand releases via the upstream [changelog.json](https://github.com/Finsys/dockhand/blob/main/src/lib/data/changelog.json). GitHub Actions automatically check for new versions daily and create PRs when updates are available.
+The app follows Dockhand's releases. A new version arrives as an update in Home Assistant once it has passed this repository's tests.
 
-To manually check for updates:
-```bash
-cd dockhand
-./update-dockhand-version.sh --check-only
-```
+## Stacks
 
-To apply an update:
-```bash
-./update-dockhand-version.sh
-```
+Dockhand deploys stacks with `docker compose`, which the app includes together with `buildx`. Stack files live in `/data/dockhand/stacks`. A relative path in a stack, such as `./config`, is mounted from that folder.
 
 ## Known Limitations
 
-### No Container Label Filtering
+### Home Assistant's Own Containers Are Listed
 
-Unlike Portainer, Dockhand does **NOT** support hiding containers by labels. There is no `--hide-label` equivalent or configuration option to hide Home Assistant system containers (`io.hass.type` labels).
+Dockhand lists every container on the host, including the ones Home Assistant manages. Its own way of hiding a container is a label on that container (`dockhand.hidden=true`), which cannot be set on containers Dockhand did not create. Stopping or removing a container that Home Assistant manages disturbs Home Assistant.
 
-**Workaround**: Dockhand provides a UI toggle to show/hide stopped containers, and you can use the search/filter functionality to find specific containers by name or image.
+### The Sidebar Panel
 
-### No CSP Configuration
-
-Dockhand does not expose Content Security Policy configuration. However, unlike Portainer 2.33+, Dockhand does not set restrictive CSP headers by default, so ingress should work without additional configuration.
+- Dockhand's own sign-in, if you turn it on, is separate in the panel and on the direct port.
+- A panel opened in a tab of its own does not survive the browser's reload button. Reopen it from the sidebar.
 
 ## Port Information
 
-- **3000**: Web interface (HTTP)
+- **3000**: Web interface (HTTP). To reach it on another port, change the host port under the app's **Network** settings.
+- **8099**: Used inside the app for the sidebar panel. Not published.
 
-WebSocket support is required for terminal and real-time features. The ingress configuration (`ingress_stream: true`) ensures this works through Home Assistant.
+The terminal and the live views use WebSockets, which also work through the sidebar.
 
 ## Licensing
 

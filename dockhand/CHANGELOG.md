@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.58.1
+
+_2026-11-20_
+
+- **The sidebar panel works.** Since 1.0.57 Dockhand forbids being shown in a frame, so the panel was empty. And its web interface asks for its data from the site root, which under the sidebar is Home Assistant itself. A small adapter now serves the panel: it allows Home Assistant, and nothing else, to frame Dockhand, and keeps the interface's requests inside the panel. Dockhand's own port is unchanged and still refuses framing.
+- **Stacks can be deployed.** `docker compose` was missing from the app. It is included now, with `buildx` for stacks that build an image.
+- **Dockhand starts the way its own image starts it.** The app started a different file than upstream does, without the part that serves the container shell. It now runs upstream's start script, so the shell works and the `puid` and `pgid` options do what they say.
+- **The `port` option is gone.** Any value but 3000 left Dockhand unreachable and the app unhealthy, because the port Home Assistant publishes and checks is fixed. To reach Dockhand on another port, change the host port under the app's Network settings. A stored value is ignored.
+- DOCS: a "First Start" section, since Dockhand begins with no environment, and the outdated "Known Limitations" are corrected.
+
+Same Dockhand as 1.0.58.
+
 ## 1.0.58
 
 _2026-11-17_
