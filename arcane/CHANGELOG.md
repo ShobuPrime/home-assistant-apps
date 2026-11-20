@@ -8,6 +8,7 @@ _2026-11-20_
 - **Arcane shows fewer containers after this update.** To see all of them again, turn the option off.
 - It hides, it does not lock: a hidden container can still be reached by its ID.
 - A container labelled `io.github.shobuprime.app-managed=true` is left out as well. An app that starts containers of its own can mark them this way.
+- **With `traefik_enable` on, the route leads to Arcane again.** Since 3.1.0.1 it named the panel's internal port, which nothing outside the app can reach. It now names Arcane's own port as the host publishes it.
 
 Same Arcane as 3.1.1.
 

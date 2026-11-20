@@ -140,6 +140,15 @@ Arcane 3 reads only `ARCANE_`-prefixed names (`services.d/arcane/run`):
 Legacy names are every `ARCANE_*` setting with the prefix removed, so check a
 new base-image variable against that list.
 
+## Traefik
+
+`generate-traefik-config.sh` routes to the ingress port by default. Here that
+is the panel's proxy, which is not published, so cont-init passes
+`TRAEFIK_PORT`: the host port of 3552. It also sets `S6_KEEP_ENV=1` for that
+call: the script starts through `with-contenv`, which empties the environment
+first, so a variable passed without it never arrives. From 3.1.0.1 to 3.1.1 the
+route named the proxy's port and led nowhere.
+
 ## Hiding what Home Assistant manages
 
 Arcane has no setting for it. Its one hide mechanism is a label that has to
@@ -174,6 +183,9 @@ What decided the design:
   prune that brings its own is asked what carries that label: nothing, and the
   tool's exclusion spares nothing, so it gives way; something, and both cannot
   be kept, so the prune is refused (409) and says why.
+- **Arcane waits for the filter to answer, not for its socket.** `/run` is
+  the image layer here, so a socket left by a hard stop is still there at the
+  next start, before the filter is.
 - **The filter has a user to itself.** Its socket is the Docker socket to
   whoever may open it. The panel's proxy runs as `nobody` and must not.
 - **A kept entry is never re-encoded.** Sizes are 64-bit, and a JSON round trip
