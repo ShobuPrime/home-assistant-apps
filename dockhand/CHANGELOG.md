@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.58.2
+
+_2026-11-20_
+
+- **New option `hide_hassio_containers`, on by default.** The containers Home Assistant manages are left out of what Dockhand lists, checks for updates and prunes, so it works on your own. Your containers and stacks are not affected. Turn it off to see every container on the host.
+- **Dockhand shows fewer containers after this update.** To see all of them again, turn the option off.
+- It hides, it does not lock: a hidden container can still be reached by its ID.
+- A container labelled `io.github.shobuprime.app-managed=true` is left out as well. An app that starts containers of its own can mark them this way.
+- If you keep images with the label `dockhand.prune=false`, "prune unused images" is refused while the option is on, with a message that says why. See the documentation.
+- An environment whose socket path is `/run/docker.sock` goes round the option; the log names it at start. Dockhand's default, `/var/run/docker.sock`, does not.
+- If you are coming from 1.0.58, its notes are below and not shown here. In short: the sidebar panel works, stacks can be deployed, and the `port` option is gone. To reach Dockhand on another port, change the host port under the app's Network settings.
+
+Same Dockhand as 1.0.58.
+
 ## 1.0.58.1
 
 _2026-11-20_

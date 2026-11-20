@@ -50,6 +50,7 @@ cleanup() {
     docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm -f "${SHIM_PROBE}" "${SHIM_PROBE}-big" 2>/dev/null || true
     docker ps -aq --filter "name=^${HIDE_PREFIX}-" 2>/dev/null | xargs -r docker rm -f > /dev/null 2>&1 || true
+    docker image ls -q --filter label=smoke-test-prune=1 2>/dev/null | sort -u | xargs -r docker rmi -f > /dev/null 2>&1 || true
     docker rm -f "${SUPERVISOR_NAME}" 2>/dev/null || true
     docker rm -f "${MQTT_NAME}" 2>/dev/null || true
     docker network rm "${NETWORK_NAME}" 2>/dev/null || true
@@ -876,6 +877,90 @@ case "${SLUG}" in
             info "No Chrome or Chromium here — panel browser test skipped (CI runs it)"
         else
             fail "Panel browser test failed (exit ${BROWSER_RC}) — see the FAIL lines above"
+        fi
+
+        # --- Home Assistant's containers stay out of Dockhand ---
+        # hide_hassio_containers (default on) puts ha-docker-filter at
+        # /var/run/docker.sock, the path Dockhand uses (dockhand/ha-docker-filter).
+        # The raw socket is the control: it must show what the filter hides.
+        FILTER_SOCK="/run/docker-filter/docker.sock"
+        docker_api() { in_app curl -s --max-time 15 --unix-socket "$1" "http://docker$2"; }
+        start_standins
+
+        # pgrep -f: the process name is cut at 15 characters, one short of this one.
+        FILTER_UID=$(in_app sh -c "stat -c %u /proc/\$(pgrep -o -f ^/usr/bin/ha-docker-filter)" 2>/dev/null || true)
+        SOCK_MODE=$(in_app stat -c '%a' "${FILTER_SOCK}" 2>/dev/null || true)
+        SOCK_LINK=$(in_app readlink /var/run/docker.sock 2>/dev/null || true)
+        if [ "${SOCK_LINK}" = "${FILTER_SOCK}" ] && [ -n "${FILTER_UID}" ] && [ "${FILTER_UID}" != "0" ] && [ "${SOCK_MODE}" = "660" ]; then
+            pass "/var/run/docker.sock leads to ha-docker-filter, which runs unprivileged"
+        else
+            fail "/var/run/docker.sock leads to '${SOCK_LINK:-nothing}', the filter runs as uid '${FILTER_UID:-none}', its socket has mode '${SOCK_MODE:-none}'"
+        fi
+        # The panel's adapter answers requests from outside and has no
+        # business with Docker, through the filter or round it.
+        PROXY_UID=$(in_app sh -c "stat -c %u /proc/\$(pgrep -o -f ^/usr/bin/ha-ingress-adapter)" 2>/dev/null || true)
+        as_proxy() { docker exec -u "${PROXY_UID}" "${CONTAINER_NAME}" curl -s --max-time 5 --unix-socket "$1" http://docker/_ping 2>/dev/null || true; }
+        if [ -n "${PROXY_UID}" ] && [ "${PROXY_UID}" != "0" ] && [ "${PROXY_UID}" != "${FILTER_UID}" ] \
+            && [ "$(docker_api /var/run/docker.sock /_ping)" = "OK" ] \
+            && [ "$(as_proxy /var/run/docker.sock)" != "OK" ] && [ "$(as_proxy /run/docker.sock)" != "OK" ]; then
+            pass "The panel adapter's user (uid ${PROXY_UID}) cannot reach Docker, through the filter or directly"
+        else
+            fail "The panel's adapter runs as uid '${PROXY_UID:-none}' (the filter as '${FILTER_UID:-none}') and gets '$(as_proxy /var/run/docker.sock)' through the filter, '$(as_proxy /run/docker.sock)' from Docker"
+        fi
+
+        RAW_LIST=$(docker_api /run/docker.sock '/containers/json?all=1')
+        all_standins_listed "${RAW_LIST}"
+        pass "Control: the raw socket lists all five stand-ins"
+        # What Dockhand itself shows, asked the way its web UI asks.
+        DOCKHAND_LIST=$(dockhand_api "${DOCKHAND}/api/containers?env=${DOCKHAND_ENV:-1}" || true)
+        if ! listed "${DOCKHAND_LIST}" mine; then
+            echo "${DOCKHAND_LIST}" | head -c 300
+            fail "Dockhand's container list lacks the 'mine' stand-in: it could not be read, or the filter hides too much"
+        fi
+        for standin in core app supervisor child; do
+            if listed "${DOCKHAND_LIST}" "${standin}"; then
+                fail "Dockhand lists the '${standin}' stand-in (dockhand/ha-docker-filter/rule.go)"
+            fi
+        done
+        pass "Dockhand lists somebody's own container and none of Home Assistant's"
+
+        # Events: a signal to a hidden container must not come through.
+        EV_SINCE=$(date +%s); sleep 1
+        docker kill -s USR1 "${HIDE_PREFIX}-core" "${HIDE_PREFIX}-mine" > /dev/null
+        sleep 1; EV_UNTIL=$(date +%s)
+        RAW_EVENTS=$(docker_api /run/docker.sock "/events?since=${EV_SINCE}&until=${EV_UNTIL}")
+        FILTERED_EVENTS=$(docker_api /var/run/docker.sock "/events?since=${EV_SINCE}&until=${EV_UNTIL}")
+        if listed "${RAW_EVENTS}" core && listed "${RAW_EVENTS}" mine \
+            && listed "${FILTERED_EVENTS}" mine && ! listed "${FILTERED_EVENTS}" core; then
+            pass "Events: the hidden container's are dropped, the other's arrive (the raw socket has both)"
+        else
+            printf 'raw: %s\nfiltered: %s\n' "$(echo "${RAW_EVENTS}" | head -c 300)" "$(echo "${FILTERED_EVENTS}" | head -c 300)"
+            fail "The event stream through the filter is wrong (see above)"
+        fi
+
+        # Prune: Dockhand's "prune unused images" keeps what is labelled
+        # dockhand.prune=false, so its request brings a label! of its own.
+        # Nothing here carries that label, so the filter puts the exclusion
+        # that spares Home Assistant's images in its place. The label
+        # smoke-test-prune keeps the prune to these two images.
+        printf 'FROM %s\nLABEL smoke-test-prune=1 io.hass.type=app\n' "${PLAIN_IMAGE}" | docker build -q -t "${HIDE_PREFIX}-img-ha:1" - > /dev/null
+        printf 'FROM %s\nLABEL smoke-test-prune=1\n' "${PLAIN_IMAGE}" | docker build -q -t "${HIDE_PREFIX}-img-mine:1" - > /dev/null
+        PRUNE_CODE=$(in_app curl -s -o /dev/null -w '%{http_code}' --max-time 60 -X POST --unix-socket /var/run/docker.sock -G \
+            --data-urlencode 'filters={"dangling":["false"],"label!":["dockhand.prune=false"],"label":["smoke-test-prune=1"]}' \
+            http://docker/images/prune)
+        LEFT_IMAGES=$(docker image ls --filter label=smoke-test-prune=1 --format '{{.Repository}}' | sort | tr '\n' ' ')
+        if [ "${PRUNE_CODE}" = "200" ] && [ "${LEFT_IMAGES}" = "${HIDE_PREFIX}-img-ha " ]; then
+            pass "An image prune shaped like Dockhand's spares the image Home Assistant's label marks, and removes the other"
+        else
+            fail "After an image prune shaped like Dockhand's (HTTP ${PRUNE_CODE}) these are left: '${LEFT_IMAGES}' (want only ${HIDE_PREFIX}-img-ha)"
+        fi
+
+        FILTER_ERRORS=$(docker logs "${CONTAINER_NAME}" 2>&1 | grep -E '^ha-docker-filter: (GET|POST|PUT|HEAD|DELETE) ' | grep -v 'context canceled' | head -5 || true)
+        if [ -z "${FILTER_ERRORS}" ]; then
+            pass "The filter passed every request without an error"
+        else
+            echo "${FILTER_ERRORS}" | sed 's/^/    /'
+            fail "ha-docker-filter logged errors (see above)"
         fi
         ;;
 

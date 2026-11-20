@@ -14,6 +14,15 @@ COPY ha-ingress-adapter/go.mod ha-ingress-adapter/*.go ha-ingress-adapter/shim.j
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ha-ingress-adapter . \
     && test -x /ha-ingress-adapter
 
+# ha-docker-filter: keeps Home Assistant's containers out of what Dockhand
+# lists (ha-docker-filter/main.go). Other apps carry the same copy; CI checks
+# that the copies are identical.
+FROM mirror.gcr.io/library/golang:1.27.3-alpine AS filter-builder
+WORKDIR /src
+COPY ha-docker-filter/go.mod ha-docker-filter/*.go ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ha-docker-filter . \
+    && test -x /ha-docker-filter
+
 # Stage 2: Build final image
 FROM ${BUILD_FROM}
 
@@ -83,6 +92,7 @@ RUN find /opt/dockhand/build -name '*.js' -exec sed -i -E \
 RUN mkdir -p /opt/dockhand/data /opt/dockhand/data/db /opt/dockhand/data/stacks
 
 COPY --from=ingress-builder /ha-ingress-adapter /usr/bin/ha-ingress-adapter
+COPY --from=filter-builder /ha-docker-filter /usr/bin/ha-docker-filter
 
 # Copy root filesystem
 COPY rootfs /
@@ -90,7 +100,8 @@ COPY rootfs /
 # Ensure scripts are executable
 RUN chmod a+x /etc/cont-init.d/*.sh \
     && chmod a+x /etc/services.d/*/run \
-    && chmod a+x /etc/services.d/*/finish
+    && chmod a+x /etc/services.d/*/finish \
+    && chmod a+x /usr/bin/dockhand-health
 
 # Build arguments
 ARG BUILD_ARCH
@@ -106,7 +117,7 @@ ARG BUILD_VERSION
 # transition (yellow -> green dot in the HA UI) on the app actually being
 # reachable, instead of just on the container being up.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -fs http://127.0.0.1:3000/api/health || exit 1
+    CMD /usr/bin/dockhand-health
 
 LABEL \
     io.hass.name="${BUILD_NAME}" \

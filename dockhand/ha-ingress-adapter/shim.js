@@ -112,11 +112,16 @@
 
   // Images, icons, style sheets and scripts that the app adds to the page.
   // Links are left alone: the app's router reads them (see 3).
-  var RESOURCE = /^(IMG|LINK|SCRIPT|SOURCE|VIDEO|AUDIO|TRACK|IFRAME|EMBED)$/;
+  var RESOURCE = /^(IMG|LINK|SCRIPT|SOURCE|VIDEO|AUDIO|TRACK|IFRAME|EMBED|OBJECT)$/;
+
+  // The attribute that holds a resource's address.
+  function addressOf(el) {
+    return el.tagName === 'LINK' ? 'href' : el.tagName === 'OBJECT' ? 'data' : 'src';
+  }
 
   var setAttribute0 = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function (name, value) {
-    if ((name === 'src' || name === 'href') && typeof value === 'string' && RESOURCE.test(this.tagName)) {
+    if (typeof value === 'string' && RESOURCE.test(this.tagName) && name === addressOf(this)) {
       value = toServerPath(value);
     }
     return setAttribute0.call(this, name, value);
@@ -140,12 +145,13 @@
   wrapSetter(window.HTMLSourceElement, 'src');
   wrapSetter(window.HTMLMediaElement, 'src');
   wrapSetter(window.HTMLIFrameElement, 'src');
+  wrapSetter(window.HTMLObjectElement, 'data');
 
   // Elements that arrive already built (cloned templates, innerHTML) never
   // call a setter, so their addresses are corrected as they are added.
   function correct(el) {
     if (!RESOURCE.test(el.tagName)) return;
-    var name = el.tagName === 'LINK' ? 'href' : 'src';
+    var name = addressOf(el);
     var value = el.getAttribute(name);
     var moved = value && toServerPath(value);
     if (moved && moved !== value) setAttribute0.call(el, name, moved);
@@ -157,7 +163,7 @@
         var node = added[j];
         if (node.nodeType !== 1) continue;
         correct(node);
-        var inner = node.querySelectorAll('img,link,script,source,video,audio,track,iframe,embed');
+        var inner = node.querySelectorAll('img,link,script,source,video,audio,track,iframe,embed,object');
         for (var k = 0; k < inner.length; k++) correct(inner[k]);
       }
     }
