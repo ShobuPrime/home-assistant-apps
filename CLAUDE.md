@@ -396,10 +396,10 @@ neither a rewritten base path nor a plain proxy works. `arcane/ha-arcane-ingress
 does it with a proxy plus a script in the page; `arcane/CLAUDE.md` ("Ingress")
 has the design.
 
-`dockhand/ha-ingress-adapter` is the same proxy and script with nothing of one
-app in them: the app's address comes from `UPSTREAM_URL`, and
-`INGRESS_OPEN_AT` names a page to open in place of `/`. Use it for the next
-app that needs this.
+`ha-ingress-adapter` is the same proxy and script with nothing of one app in
+them: the app's address comes from `UPSTREAM_URL`, and `INGRESS_OPEN_AT`
+names a page to open in place of `/`. `dockhand` and `dockge` carry copies,
+which PR validation keeps identical. Use it for the next app that needs this.
 
 What transfers to another app:
 
@@ -475,16 +475,16 @@ container or image prune with exactly one `label!`, the one that spares Home
 Assistant's. Hiding does nothing for a prune: dockerd decides what is unused,
 and a stopped app has no container, so its image is unused by definition.
 
-Each app that needs the filter carries a copy (`arcane/ha-docker-filter`,
-`dockhand/ha-docker-filter`), because an app is built from its own directory.
+Each app that needs the filter carries a copy (`arcane/`, `dockhand/` and
+`dockge/ha-docker-filter`), because an app is built from its own directory.
 PR validation fails when a PR changes one copy and not the others: it treats
 Go modules with the same directory name in several apps as copies. How a
 tool is put behind it depends on where the tool takes its socket from:
-`DOCKER_HOST` for Arcane, and for Dockhand, which stores the path in its
-database, the `/var/run` swap described above under "dockerd rejects Docker
-API calls that arrive through HA's ingress".
-`arcane/CLAUDE.md` and `dockhand/CLAUDE.md`, "Hiding what Home Assistant
-manages", have the design and its limits.
+`DOCKER_HOST` for Arcane and Dockge, and for Dockhand, which stores the path
+in its database, the `/var/run` swap described above under "dockerd rejects
+Docker API calls that arrive through HA's ingress". `arcane/CLAUDE.md` has the
+filter's design and its limits; `dockhand/CLAUDE.md` and `dockge/CLAUDE.md`
+what differs for those tools.
 
 ## Home Assistant Core is NOT running when your app's init script runs
 
@@ -560,7 +560,7 @@ build, run, wait for health, `docker stop`, check exit code and grep for
 | `dockhand` | 4s | clean | 10 (default) | Re-measured 2026-11-20 with the ingress adapter and the socket filter added. |
 | `arcane` | 3-4s | clean | 10 (default) | Re-measured 2026-11-20 with the socket filter added. |
 | `muninndb` | 3.7s | clean | **120** | Empty DB; shutdown backup ran in 126ms. |
-| `dockge` | 5.6s | clean | 10 (default) | |
+| `dockge` | 6s | clean | 10 (default) | Re-measured 2026-11-20 with the Docker client, the ingress adapter and the socket filter added. |
 | `huly` | 24-25s | clean | **120** | Also backup downtime (`backup: cold`). |
 | `lemonade` | 9-13s | clean | **30** | |
 | `hay_cm5_fan` | not measured | — | 10 (default) | aarch64-only. |

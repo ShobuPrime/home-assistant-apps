@@ -4,20 +4,12 @@ configuration:
     description: >-
       How much detail Dockge writes to its log. Leave on "info" unless you are
       troubleshooting, in which case use "debug" or "trace".
-  stacks_dir:
-    name: Stacks directory
-    description: >-
-      Where Dockge stores your Docker Compose stacks. Default is "/opt/stacks",
-      which maps to "/data/opt/stacks" on the host so your compose files and
-      volumes are included in Home Assistant backups. Leave the default unless
-      you have a specific reason to change it.
   hide_hassio_containers:
-    name: Hide Home Assistant containers
+    name: Hide Home Assistant's containers
     description: >-
-      When ON (default), hides Home Assistant system containers (supervisor,
-      core, audio, dns, multicast, cli, observer, and add-ons — anything with an
-      "io.hass.type" label) from the Dockge interface so you only see your own
-      stacks. Turn OFF to show every container on the host.
+      When ON (default), Compose projects whose containers Home Assistant
+      manages are left out of what Dockge lists, so it works on your own.
+      Turn OFF to have Dockge list every Compose project on the host.
   traefik_enable:
     name: Enable Traefik integration
     description: >-

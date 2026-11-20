@@ -1,0 +1,19 @@
+#!/bin/sh
+# Dockge runs `docker compose` in a stack's folder. Compose makes a relative
+# path in the stack absolute and hands it to the Docker daemon, which looks
+# for it on the host. The stacks folder is reached through a link that has
+# the host's name for this app's data folder (cont-init), but the kernel
+# reports the folder by its own name, /data/..., which the host does not
+# have. Compose takes PWD instead when PWD names the same folder, so PWD is
+# given the host's name here.
+host_data="$(cat /run/dockge/host-data 2>/dev/null || true)"
+if [ -n "${host_data}" ]; then
+    here="$(pwd -P)"
+    case "${here}" in
+        /data | /data/*)
+            PWD="${host_data}${here#/data}"
+            export PWD
+            ;;
+    esac
+fi
+exec /usr/bin/docker "$@"

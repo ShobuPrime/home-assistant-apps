@@ -2,9 +2,6 @@
 
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
-![Supports armhf Architecture][armhf-shield]
-![Supports armv7 Architecture][armv7-shield]
-![Supports i386 Architecture][i386-shield]
 
 A fancy, easy-to-use and reactive self-hosted docker compose.yaml stack-oriented manager.
 
@@ -16,13 +13,13 @@ Dockge is a self-hosted, easy-to-use Docker Compose stack manager. It provides a
 
 - 🚀 Easy-to-use: Simple and intuitive web interface
 - 📝 Interactive Editor: Edit compose.yaml files with syntax highlighting
-- 🖥️ Web Terminal: Access terminal directly from the browser (console disabled by default in 1.5.0+)
+- 🖥️ Web Terminal: a terminal into a stack's containers
 - 🔄 Real-time Updates: See container status changes instantly
 - 🐳 Docker Compose Management: Start, stop, restart stacks easily
 - 🔧 Convert Docker Run: Convert `docker run` commands to compose.yaml
-- 💾 Persistent data storage included in backups
-- 🎯 Ingress support for seamless sidebar integration
-- 🏷️ Option to hide Home Assistant system containers
+- 💾 Stacks kept in the app's data folder and included in its backups
+- 🎯 Works in the Home Assistant sidebar
+- 🏷️ Leaves out what Home Assistant manages
 
 ## Installation
 
@@ -48,57 +45,11 @@ dealing with an unknown issue. Possible values are:
 - `error`: Runtime errors that do not require immediate action.
 - `fatal`: Something went terribly wrong. App becomes unusable.
 
-### Option: `stacks_dir`
-
-The directory where Docker Compose stacks will be stored. Default is `/opt/stacks`.
-All stacks are automatically included in Home Assistant backups.
-
 ### Option: `hide_hassio_containers`
 
-When enabled (default), hides Home Assistant system containers from the Dockge
-interface. This includes supervisor, core, audio, dns, multicast, cli, observer,
-and app containers.
-
-## Folder Access
-
-This app has access to the following Home Assistant directories:
-
-- `/data` - App persistent data (read/write)
-- `/share` - Home Assistant share folder (read/write)
-
-These folders are accessible from within Dockge and can be used for stack storage or volume mounts.
-
-## First Time Setup
-
-1. When you first access Dockge, you'll be presented with the main dashboard
-2. Click "Compose" or the "+" button to create a new stack
-3. Enter your docker-compose.yaml configuration
-4. Click "Deploy" to start the stack
-
-## Docker Socket Access
-
-This app requires access to the Docker socket to manage containers. For security,
-ensure you understand the implications of granting Docker access to this app.
-
-## Known Issues and Limitations
-
-- **Console Feature**: As of Dockge 1.5.0, the console/terminal feature is disabled
-  by default for security. Since this app uses the official Docker image, enabling
-  the console would require building a custom image with `DOCKGE_ENABLE_CONSOLE=true`
-- Full Docker socket access is required
-- Ingress port must be set to 5001 (default)
-
-## Updating the App
-
-An update script is included to check for new Dockge versions:
-
-```bash
-# Check for updates only
-/config/addons/dockge/update-dockge-version.sh --check-only
-
-# Apply update
-/config/addons/dockge/update-dockge-version.sh --yes
-```
+When enabled (default), Compose projects whose containers Home Assistant
+manages are left out of Dockge, so it lists your own. See the documentation
+for details.
 
 ## Support
 
@@ -106,9 +57,6 @@ Got questions or found a bug? Please open an issue on the GitHub repository.
 
 [aarch64-shield]: https://img.shields.io/badge/aarch64-yes-green.svg
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
-[armhf-shield]: https://img.shields.io/badge/armhf-yes-green.svg
-[armv7-shield]: https://img.shields.io/badge/armv7-yes-green.svg
-[i386-shield]: https://img.shields.io/badge/i386-yes-green.svg
 
 ## Version
 

@@ -1,5 +1,17 @@
 ARG BUILD_FROM
-FROM mirror.gcr.io/louislam/dockge:1.5.0 as dockge
+FROM mirror.gcr.io/louislam/dockge:1.5.0 AS dockge
+
+# ha-ingress-adapter: makes Dockge's web UI work under Home Assistant ingress,
+# and ha-docker-filter: keeps Home Assistant's containers out of what Dockge
+# lists. Other apps carry the same copies; CI checks that they are identical.
+# Built in stages of the target platform.
+FROM mirror.gcr.io/library/golang:1.27.3-alpine AS helpers-builder
+WORKDIR /src
+COPY ha-ingress-adapter/go.mod ha-ingress-adapter/*.go ha-ingress-adapter/shim.js ./ingress/
+COPY ha-docker-filter/go.mod ha-docker-filter/*.go ./filter/
+RUN cd /src/ingress && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ha-ingress-adapter . \
+    && cd /src/filter && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ha-docker-filter . \
+    && test -x /ha-ingress-adapter && test -x /ha-docker-filter
 
 FROM $BUILD_FROM
 
@@ -20,7 +32,10 @@ RUN \
         libstdc++ \
         libgcc \
         musl \
-        musl-utils
+        musl-utils \
+        docker-cli \
+        docker-cli-buildx \
+        docker-cli-compose
 
 # Install Node.js 22 LTS (musl build) to match upstream Dockge's ABI
 # Alpine 3.23 ships Node 24 which breaks native module compatibility.
@@ -54,13 +69,17 @@ WORKDIR /app
 # Create required directories
 RUN mkdir -p /app/data /app/data/db /app/data/stacks
 
+COPY --from=helpers-builder /ha-ingress-adapter /usr/bin/ha-ingress-adapter
+COPY --from=helpers-builder /ha-docker-filter /usr/bin/ha-docker-filter
+
 # Copy root filesystem
 COPY rootfs /
 
 # Ensure scripts are executable
 RUN chmod a+x /etc/cont-init.d/*.sh \
     && chmod a+x /etc/services.d/*/run \
-    && chmod a+x /etc/services.d/*/finish
+    && chmod a+x /etc/services.d/*/finish \
+    && chmod a+x /usr/bin/dockge-health /usr/local/bin/docker
 
 # Build arguments
 ARG BUILD_ARCH
@@ -76,7 +95,7 @@ ARG BUILD_VERSION
 # transition (yellow -> green dot in the HA UI) on the app actually being
 # reachable, instead of just on the container being up.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -fs http://127.0.0.1:5001/ || exit 1
+    CMD /usr/bin/dockge-health
 
 LABEL \
     io.hass.name="${BUILD_NAME}" \

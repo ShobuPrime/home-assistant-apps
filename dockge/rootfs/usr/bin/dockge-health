@@ -1,0 +1,10 @@
+#!/bin/sh
+# The container's health check (HEALTHCHECK in the Dockerfile).
+curl -fs -o /dev/null --max-time 2 http://127.0.0.1:5001/ || exit 1
+
+# With hide_hassio_containers on, Dockge reaches Docker only through
+# ha-docker-filter. s6 restarts the filter when it dies; this is for the case
+# where it does not come back, which Dockge's own page would not show.
+if [ -d /run/docker-filter ]; then
+    curl -fs -o /dev/null --max-time 2 --unix-socket /run/docker-filter/docker.sock http://docker/_ping || exit 1
+fi
