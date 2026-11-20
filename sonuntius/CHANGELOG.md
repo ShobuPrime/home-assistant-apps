@@ -4,6 +4,8 @@
 
 _2026-10-22_
 
+> _Maintenance (2026-11-19):_ Built with `golang.org/x/net` 0.62.0 (was 0.54.0). This clears a Dependabot alert about that module's HTML parser (CVE-2026-25680). The app uses only the websocket package from it and was never exposed, so there is no new version and nothing to rebuild.
+
 - The image requires Alpine's fixed CA bundle (`ca-certificates` 20261020-r0), which drops the emSign roots behind the compromised eMudhra intermediates (CVE-2026-111943).
 - Built with Go 1.27.3, which adds Go's own denylist for the compromised intermediates.
 
