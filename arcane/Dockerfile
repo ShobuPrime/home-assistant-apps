@@ -12,7 +12,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ha-arcane-ingress . \
 FROM $BUILD_FROM
 
 # Build arguments for version
-ARG ARCANE_VERSION=3.1.0
+ARG ARCANE_VERSION=3.1.1
 
 # Install requirements.
 # The base image pins libcrypto3/libssl3 in apk "world" at an exact older
