@@ -316,6 +316,17 @@ case "${SLUG}" in
             fail "Only ${PEAK_RUNNING} containers ever started (expected 10+)"
         fi
 
+        # Every container of the stack carries the mark a Docker manager goes
+        # by to leave it out of its lists (root CLAUDE.md, "Telling Home
+        # Assistant's containers from the user's").
+        UNMARKED=$(docker ps -a --filter "label=com.docker.compose.project=huly_ha" \
+            --format '{{.Names}} {{.Label "io.github.shobuprime.app-managed"}}' | awk '$2 != "true" {print $1}' | tr '\n' ' ')
+        if [ -z "${UNMARKED}" ]; then
+            pass "Every container of the stack is marked as started by the app"
+        else
+            fail "Not marked io.github.shobuprime.app-managed=true: ${UNMARKED}"
+        fi
+
         # Phase 4: Verify key init artifacts were created
         LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1)
 
