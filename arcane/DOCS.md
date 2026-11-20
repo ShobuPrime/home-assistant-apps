@@ -2,7 +2,7 @@
 
 ## Overview
 
-Arcane is a modern, open-source Docker management platform that provides an intuitive web interface for managing your Docker environment. It's designed as a lightweight, beautiful alternative to Portainer with a focus on simplicity, speed, and a clean user interface.
+Arcane is a modern, open-source Docker management platform that provides an intuitive web interface for managing your Docker environment. It is designed to be lightweight, with a focus on simplicity, speed, and a clean user interface.
 
 ## Configuration
 
@@ -32,9 +32,14 @@ User ID and Group ID for file permissions when Arcane creates files.
 
 ### Option: `hide_hassio_containers`
 
-When enabled (default), hides Home Assistant system containers from the Arcane interface.
-- `true`: Hide supervisor, core, audio, dns, multicast, cli, observer, and app containers
-- `false`: Show all containers
+When enabled (default), the containers Home Assistant manages are left out of Arcane: they are not listed, not checked for updates, and not reached by "Update All", auto-update, auto-heal or a prune. Your own containers and projects are not affected. Turn it off to have Arcane see every container on the host.
+
+- **It hides, it does not lock.** A hidden container can still be reached by its ID.
+- **Home Assistant's images are left out as well.** A prune from Arcane spares the ones it can recognise by their label.
+- **The build cache belongs to the whole host.** Clearing it from Arcane also clears what Home Assistant would reuse for its next build.
+- **Totals that Docker reports for the whole host** still include every container.
+
+A container counts as managed by Home Assistant when the Supervisor started it, or when it carries the label `io.github.shobuprime.app-managed=true`, which an app puts on containers it starts for itself.
 
 ## Access Methods
 

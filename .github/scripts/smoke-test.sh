@@ -262,6 +262,38 @@ wait_for_health() {
     fail "Health endpoint on port ${port} not reachable within ${timeout}s"
 }
 
+# Stand-ins for the containers Home Assistant manages, which the Docker manager
+# apps must hide. Each carries what the real thing carries: two the Supervisor
+# started, the Supervisor itself, and one an app started for itself ("child").
+# "mine" is somebody's own stack and must stay visible.
+start_standins() {
+    local spec
+    for spec in \
+        "core --label supervisor_managed= --label io.hass.type=core" \
+        "app --label supervisor_managed= --label io.hass.type=app" \
+        "supervisor --label io.hass.type=supervisor" \
+        "child --label io.github.shobuprime.app-managed=true" \
+        "mine --label com.docker.compose.project=mine"; do
+        # shellcheck disable=SC2086
+        set -- ${spec}
+        local name="${HIDE_PREFIX}-$1"; shift
+        docker run -d --name "${name}" "$@" "${PLAIN_IMAGE}" sleep 600 > /dev/null
+    done
+}
+
+# listed <text> <stand-in>: does a container list or an event log name it?
+listed() { echo "$1" | grep -q "${HIDE_PREFIX}-$2\""; }
+
+# all_standins_listed <text>: the control. It must name every stand-in.
+all_standins_listed() {
+    local standin
+    for standin in core app supervisor child mine; do
+        if ! listed "$1" "${standin}"; then
+            fail "Control: the raw socket does not list the '${standin}' stand-in, so the hide test proves nothing"
+        fi
+    done
+}
+
 # ---------------------------------------------------------------------------
 # App-specific test flow
 # ---------------------------------------------------------------------------
@@ -989,6 +1021,151 @@ case "${SLUG}" in
         else
             fail "Panel browser test failed (exit ${BROWSER_RC}) — see the FAIL lines above"
         fi
+
+        # --- Home Assistant's containers stay out of Arcane ---
+        # hide_hassio_containers (default on) puts ha-docker-filter between
+        # Arcane and the Docker socket (arcane/ha-docker-filter/main.go). The
+        # raw socket is the control: it must show what the filter hides.
+        FILTER_SOCK="/run/docker-filter/docker.sock"
+        in_app() { docker exec "${CONTAINER_NAME}" "$@"; }
+        docker_api() { in_app curl -s --max-time 15 --unix-socket "$1" "http://docker$2"; }
+        start_standins
+
+        # pgrep -f: the process name is cut at 15 characters, one short of this one.
+        FILTER_PID="pgrep -o -f ^/usr/bin/ha-docker-filter"
+        ARCANE_DOCKER=$(docker logs "${CONTAINER_NAME}" 2>&1 | sed -n 's/.*DOCKER_HOST: \(unix:[^ ]*\).*/\1/p' | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')
+        FILTER_UID=$(in_app sh -c "stat -c %u /proc/\$(${FILTER_PID})" 2>/dev/null || true)
+        SOCK_MODE=$(in_app stat -c '%a' "${FILTER_SOCK}" 2>/dev/null || true)
+        if [ "${ARCANE_DOCKER}" = "unix://${FILTER_SOCK}" ] && [ -n "${FILTER_UID}" ] && [ "${FILTER_UID}" != "0" ] && [ "${SOCK_MODE}" = "660" ]; then
+            pass "Arcane reaches Docker through ha-docker-filter, which runs unprivileged"
+        else
+            fail "Arcane was started with DOCKER_HOST '${ARCANE_DOCKER:-unset}', the filter runs as uid '${FILTER_UID:-none}', its socket has mode '${SOCK_MODE:-none}'"
+        fi
+        # The panel's proxy answers requests from outside and has no business
+        # with Docker. Its user must not get there through the filter either,
+        # which it would if the two shared a user.
+        PROXY_UID=$(in_app sh -c "stat -c %u /proc/\$(pgrep -o -f ^/usr/bin/ha-arcane-ingress)" 2>/dev/null || true)
+        as_proxy() { docker exec -u "${PROXY_UID}" "${CONTAINER_NAME}" curl -s --max-time 5 --unix-socket "$1" http://docker/_ping 2>/dev/null || true; }
+        if [ -n "${PROXY_UID}" ] && [ "${PROXY_UID}" != "0" ] && [ "${PROXY_UID}" != "${FILTER_UID}" ] \
+            && [ "$(docker_api "${FILTER_SOCK}" /_ping)" = "OK" ] \
+            && [ "$(as_proxy "${FILTER_SOCK}")" != "OK" ] && [ "$(as_proxy /run/docker.sock)" != "OK" ]; then
+            pass "The panel proxy's user (uid ${PROXY_UID}) cannot reach Docker, through the filter or directly"
+        else
+            fail "The panel's proxy runs as uid '${PROXY_UID:-none}' (the filter as '${FILTER_UID:-none}') and gets '$(as_proxy "${FILTER_SOCK}")' from the filter, '$(as_proxy /run/docker.sock)' from Docker"
+        fi
+
+        RAW_LIST=$(docker_api /run/docker.sock '/containers/json?all=1')
+        all_standins_listed "${RAW_LIST}"
+        pass "Control: the raw socket lists all five stand-ins"
+        FILTERED_LIST=$(docker_api "${FILTER_SOCK}" '/containers/json?all=1')
+        if ! listed "${FILTERED_LIST}" mine; then
+            echo "${FILTERED_LIST}" | head -c 300
+            fail "The filter's list lacks the 'mine' stand-in: it could not be read, or the filter hides too much"
+        fi
+        for standin in core app supervisor child; do
+            if listed "${FILTERED_LIST}" "${standin}"; then
+                fail "The filter lists the '${standin}' stand-in (arcane/ha-docker-filter/rule.go)"
+            fi
+        done
+        pass "The filter's list has somebody's own container and none of Home Assistant's"
+
+        # What Arcane itself shows, asked the way its web UI asks. The browser
+        # test above has changed the first password; without Chrome it has not.
+        NEW_PASSWORD='Ingress-Test-2026!x'
+        arcane_login() {
+            in_app curl -s --max-time 10 -o /dev/null -D - -H 'Content-Type: application/json' \
+                -d "{\"username\":\"arcane\",\"password\":\"$1\"}" "http://127.0.0.1:${HEALTH_PORT}/api/auth/login" \
+                | tr -d '\r' | sed -n 's/^[Ss]et-[Cc]ookie: token=\([^;]*\).*/\1/p' | head -1
+        }
+        arcane_api() { in_app curl -s --max-time 20 -H "Cookie: token=${ARCANE_TOKEN}" "$@"; }
+        ARCANE_TOKEN=$(arcane_login "${NEW_PASSWORD}" || true)
+        if [ -z "${ARCANE_TOKEN}" ]; then
+            ARCANE_TOKEN=$(arcane_login "${FIRST_PASSWORD}" || true)
+            arcane_api -o /dev/null -H 'Content-Type: application/json' \
+                -d "{\"currentPassword\":\"${FIRST_PASSWORD}\",\"newPassword\":\"${NEW_PASSWORD}\"}" \
+                "http://127.0.0.1:${HEALTH_PORT}/api/auth/password" || true
+            ARCANE_TOKEN=$(arcane_login "${NEW_PASSWORD}" || true)
+        fi
+        arcane_list() { arcane_api "http://127.0.0.1:${HEALTH_PORT}/api/agents/0/containers?limit=500&includeHidden=true&includeInternal=true" || true; }
+        ARCANE_LIST=$(arcane_list)
+        if ! listed "${ARCANE_LIST}" mine; then
+            echo "${ARCANE_LIST}" | head -c 300
+            fail "Arcane's own container list lacks the 'mine' stand-in: it could not be read, or Arcane has no Docker"
+        fi
+        for standin in core app supervisor child; do
+            if listed "${ARCANE_LIST}" "${standin}"; then
+                fail "Arcane lists the '${standin}' stand-in, even asked for hidden containers"
+            fi
+        done
+        pass "Arcane lists somebody's own container and none of Home Assistant's"
+
+        # Events: a signal to a hidden container must not come through.
+        EV_SINCE=$(date +%s); sleep 1
+        docker kill -s USR1 "${HIDE_PREFIX}-core" "${HIDE_PREFIX}-mine" > /dev/null
+        sleep 1; EV_UNTIL=$(date +%s)
+        RAW_EVENTS=$(docker_api /run/docker.sock "/events?since=${EV_SINCE}&until=${EV_UNTIL}")
+        FILTERED_EVENTS=$(docker_api "${FILTER_SOCK}" "/events?since=${EV_SINCE}&until=${EV_UNTIL}")
+        if listed "${RAW_EVENTS}" core && listed "${RAW_EVENTS}" mine \
+            && listed "${FILTERED_EVENTS}" mine && ! listed "${FILTERED_EVENTS}" core; then
+            pass "Events: the hidden container's are dropped, the other's arrive (the raw socket has both)"
+        else
+            printf 'raw: %s\nfiltered: %s\n' "$(echo "${RAW_EVENTS}" | head -c 300)" "$(echo "${FILTERED_EVENTS}" | head -c 300)"
+            fail "The event stream through the filter is wrong (see above)"
+        fi
+
+        # Prune: hiding does nothing for it, dockerd decides what is unused. A
+        # stopped app container must survive one. The label keeps the prune to
+        # these two containers, wherever this runs.
+        docker create --name "${HIDE_PREFIX}-stopped-app" --label smoke-test-prune=1 --label supervisor_managed= "${PLAIN_IMAGE}" true > /dev/null
+        docker create --name "${HIDE_PREFIX}-stopped-mine" --label smoke-test-prune=1 "${PLAIN_IMAGE}" true > /dev/null
+        prune_through_filter() {
+            in_app curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X POST --unix-socket "${FILTER_SOCK}" -G \
+                --data-urlencode "filters=$1" http://docker/containers/prune
+        }
+        left_after_prune() { docker ps -a --filter label=smoke-test-prune=1 --format '{{.Names}}' | sort | tr '\n' ' '; }
+        # A tool may exclude by a label of its own. dockerd cannot keep that
+        # and the Supervisor's together, so when something carries the tool's
+        # label nothing is pruned...
+        PRUNE_CODE=$(prune_through_filter '{"label":["smoke-test-prune=1"],"label!":["smoke-test-prune=1"]}')
+        if [ "${PRUNE_CODE}" = "409" ] && [ "$(left_after_prune)" = "${HIDE_PREFIX}-stopped-app ${HIDE_PREFIX}-stopped-mine " ]; then
+            pass "A prune that keeps by a label of its own, which containers carry, is refused and removes nothing"
+        else
+            fail "A prune with its own label! in use: HTTP ${PRUNE_CODE}, left: '$(left_after_prune)' (want 409 and both containers)"
+        fi
+        # ...and when nothing does, the tool's exclusion spares nothing and
+        # gives way to the Supervisor's.
+        PRUNE_CODE=$(prune_through_filter '{"label":["smoke-test-prune=1"],"label!":["smoke-test-nothing-has-this"]}')
+        if [ "${PRUNE_CODE}" = "200" ] && [ "$(left_after_prune)" = "${HIDE_PREFIX}-stopped-app " ]; then
+            pass "A container prune through the filter spares the Supervisor's stopped container"
+        else
+            fail "After a container prune through the filter (HTTP ${PRUNE_CODE}) these are left: '$(left_after_prune)' (want only ${HIDE_PREFIX}-stopped-app)"
+        fi
+
+        # Arcane has no Docker without the filter, and its own health would not
+        # show that. s6 has to bring the filter back, and Arcane has to go on.
+        in_app sh -c "kill -9 \$(${FILTER_PID})"
+        FILTER_BACK=""
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            sleep 2
+            if [ "$(docker_api "${FILTER_SOCK}" /_ping || true)" = "OK" ]; then
+                FILTER_BACK="yes"
+                break
+            fi
+        done
+        ARCANE_LIST=$(arcane_list)
+        if [ -n "${FILTER_BACK}" ] && listed "${ARCANE_LIST}" mine && ! listed "${ARCANE_LIST}" core; then
+            pass "The filter comes back after a hard kill, and Arcane goes on listing through it"
+        else
+            fail "After a hard kill of the filter: back='${FILTER_BACK:-no}', Arcane's list: $(echo "${ARCANE_LIST}" | head -c 200)"
+        fi
+
+        FILTER_ERRORS=$(docker logs "${CONTAINER_NAME}" 2>&1 | grep -E '^ha-docker-filter: (GET|POST|PUT|HEAD|DELETE) ' | grep -v 'context canceled' | head -5 || true)
+        if [ -z "${FILTER_ERRORS}" ]; then
+            pass "The filter passed every request without an error"
+        else
+            echo "${FILTER_ERRORS}" | sed 's/^/    /'
+            fail "ha-docker-filter logged errors (see above)"
+        fi
         ;;
 
     portainer_ee_lts|portainer_ee_sts)
@@ -1142,15 +1319,7 @@ case "${SLUG}" in
         # ("child"). "mine" is somebody's own stack.
         # The list is read through Portainer's API, where the filter lives. The
         # raw socket is the control: it must show all five.
-        hide_standin() {
-            local name="${HIDE_PREFIX}-$1"; shift
-            docker run -d --name "${name}" "$@" "${PLAIN_IMAGE}" sleep 600 > /dev/null
-        }
-        hide_standin core       --label supervisor_managed= --label io.hass.type=core
-        hide_standin app        --label supervisor_managed= --label io.hass.type=app
-        hide_standin supervisor --label io.hass.type=supervisor
-        hide_standin child      --label io.github.shobuprime.app-managed=true
-        hide_standin mine       --label com.docker.compose.project=mine
+        start_standins
 
         PT_URL="http://127.0.0.1:${HEALTH_PORT}/api"
         PT_LOGIN='{"Username":"admin","Password":"smoke-test-Passw0rd"}'
@@ -1182,13 +1351,7 @@ case "${SLUG}" in
         fi
         PT_LIST=$(pt_curl -H "Authorization: Bearer ${PT_JWT}" "${PT_URL}/endpoints/${PT_ENV}/docker/containers/json?all=1")
         RAW_LIST=$(pt_curl --unix-socket /run/docker.sock 'http://localhost/containers/json?all=1')
-        listed() { echo "$1" | grep -q "\"/${HIDE_PREFIX}-$2\""; }
-
-        for standin in core app supervisor child mine; do
-            if ! listed "${RAW_LIST}" "${standin}"; then
-                fail "Control: the raw socket does not list the '${standin}' stand-in, so the hide test proves nothing"
-            fi
-        done
+        all_standins_listed "${RAW_LIST}"
         pass "Control: the raw socket lists all five stand-ins"
 
         if listed "${PT_LIST}" mine; then

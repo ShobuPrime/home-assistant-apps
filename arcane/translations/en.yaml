@@ -24,11 +24,11 @@ configuration:
       is 1000. Change it only if you need files to be owned by a specific group
       on mounted volumes.
   hide_hassio_containers:
-    name: Hide Home Assistant system containers
+    name: Hide Home Assistant's containers
     description: >-
-      When ON (default), hides Supervisor, Core, and app containers (anything
-      with an io.hass.type label) from the Arcane UI to reduce clutter. Turn OFF
-      to show every container on the host.
+      When ON (default), the containers Home Assistant manages are left out of
+      what Arcane lists, updates and prunes, so it works on your own. Turn OFF
+      to have Arcane see every container on the host.
   traefik_enable:
     name: Enable Traefik reverse-proxy route
     description: >-

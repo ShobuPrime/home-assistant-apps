@@ -3,7 +3,7 @@
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
 
-Modern Docker management UI - a lightweight, beautiful alternative to Portainer.
+A modern, lightweight Docker management UI.
 
 ## About
 
@@ -57,7 +57,9 @@ User/Group ID for Docker file permissions. Default is 1000.
 
 ### Option: `hide_hassio_containers`
 
-When enabled (default), hides Home Assistant system containers from the Arcane interface.
+When enabled (default), the containers Home Assistant manages are left out of
+Arcane, so it lists, updates and prunes only your own. See the documentation
+for details.
 
 ## Folder Access
 

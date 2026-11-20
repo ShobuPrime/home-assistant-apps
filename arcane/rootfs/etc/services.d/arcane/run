@@ -28,6 +28,28 @@ export ARCANE_PORT="3552"
 export ARCANE_DATABASE_URL="file:/data/arcane/arcane.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)&_txlock=immediate"
 # Not prefixed upstream.
 export DOCKER_HOST="unix:///var/run/docker.sock"
+# With hide_hassio_containers on, Arcane reaches Docker through
+# ha-docker-filter (services.d/arcane-filter). Arcane reads the socket's group
+# once, at start, so the filter has to answer first. Its socket being there is
+# not enough: one left by a hard stop is there before the filter is. There is
+# no fallback to the real socket: Home Assistant's containers would be back
+# with no sign.
+if bashio::config.true 'hide_hassio_containers'; then
+    readonly FILTER_SOCKET=/run/docker-filter/docker.sock
+    filter_answers=""
+    for _ in $(seq 1 300); do
+        if [[ "$(curl -s --max-time 2 --unix-socket "${FILTER_SOCKET}" http://docker/_ping 2>/dev/null || true)" == "OK" ]]; then
+            filter_answers="yes"
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ -z "${filter_answers}" ]]; then
+        bashio::log.error "ha-docker-filter did not answer within 30s, so Arcane is not started. Its own lines above say why."
+        exit 1
+    fi
+    export DOCKER_HOST="unix://${FILTER_SOCKET}"
+fi
 
 # Configure PUID/PGID
 if bashio::config.has_value 'puid'; then
