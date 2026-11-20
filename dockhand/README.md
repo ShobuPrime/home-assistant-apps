@@ -15,6 +15,9 @@ Dockhand is a privacy-focused Docker management platform that provides:
 - Multi-environment support (local, remote, agents)
 - Modern, responsive web interface
 
+The containers Home Assistant manages are left out by default, so Dockhand
+lists, updates and prunes only your own. See the documentation for details.
+
 ## Installation
 
 1. Add this repository to your Home Assistant App store

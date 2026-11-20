@@ -22,6 +22,19 @@ With another ID, Dockhand's own start script takes ownership of its data folders
 
 The group ID to run Dockhand as. Default is `0` (root).
 
+### Option: `hide_hassio_containers`
+
+When enabled (default), the containers Home Assistant manages are left out of Dockhand: they are not listed, not checked for updates, and not reached by auto-update or a prune. Your own containers and stacks are not affected. Turn it off to have Dockhand see every container on the host.
+
+- **It hides, it does not lock.** A hidden container can still be reached by its ID.
+- **Home Assistant's images are left out as well.** A prune from Dockhand spares the ones it can recognise by their label.
+- **Use the socket path `/var/run/docker.sock`** for the local environment, which is Dockhand's default. An environment with `/run/docker.sock` reaches Docker directly and lists everything; the app's log names any such environment at start.
+- **Images you keep with the label `dockhand.prune=false`:** while the option is on, "prune unused images" is refused, with a message, if any image carries that label. Docker cannot keep those and Home Assistant's in one prune. Pruning dangling images works as before.
+- **The build cache belongs to the whole host.** Clearing it from Dockhand also clears what Home Assistant would reuse for its next build.
+- **Totals that Docker reports for the whole host**, such as the counts on the host information, still include every container.
+
+A container counts as managed by Home Assistant when the Supervisor started it, or when it carries the label `io.github.shobuprime.app-managed=true`, which an app puts on containers it starts for itself.
+
 ## First Start
 
 Dockhand starts with no environment. Under **Settings > Environments**, add one of type **Unix socket** with the path `/var/run/docker.sock`. That is the Docker of this Home Assistant host.
@@ -82,10 +95,6 @@ The app follows Dockhand's releases. A new version arrives as an update in Home 
 Dockhand deploys stacks with `docker compose`, which the app includes together with `buildx`. Stack files live in `/data/dockhand/stacks`. A relative path in a stack, such as `./config`, is mounted from that folder.
 
 ## Known Limitations
-
-### Home Assistant's Own Containers Are Listed
-
-Dockhand lists every container on the host, including the ones Home Assistant manages. Its own way of hiding a container is a label on that container (`dockhand.hidden=true`), which cannot be set on containers Dockhand did not create. Stopping or removing a container that Home Assistant manages disturbs Home Assistant.
 
 ### The Sidebar Panel
 

@@ -54,6 +54,27 @@ bashio::log.info "  PGID: ${PGID}"
 export HOST="0.0.0.0"
 export HOME="/home/dockhand"
 
+# With hide_hassio_containers on, /var/run/docker.sock leads to
+# ha-docker-filter (cont-init). Dockhand looks at its own container and the
+# socket's group once, at start, so the filter has to answer first. Its socket
+# being there is not enough: one left by a hard stop is there before the
+# filter is.
+if bashio::config.true 'hide_hassio_containers'; then
+    filter_answers=""
+    deadline=$((SECONDS + 30))
+    while ((SECONDS < deadline)); do
+        if [[ "$(curl -s --max-time 2 --unix-socket /var/run/docker.sock http://docker/_ping 2>/dev/null || true)" == "OK" ]]; then
+            filter_answers="yes"
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ -z "${filter_answers}" ]]; then
+        bashio::log.error "ha-docker-filter did not answer within 30s, so Dockhand is not started. Its own lines above say why."
+        exit 1
+    fi
+fi
+
 # Start Dockhand the way upstream's image does: its own script picks the
 # command and its flags, takes ownership of the data folders for PUID and
 # drops to that user. This is not reproduced here, so that it follows upstream.

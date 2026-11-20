@@ -15,6 +15,12 @@ configuration:
     description: >-
       The Linux group ID Dockhand runs as. Default is 0 (root). It goes with
       the user ID above.
+  hide_hassio_containers:
+    name: Hide Home Assistant's containers
+    description: >-
+      When ON (default), the containers Home Assistant manages are left out of
+      what Dockhand lists, updates and prunes, so it works on your own. Turn
+      OFF to have Dockhand see every container on the host.
   traefik_enable:
     name: Enable Traefik integration
     description: >-

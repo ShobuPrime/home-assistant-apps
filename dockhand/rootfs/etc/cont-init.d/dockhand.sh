@@ -34,6 +34,47 @@ else
     bashio::log.error "Please ensure the app has the proper permissions."
 fi
 
+# With hide_hassio_containers on, Dockhand reaches Docker through
+# ha-docker-filter (services.d/dockhand-filter). Dockhand keeps a socket path
+# per environment, /var/run/docker.sock by default, and its start script, its
+# stacks and its look at its own container use that path too. So the filter
+# is put at that path: /var/run, a link to /run in the base image, becomes a
+# directory holding docker.sock -> the filter's socket. The real socket stays
+# at /run/docker.sock, for the filter.
+# This holds because s6-overlay links /var/run to /run again at every boot
+# (an in-place restart logs "/var/run is not a symlink to /run, fixing it"),
+# and the base image's one writer under /var/run runs before this script. Do
+# not add another: S6_BEHAVIOUR_IF_STAGE2_FAILS=2 stops the container on it.
+if bashio::config.true 'hide_hassio_containers'; then
+    if [[ -L /var/run ]]; then
+        rm -f /var/run
+        mkdir -p /var/run
+    fi
+    if [[ -d /var/run ]] && [[ ! -L /var/run ]] \
+        && { [[ ! -e /var/run/docker.sock ]] || [[ -L /var/run/docker.sock ]]; }; then
+        ln -sfn /run/docker-filter/docker.sock /var/run/docker.sock
+        # Dockhand's start script reads the socket's group off this path
+        # without following the link.
+        chown -h "root:$(stat -c %g /run/docker.sock)" /var/run/docker.sock
+        bashio::log.info "Home Assistant's containers are hidden: /var/run/docker.sock leads to ha-docker-filter"
+    else
+        # No way round the filter: Home Assistant's containers would be back
+        # with no sign.
+        bashio::exit.nok "/var/run/docker.sock cannot be pointed at ha-docker-filter. Turn hide_hassio_containers off to start Dockhand without it."
+    fi
+
+    # An environment with another socket path goes round the filter. The path
+    # is the user's to choose, so it is reported, not changed.
+    if [[ -f /data/dockhand/db/dockhand.db ]]; then
+        bypassing="$(sqlite3 -readonly /data/dockhand/db/dockhand.db \
+            "SELECT name || ' (' || socket_path || ')' FROM environments WHERE connection_type = 'socket' AND socket_path != '/var/run/docker.sock';" 2>/dev/null || true)"
+        while IFS= read -r environment; do
+            [[ -n "${environment}" ]] || continue
+            bashio::log.warning "Dockhand's environment ${environment} goes round the filter and lists Home Assistant's containers. Set its socket path to /var/run/docker.sock under Settings > Environments."
+        done <<< "${bypassing}"
+    fi
+fi
+
 # Link data directory for persistence
 if [[ -d /opt/dockhand/data ]]; then
     rm -rf /opt/dockhand/data

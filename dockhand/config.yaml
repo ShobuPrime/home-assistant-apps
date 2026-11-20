@@ -1,6 +1,6 @@
 name: "Dockhand"
 description: "Modern Docker management UI with real-time container orchestration and Compose stack management"
-version: "1.0.58.1"
+version: "1.0.58.2"
 slug: "dockhand"
 init: false
 ingress: true
@@ -33,6 +33,7 @@ options:
   log_level: info
   puid: 0
   pgid: 0
+  hide_hassio_containers: true
   traefik_enable: false
   traefik_domain: ""
   traefik_entrypoints: "websecure"
@@ -41,6 +42,7 @@ schema:
   log_level: list(trace|debug|info|warning|error|fatal)?
   puid: int?
   pgid: int?
+  hide_hassio_containers: bool?
   traefik_enable: bool?
   traefik_domain: str?
   traefik_entrypoints: str?

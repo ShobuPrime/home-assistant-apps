@@ -358,6 +358,36 @@ jobs:
           go-version: '1.27.3'
           cache: false
 
+      # A helper used by several apps is copied into each, because an app is
+      # built from its own directory. Copies share the module's directory
+      # name; the ones this PR touches must still be identical.
+      - name: Shared Go helpers are identical in every app
+        run: |
+          set -euo pipefail
+          BASE_REF="${{ needs.resolve-context.outputs.base_ref }}"
+          git fetch origin "${BASE_REF}"
+          CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          FAILED=""
+          while IFS= read -r name; do
+            COPIES=$(find . -mindepth 2 -maxdepth 2 -type d -name "${name}" -not -path './.git/*' | sed 's|^\./||' | sort)
+            if ! echo "${CHANGED_FILES}" | grep -qE "^[^/]+/${name}/"; then
+              continue
+            fi
+            FIRST=$(echo "${COPIES}" | head -n 1)
+            for copy in $(echo "${COPIES}" | tail -n +2); do
+              if diff -r "${FIRST}" "${copy}" > /tmp/copy.diff; then
+                echo "✅ ${copy} is identical to ${FIRST}"
+              else
+                cat /tmp/copy.diff
+                echo "::error::${copy} differs from ${FIRST}: change every copy of ${name} together"
+                FAILED="${FAILED} ${copy}"
+              fi
+            done
+          done < <(find . -mindepth 3 -maxdepth 3 -name go.mod -not -path './.git/*' -printf '%h\n' | xargs -r -n1 basename | sort | uniq -d)
+          if [ -n "${FAILED}" ]; then
+            exit 1
+          fi
+
       # Any app may ship Go components (lemonade/memproxy, sonuntius, aegis_ha).
       # Discover them by go.mod rather than hard-coding a list, so a new one is
       # covered the day it lands — but only check modules this PR actually
