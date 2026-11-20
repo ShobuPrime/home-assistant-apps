@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.0.1
+
+_2026-11-20_
+
+- **With `traefik_enable` on, MuninnDB starts again.** The shared route helper stopped on a variable that was not set, and since bashio runs scripts strictly, that stopped the app.
+- **`traefik_api_domain`, `traefik_grpc_domain` and `traefik_mcp_domain` write their routes.** They never reached the helper, so only the web interface got a route.
+
+Same MuninnDB as 0.13.0.
+
 ## 0.13.0
 
 _2026-11-19_

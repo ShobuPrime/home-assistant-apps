@@ -8,6 +8,7 @@ _2026-11-20_
 - A container labelled `io.github.shobuprime.app-managed=true` is hidden as well. An app that starts containers of its own can mark them this way.
 - The option's text and DOCS say what it is: Portainer's own "Hidden containers" list. It hides, it does not lock; switching it off leaves Portainer's stored list in place.
 - README: the first visit asks for Portainer's setup token, which is printed in the app's log.
+- **With `traefik_enable` on, Portainer starts again.** The shared route helper stopped on a variable that was not set, and since bashio runs scripts strictly, that stopped the app. With `ssl` on as well, the route now uses HTTPS on 9443, as it was meant to; the setting never reached the helper.
 
 Same Portainer as 2.45.4. The new list applies at the next start; nothing to do by hand.
 

@@ -144,10 +144,10 @@ new base-image variable against that list.
 
 `generate-traefik-config.sh` routes to the ingress port by default. Here that
 is the panel's proxy, which is not published, so cont-init passes
-`TRAEFIK_PORT`: the host port of 3552. It also sets `S6_KEEP_ENV=1` for that
-call: the script starts through `with-contenv`, which empties the environment
-first, so a variable passed without it never arrives. From 3.1.0.1 to 3.1.1 the
-route named the proxy's port and led nowhere.
+`TRAEFIK_PORT`: the host port of 3552. From 3.1.0.1 to 3.1.1 the route named
+the proxy's port and led nowhere, and with `traefik_enable` on the app did not
+start at all (the shared helper failed under bashio's strict mode; fixed in
+the helper for every app).
 
 ## Hiding what Home Assistant manages
 

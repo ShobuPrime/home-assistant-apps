@@ -1,4 +1,4 @@
-#!/usr/bin/with-contenv bashio
+#!/usr/bin/env bashio
 # ==============================================================================
 # Traefik Dynamic Configuration Generator
 # Shared helper for all Home Assistant apps in this repository.
@@ -9,6 +9,13 @@
 #
 # This file is the CANONICAL copy. Each app has an identical copy at
 # rootfs/usr/local/bin/generate-traefik-config.sh
+#
+# Called from an app's cont-init, which already has the container's
+# environment. Not through with-contenv: that empties the environment first,
+# and the TRAEFIK_* variables a caller passes would never arrive. bashio runs
+# this with nounset and errexit, so every variable read here has a default,
+# and a problem with the route is logged without failing the caller: a route
+# that cannot be written must not stop the app.
 # ==============================================================================
 
 # App slug (from config.yaml)
@@ -22,8 +29,8 @@ TRAEFIK_ENTRYPOINTS=$(bashio::config 'traefik_entrypoints')
 TRAEFIK_CERTRESOLVER=$(bashio::config 'traefik_certresolver')
 
 if [ -z "${TRAEFIK_DOMAIN}" ]; then
-    bashio::log.error "traefik_domain is required when traefik_enable is true"
-    return 1 2>/dev/null || exit 1
+    bashio::log.error "traefik_domain is required when traefik_enable is true. No route written."
+    exit 0
 fi
 
 # Resolve host IP via Supervisor network info
@@ -78,8 +85,8 @@ SERVICE_PORT="${TRAEFIK_PORT:-$(bashio::app.ingress_port 2>/dev/null || echo "")
 SERVICE_SCHEME="${TRAEFIK_SCHEME:-http}"
 
 if [ -z "${SERVICE_PORT}" ]; then
-    bashio::log.error "Cannot determine service port for Traefik config"
-    return 1 2>/dev/null || exit 1
+    bashio::log.error "Cannot determine service port for Traefik config. No route written."
+    exit 0
 fi
 
 # Build the YAML config
@@ -115,7 +122,7 @@ fi
 # Handle extra routes (multi-port apps like MuninnDB)
 # Set TRAEFIK_EXTRA_ROUTES as a space-separated list of "name:port:domain" triples
 # Example: TRAEFIK_EXTRA_ROUTES="api:8475:api.example.com grpc:8477:grpc.example.com"
-if [ -n "${TRAEFIK_EXTRA_ROUTES}" ]; then
+if [ -n "${TRAEFIK_EXTRA_ROUTES:-}" ]; then
     for route in ${TRAEFIK_EXTRA_ROUTES}; do
         local_name=$(echo "${route}" | cut -d: -f1)
         local_port=$(echo "${route}" | cut -d: -f2)

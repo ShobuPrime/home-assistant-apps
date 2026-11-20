@@ -85,10 +85,9 @@ ln -sf /data/dockhand /opt/dockhand/data
 if bashio::config.true 'traefik_enable'; then
     # The route goes to Dockhand's own port as the host publishes it. The
     # script's default is the ingress port, which is the panel's adapter here
-    # and is not published. S6_KEEP_ENV: the script starts through
-    # with-contenv, which otherwise drops what is passed here.
+    # and is not published.
     traefik_port="$(bashio::app.port 3000 2>/dev/null || true)"
-    S6_KEEP_ENV=1 TRAEFIK_PORT="${traefik_port:-3000}" /usr/local/bin/generate-traefik-config.sh
+    TRAEFIK_PORT="${traefik_port:-3000}" /usr/local/bin/generate-traefik-config.sh
 else
     rm -f /share/traefik/dynamic/dockhand.yml
 fi

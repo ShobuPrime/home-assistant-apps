@@ -180,9 +180,7 @@ Set by the service script: `PORT`, `HOST`, `DATA_DIR`, `PUID`, `PGID`, `HOME`,
 ### Traefik
 `generate-traefik-config.sh` routes to the ingress port by default. Here that
 is the adapter, which is not published, so cont-init passes `TRAEFIK_PORT`:
-the host port of 3000. It also sets `S6_KEEP_ENV=1` for that call: the script
-starts through `with-contenv`, which empties the environment first, so a
-variable passed without it never arrives.
+the host port of 3000.
 
 ### Testing Checklist
 - Build completes
