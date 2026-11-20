@@ -1,15 +1,22 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
+	"net/url"
+	"sort"
+	"strings"
 )
 
 // excludeFromPrune adds label!=<key> to a prune's filters, so that it spares
 // Home Assistant's objects. Hiding does nothing for a prune: dockerd decides
 // what is unused, and a stopped app has no container, so its image is unused
-// by definition. It reports false when it has answered the request itself.
-func excludeFromPrune(w http.ResponseWriter, r *http.Request, key string) bool {
+// by definition. list is the endpoint that lists what this prune removes. It
+// reports false when it has answered the request itself.
+func (f *filter) excludeFromPrune(w http.ResponseWriter, r *http.Request, list, key string) bool {
 	// dockerd reads a form body too and prefers it to the query string, so
 	// decide on both and send neither: only the query built here goes on.
 	if err := r.ParseForm(); err != nil {
@@ -25,12 +32,28 @@ func excludeFromPrune(w http.ResponseWriter, r *http.Request, key string) bool {
 		writeError(w, http.StatusBadRequest, "invalid filter: "+err.Error())
 		return false
 	}
-	if len(filters["label!"]) > 0 {
-		// dockerd reads several label! values as "has all of them", so
-		// adding one here would spare less than either does alone.
-		writeError(w, http.StatusBadRequest,
-			"ha-docker-filter: this prune has a label! filter of its own, which dockerd cannot combine with the one that spares Home Assistant ("+key+")")
-		return false
+	if own := filters["label!"]; len(own) > 0 {
+		// dockerd reads several label! values as "has all of them", so the
+		// tool's and this one together would spare less than either alone.
+		// The tool's can go when nothing carries them: they spare nothing
+		// then. Otherwise both cannot be kept, and nothing is pruned.
+		n, err := f.carrying(r.Context(), list, own)
+		if err != nil {
+			log.Printf("%s %s: %v", r.Method, r.URL.Path, err)
+			writeError(w, http.StatusBadGateway, "ha-docker-filter: "+err.Error())
+			return false
+		}
+		if n > 0 {
+			names := make([]string, 0, len(own))
+			for name := range own {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			writeError(w, http.StatusConflict, fmt.Sprintf(
+				"ha-docker-filter: nothing was pruned. This prune keeps what is labelled %s, and %d of the %s carry that. Docker cannot keep those and Home Assistant's in one prune.",
+				strings.Join(names, " and "), n, strings.TrimSuffix(strings.TrimPrefix(list, "/"), "/json")))
+			return false
+		}
 	}
 	filters["label!"] = map[string]bool{key: true}
 	encoded, _ := json.Marshal(filters)
@@ -38,6 +61,34 @@ func excludeFromPrune(w http.ResponseWriter, r *http.Request, key string) bool {
 	r.URL.RawQuery = query.Encode()
 	dropBody(r)
 	return true
+}
+
+// carrying counts what a list endpoint returns for label=<labels>. dockerd
+// matches a list's label and a prune's label! the same way, so this is what
+// a prune with label!=<labels> would spare.
+func (f *filter) carrying(ctx context.Context, list string, labels map[string]bool) (int, error) {
+	encoded, _ := json.Marshal(map[string]map[string]bool{"label": labels})
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"http://docker"+list+"?all=1&filters="+url.QueryEscape(string(encoded)), nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := f.docker.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	body, err := readBody(resp)
+	if err != nil {
+		return 0, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("%s answered %d", list, resp.StatusCode)
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(body, &items); err != nil {
+		return 0, fmt.Errorf("%s: %w", list, err)
+	}
+	return len(items), nil
 }
 
 // parseFilters reads dockerd's filters parameter in both of its forms:

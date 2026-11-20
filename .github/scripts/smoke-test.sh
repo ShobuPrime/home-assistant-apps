@@ -1036,10 +1036,22 @@ case "${SLUG}" in
         ARCANE_DOCKER=$(docker logs "${CONTAINER_NAME}" 2>&1 | sed -n 's/.*DOCKER_HOST: \(unix:[^ ]*\).*/\1/p' | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')
         FILTER_UID=$(in_app sh -c "stat -c %u /proc/\$(${FILTER_PID})" 2>/dev/null || true)
         SOCK_MODE=$(in_app stat -c '%a' "${FILTER_SOCK}" 2>/dev/null || true)
-        if [ "${ARCANE_DOCKER}" = "unix://${FILTER_SOCK}" ] && [ "${FILTER_UID}" = "65534" ] && [ "${SOCK_MODE}" = "660" ]; then
+        if [ "${ARCANE_DOCKER}" = "unix://${FILTER_SOCK}" ] && [ -n "${FILTER_UID}" ] && [ "${FILTER_UID}" != "0" ] && [ "${SOCK_MODE}" = "660" ]; then
             pass "Arcane reaches Docker through ha-docker-filter, which runs unprivileged"
         else
             fail "Arcane was started with DOCKER_HOST '${ARCANE_DOCKER:-unset}', the filter runs as uid '${FILTER_UID:-none}', its socket has mode '${SOCK_MODE:-none}'"
+        fi
+        # The panel's proxy answers requests from outside and has no business
+        # with Docker. Its user must not get there through the filter either,
+        # which it would if the two shared a user.
+        PROXY_UID=$(in_app sh -c "stat -c %u /proc/\$(pgrep -o -f ^/usr/bin/ha-arcane-ingress)" 2>/dev/null || true)
+        as_proxy() { docker exec -u "${PROXY_UID}" "${CONTAINER_NAME}" curl -s --max-time 5 --unix-socket "$1" http://docker/_ping 2>/dev/null || true; }
+        if [ -n "${PROXY_UID}" ] && [ "${PROXY_UID}" != "0" ] && [ "${PROXY_UID}" != "${FILTER_UID}" ] \
+            && [ "$(docker_api "${FILTER_SOCK}" /_ping)" = "OK" ] \
+            && [ "$(as_proxy "${FILTER_SOCK}")" != "OK" ] && [ "$(as_proxy /run/docker.sock)" != "OK" ]; then
+            pass "The panel proxy's user (uid ${PROXY_UID}) cannot reach Docker, through the filter or directly"
+        else
+            fail "The panel's proxy runs as uid '${PROXY_UID:-none}' (the filter as '${FILTER_UID:-none}') and gets '$(as_proxy "${FILTER_SOCK}")' from the filter, '$(as_proxy /run/docker.sock)' from Docker"
         fi
 
         RAW_LIST=$(docker_api /run/docker.sock '/containers/json?all=1')
@@ -1106,13 +1118,27 @@ case "${SLUG}" in
         # these two containers, wherever this runs.
         docker create --name "${HIDE_PREFIX}-stopped-app" --label smoke-test-prune=1 --label supervisor_managed= "${PLAIN_IMAGE}" true > /dev/null
         docker create --name "${HIDE_PREFIX}-stopped-mine" --label smoke-test-prune=1 "${PLAIN_IMAGE}" true > /dev/null
-        in_app curl -s -o /dev/null --max-time 30 -X POST --unix-socket "${FILTER_SOCK}" \
-            'http://docker/containers/prune?filters=%7B%22label%22%3A%5B%22smoke-test-prune%3D1%22%5D%7D'
-        AFTER_PRUNE=$(docker ps -a --filter label=smoke-test-prune=1 --format '{{.Names}}' | sort | tr '\n' ' ')
-        if [ "${AFTER_PRUNE}" = "${HIDE_PREFIX}-stopped-app " ]; then
+        prune_through_filter() {
+            in_app curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X POST --unix-socket "${FILTER_SOCK}" -G \
+                --data-urlencode "filters=$1" http://docker/containers/prune
+        }
+        left_after_prune() { docker ps -a --filter label=smoke-test-prune=1 --format '{{.Names}}' | sort | tr '\n' ' '; }
+        # A tool may exclude by a label of its own. dockerd cannot keep that
+        # and the Supervisor's together, so when something carries the tool's
+        # label nothing is pruned...
+        PRUNE_CODE=$(prune_through_filter '{"label":["smoke-test-prune=1"],"label!":["smoke-test-prune=1"]}')
+        if [ "${PRUNE_CODE}" = "409" ] && [ "$(left_after_prune)" = "${HIDE_PREFIX}-stopped-app ${HIDE_PREFIX}-stopped-mine " ]; then
+            pass "A prune that keeps by a label of its own, which containers carry, is refused and removes nothing"
+        else
+            fail "A prune with its own label! in use: HTTP ${PRUNE_CODE}, left: '$(left_after_prune)' (want 409 and both containers)"
+        fi
+        # ...and when nothing does, the tool's exclusion spares nothing and
+        # gives way to the Supervisor's.
+        PRUNE_CODE=$(prune_through_filter '{"label":["smoke-test-prune=1"],"label!":["smoke-test-nothing-has-this"]}')
+        if [ "${PRUNE_CODE}" = "200" ] && [ "$(left_after_prune)" = "${HIDE_PREFIX}-stopped-app " ]; then
             pass "A container prune through the filter spares the Supervisor's stopped container"
         else
-            fail "After a container prune through the filter these are left: '${AFTER_PRUNE}' (want only ${HIDE_PREFIX}-stopped-app)"
+            fail "After a container prune through the filter (HTTP ${PRUNE_CODE}) these are left: '$(left_after_prune)' (want only ${HIDE_PREFIX}-stopped-app)"
         fi
 
         # Arcane has no Docker without the filter, and its own health would not

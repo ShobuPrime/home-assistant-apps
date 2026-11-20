@@ -35,7 +35,7 @@ The update script fetches the latest release from GitHub and updates all relevan
 - **`/rootfs/etc/cont-init.d/`**: S6 initialization scripts that run on container start
 - **`/rootfs/etc/services.d/arcane/`**: Service definition with `run` script and `finish` handler
 - **`/rootfs/etc/services.d/arcane-ingress/`**: runs `ha-arcane-ingress` as `nobody`
-- **`/rootfs/etc/services.d/arcane-filter/`**: runs `ha-docker-filter` as `nobody` when `hide_hassio_containers` is on
+- **`/rootfs/etc/services.d/arcane-filter/`**: runs `ha-docker-filter` under a user of its own when `hide_hassio_containers` is on
 - **`/ha-docker-filter/`**: the filter between Arcane and the Docker socket (Go, stdlib only)
 - **`/ha-arcane-ingress/`**: the ingress proxy (Go, stdlib only) and `shim.js`, the script it adds to Arcane's page
 - **`/tests/ingress_test.py`**: opens the panel in a real browser behind a stand-in for Home Assistant
@@ -153,7 +153,7 @@ Home Assistant's containers from the user's".
 |---|---|
 | `GET /containers/json`, `/images/json`, `/system/df` | removes hidden entries and counts the totals again |
 | `GET /events` | drops records about hidden containers |
-| `POST /containers/prune`, `/images/prune` | adds one `label!`, so the prune spares them |
+| `POST /containers/prune`, `/images/prune` | sends exactly one `label!`, its own, so the prune spares them |
 | `POST /containers/{id}/start` and the other verbs without a body | sends them with no body |
 | everything else | nothing: exec, attach, logs, builds and compose pass as they are |
 
@@ -170,8 +170,12 @@ What decided the design:
   The health check pings Docker through the filter.
 - **Lists are filtered in the answer, prunes in the request.** dockerd has no
   negative label filter for a list. For a prune it has one, but several
-  `label!` values mean "has all of them", so the filter adds exactly one and
-  refuses a prune that brings its own.
+  `label!` values mean "has all of them", so the filter sends exactly one. A
+  prune that brings its own is asked what carries that label: nothing, and the
+  tool's exclusion spares nothing, so it gives way; something, and both cannot
+  be kept, so the prune is refused (409) and says why.
+- **The filter has a user to itself.** Its socket is the Docker socket to
+  whoever may open it. The panel's proxy runs as `nobody` and must not.
 - **A kept entry is never re-encoded.** Sizes are 64-bit, and a JSON round trip
   rounds them.
 - **Fail closed.** A list that cannot be read becomes a 502, never an

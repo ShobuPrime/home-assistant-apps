@@ -13,10 +13,13 @@ fi
 
 # Arcane keeps exactly the group of the socket it is pointed at, so the
 # filter's socket gets the real socket's group. That group is also all the
-# filter needs to reach Docker, so it does not run as root.
+# filter needs to reach Docker, so it does not run as root. It has a user to
+# itself: whoever shares it reaches Docker through its socket, and the
+# panel's proxy, which runs as nobody, must not.
+readonly RUN_AS=65532
 gid="$(stat -c %g /run/docker.sock)"
 mkdir -p "${DIR}"
-chown "nobody:${gid}" "${DIR}"
+chown "${RUN_AS}:${gid}" "${DIR}"
 chmod 0750 "${DIR}"
-exec s6-applyuidgid -u 65534 -g "${gid}" -G "${gid}" \
+exec s6-applyuidgid -u "${RUN_AS}" -g "${gid}" -G "${gid}" \
     /usr/bin/ha-docker-filter -listen "${DIR}/docker.sock" -upstream /run/docker.sock -gid "${gid}"

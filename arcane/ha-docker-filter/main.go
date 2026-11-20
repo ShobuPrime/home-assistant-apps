@@ -127,11 +127,11 @@ func (f *filter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && rt == "/events":
 		rewrite = eventStream
 	case r.Method == http.MethodPost && rt == "/containers/prune":
-		if !excludeFromPrune(w, r, containerPruneLabel) {
+		if !f.excludeFromPrune(w, r, "/containers/json", containerPruneLabel) {
 			return
 		}
 	case r.Method == http.MethodPost && rt == "/images/prune":
-		if !excludeFromPrune(w, r, imagePruneLabel) {
+		if !f.excludeFromPrune(w, r, "/images/json", imagePruneLabel) {
 			return
 		}
 	case r.Method == http.MethodPost && lifecycle.MatchString(rt):

@@ -106,9 +106,9 @@ func (d *dockerd) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprint(w, "OK")
 	case p == "/containers/json":
-		fmt.Fprintln(w, jsonArray(allContainers...))
+		fmt.Fprintln(w, jsonArray(withLabels(allContainers, r)...))
 	case p == "/images/json":
-		fmt.Fprintln(w, jsonArray(allImages...))
+		fmt.Fprintln(w, jsonArray(withLabels(allImages, r)...))
 	case p == "/system/df":
 		fmt.Fprintln(w, diskUsageAnswer)
 	case strings.HasSuffix(p, "/prune"):
@@ -126,6 +126,32 @@ func (d *dockerd) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintln(w, `{"message":"page not found"}`)
 	}
+}
+
+// withLabels applies a list's label filter the way dockerd does: an element
+// stays when it has every label asked for.
+func withLabels(elements []string, r *http.Request) []string {
+	filters, _ := parseFilters(r.URL.Query().Get("filters"))
+	if len(filters["label"]) == 0 {
+		return elements
+	}
+	var kept []string
+	for _, raw := range elements {
+		var e struct{ Labels map[string]string }
+		json.Unmarshal([]byte(raw), &e)
+		has := true
+		for want := range filters["label"] {
+			name, value, valued := strings.Cut(want, "=")
+			got, ok := e.Labels[name]
+			if !ok || (valued && got != value) {
+				has = false
+			}
+		}
+		if has {
+			kept = append(kept, raw)
+		}
+	}
+	return kept
 }
 
 const diskUsageAnswer = `{"LayersSize":123456789012345678,` +
@@ -432,13 +458,37 @@ func TestPrune(t *testing.T) {
 	if f := sentFilters(); !f["until"]["99h"] || f["until"]["1h"] || !f["label!"]["supervisor_managed"] {
 		t.Errorf("prune with a form body: dockerd got %v, want the body's filters plus the exclusion", f)
 	}
-	// A second label! would spare less, so such a prune is refused, not sent.
-	before := d.count("/images/prune")
-	status, body := post("/images/prune?filters="+enc(`{"label!":{"keep":true}}`), "", "")
-	if status != http.StatusBadRequest || !strings.Contains(body, `"message"`) || d.count("/images/prune") != before {
-		t.Errorf("prune with its own label!: got %d %q, sent on: %v", status, body, d.count("/images/prune") != before)
+	// A label! of the tool's own that nothing carries spares nothing, so it
+	// gives way to the exclusion. Both together would spare less than either.
+	post("/images/prune?filters="+enc(`{"dangling":{"false":true},"label!":{"keep=yes":true}}`), "", "")
+	if f := sentFilters(); len(f["label!"]) != 1 || !f["label!"]["io.hass.type"] || !f["dangling"]["false"] {
+		t.Errorf("image prune with a label! nothing carries: dockerd got %v, want the exclusion alone", f)
 	}
-	status, _ = post("/containers/prune?filters=%7Bnot-json", "", "")
+	post("/containers/prune?filters="+enc(`{"label!":["note=other","com.docker.compose.project=mine"]}`), "", "")
+	if f := sentFilters(); len(f["label!"]) != 1 || !f["label!"]["supervisor_managed"] {
+		t.Errorf("container prune with a label! pair no container has in full: dockerd got %v", f)
+	}
+	// One that something carries cannot be kept together with the exclusion:
+	// the prune is refused and says why.
+	for _, c := range []struct{ target, filters, names string }{
+		{"/images/prune", `{"label!":{"maintainer=x":true}}`, "maintainer=x, and 1 of the images carry"},
+		{"/containers/prune", `{"label!":{"note":true,"com.docker.compose.project=mine":true}}`, "com.docker.compose.project=mine and note, and 1 of the containers carry"},
+	} {
+		before := d.count(c.target)
+		status, body := post(c.target+"?filters="+enc(c.filters), "", "")
+		if status != http.StatusConflict || !strings.Contains(body, c.names) || d.count(c.target) != before {
+			t.Errorf("%s with a label! something carries: got %d %q, sent on: %v", c.target, status, body, d.count(c.target) != before)
+		}
+	}
+	// Not knowing what carries it is no reason to let the prune through.
+	d.mu.Lock()
+	d.answer["/images/json"] = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusInternalServerError) }
+	d.mu.Unlock()
+	before := d.count("/images/prune")
+	if status, _ := post("/images/prune?filters="+enc(`{"label!":{"keep=yes":true}}`), "", ""); status != http.StatusBadGateway || d.count("/images/prune") != before {
+		t.Errorf("image prune when the list cannot be read: got %d, sent on: %v", status, d.count("/images/prune") != before)
+	}
+	status, _ := post("/containers/prune?filters=%7Bnot-json", "", "")
 	if status != http.StatusBadRequest {
 		t.Errorf("unreadable filters: got %d, want 400", status)
 	}
