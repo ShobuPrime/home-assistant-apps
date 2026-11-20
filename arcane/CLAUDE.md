@@ -18,22 +18,16 @@ docker run --rm -it -p 3552:3552 -p 3553:3553 -v /var/run/docker.sock:/var/run/d
 ```
 
 ### Version Management
+The bot does it every day (`.github/workflows/update-arcane.yml`). The same check by hand, from this directory:
 ```bash
-# Check for Arcane updates
-./update-arcane-version.sh --check-only
-
-# Apply update with confirmation
-./update-arcane-version.sh --yes
-
-# Get JSON output for automation
-./update-arcane-version.sh --check-only --json
+APP_PATH=. CHECK_ONLY=true JSON_OUTPUT=true bash ../.github/scripts/update-arcane.sh
 ```
 
 ## Arcane Version Scheme
 
 Arcane uses semantic versioning: `v[MAJOR].[MINOR].[PATCH]`
 
-The update script fetches the latest release from GitHub and updates all relevant files. Unlike Portainer, Arcane does not have separate LTS/STS tracks - it follows a single release stream.
+The update script fetches the latest release from GitHub and updates all relevant files. Arcane follows a single release stream.
 
 ## Architecture and Key Components
 
@@ -41,6 +35,8 @@ The update script fetches the latest release from GitHub and updates all relevan
 - **`/rootfs/etc/cont-init.d/`**: S6 initialization scripts that run on container start
 - **`/rootfs/etc/services.d/arcane/`**: Service definition with `run` script and `finish` handler
 - **`/rootfs/etc/services.d/arcane-ingress/`**: runs `ha-arcane-ingress` as `nobody`
+- **`/rootfs/etc/services.d/arcane-filter/`**: runs `ha-docker-filter` as `nobody` when `hide_hassio_containers` is on
+- **`/ha-docker-filter/`**: the filter between Arcane and the Docker socket (Go, stdlib only)
 - **`/ha-arcane-ingress/`**: the ingress proxy (Go, stdlib only) and `shim.js`, the script it adds to Arcane's page
 - **`/tests/ingress_test.py`**: opens the panel in a real browser behind a stand-in for Home Assistant
 - **`/tests/upstream_paths.py`**: reads Arcane's default paths out of its binary and checks the image provides them
@@ -144,6 +140,57 @@ Arcane 3 reads only `ARCANE_`-prefixed names (`services.d/arcane/run`):
 Legacy names are every `ARCANE_*` setting with the prefix removed, so check a
 new base-image variable against that list.
 
+## Hiding what Home Assistant manages
+
+Arcane has no setting for it. Its one hide mechanism is a label that has to
+sit on the hidden container (`com.getarcaneapp.arcane.hidden`), and Arcane
+does not create Home Assistant's. So with `hide_hassio_containers` on, Arcane
+reaches Docker through `ha-docker-filter`, which `DOCKER_HOST` points at. The
+rule is in `ha-docker-filter/rule.go` and in the root `CLAUDE.md`, "Telling
+Home Assistant's containers from the user's".
+
+| Request | What the filter does |
+|---|---|
+| `GET /containers/json`, `/images/json`, `/system/df` | removes hidden entries and counts the totals again |
+| `GET /events` | drops records about hidden containers |
+| `POST /containers/prune`, `/images/prune` | adds one `label!`, so the prune spares them |
+| `POST /containers/{id}/start` and the other verbs without a body | sends them with no body |
+| everything else | nothing: exec, attach, logs, builds and compose pass as they are |
+
+It hides, it does not enforce: by ID a hidden container still answers. Arcane
+acts only on what it has listed, so Update All, auto-update, auto-heal and the
+scheduled prune, which plans from `/system/df`, no longer reach them.
+
+What decided the design:
+
+- **Arcane takes the group of the socket it is pointed at, once, at start.**
+  The filter's socket gets the real socket's group and has to exist first. The
+  run script waits for it and does not start Arcane without it.
+- **No fallback to the real socket.** Everything would be back with no sign.
+  The health check pings Docker through the filter.
+- **Lists are filtered in the answer, prunes in the request.** dockerd has no
+  negative label filter for a list. For a prune it has one, but several
+  `label!` values mean "has all of them", so the filter adds exactly one and
+  refuses a prune that brings its own.
+- **A kept entry is never re-encoded.** Sizes are 64-bit, and a JSON round trip
+  rounds them.
+- **Fail closed.** A list that cannot be read becomes a 502, never an
+  unfiltered list.
+- **Reviewed for Docker Engine API 1.56.** A list endpoint added later would
+  pass unfiltered. The filter's start line says when dockerd is newer.
+
+Not protected: an image without an `io.hass.type` label that only a stopped
+app uses, and the build cache, which has no owner.
+
+Arcane's helper containers (vulnerability scans) do not start in this app,
+with the option on or off: Arcane cannot map its socket path to a path on the
+host (`failed to resolve socket path`). Checked 2026-11-20 on both; this
+change does not touch it.
+
+Tests: `go test ./...` in `ha-docker-filter/` against a stand-in dockerd, and
+the smoke test, which reads the same list from the raw socket (the control),
+through the filter and from Arcane's own API, then kills the filter.
+
 ### Upstream's paths
 Arcane's defaults point at two directories its own image provides. This image
 provides the same two:
@@ -201,7 +248,7 @@ nothing to wait for. Not changed here.
 - Docker containers visible in Arcane
 - Configuration changes apply correctly
 - Data persists in `/data/arcane` across restarts
-- Update script correctly identifies latest version
+- With `hide_hassio_containers` on, Arcane lists none of the containers Home Assistant manages
 
 ## Important Notes
 
@@ -248,10 +295,12 @@ nothing to wait for. Not changed here.
 2. Verify `/data/arcane` has proper permissions
 3. If corrupted, delete `arcane.db` and restart (will lose settings)
 
-### Issue: Container Labels Not Working
+### Issue: Arcane Has No Docker ("Cannot connect to the Docker daemon")
 
 **Symptoms:**
-- `hide_hassio_containers` option not taking effect
+- Arcane starts late or not at all, and the log says `ha-docker-filter did not start within 30s`
+- The container is reported unhealthy while Arcane's own page loads
 
-**Note:**
-This feature may require additional implementation in the run script to pass labels to Arcane, as Arcane may not support the same label filtering as Portainer.
+**Solution:**
+1. Read the `ha-docker-filter:` lines in the app log: it says what it serves and why it stopped
+2. Turning `hide_hassio_containers` off takes the filter out of the path

@@ -9,6 +9,14 @@ COPY ha-arcane-ingress/go.mod ha-arcane-ingress/*.go ha-arcane-ingress/shim.js .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ha-arcane-ingress . \
     && test -x /ha-arcane-ingress
 
+# ha-docker-filter: keeps Home Assistant's containers out of what Arcane lists
+# (ha-docker-filter/main.go).
+FROM mirror.gcr.io/library/golang:1.27.3-alpine AS filter-builder
+WORKDIR /src
+COPY ha-docker-filter/go.mod ha-docker-filter/*.go ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ha-docker-filter . \
+    && test -x /ha-docker-filter
+
 FROM $BUILD_FROM
 
 # Build arguments for version
@@ -65,6 +73,7 @@ RUN \
 RUN mkdir -p /app /builds && ln -s /data/arcane/data /app/data
 
 COPY --from=ingress-builder /ha-arcane-ingress /usr/bin/ha-arcane-ingress
+COPY --from=filter-builder /ha-docker-filter /usr/bin/ha-docker-filter
 
 # Copy root filesystem
 COPY rootfs /
@@ -73,7 +82,7 @@ COPY rootfs /
 RUN chmod a+x /etc/cont-init.d/*.sh \
     && chmod a+x /etc/services.d/*/run \
     && chmod a+x /etc/services.d/*/finish \
-    && chmod a+x /usr/share/arcane/*.sh
+    && chmod a+x /usr/share/arcane/*.sh /usr/bin/arcane-health
 
 # Build arguments
 ARG BUILD_ARCH
@@ -84,12 +93,11 @@ ARG BUILD_REF
 ARG BUILD_REPOSITORY
 ARG BUILD_VERSION
 
-# Labels
 # Healthcheck — Supervisor reads this to gate the STARTUP -> STARTED state
 # transition (yellow -> green dot in the HA UI) on the app actually being
 # reachable, instead of just on the container being up.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -fs http://127.0.0.1:3552/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD /usr/bin/arcane-health
 
 LABEL \
     io.hass.name="${BUILD_NAME}" \

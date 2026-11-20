@@ -1,0 +1,10 @@
+#!/bin/sh
+# The container's health check (HEALTHCHECK in the Dockerfile).
+curl -fs -o /dev/null http://127.0.0.1:3552/api/health || exit 1
+
+# With hide_hassio_containers on, Arcane reaches Docker only through
+# ha-docker-filter. s6 restarts the filter when it dies; this is for the case
+# where it does not come back, which Arcane's own health would not show.
+if [ -d /run/docker-filter ]; then
+    curl -fs -o /dev/null --max-time 4 --unix-socket /run/docker-filter/docker.sock http://docker/_ping || exit 1
+fi

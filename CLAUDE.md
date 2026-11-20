@@ -468,6 +468,14 @@ The smoke test starts every app with that label, as the Supervisor does, and
 reads Portainer's list through its API, with stand-in containers and a control
 on the raw socket.
 
+Where a tool has no filter of its own, `ha-docker-filter` goes between it and
+the Docker socket, inside the app (`arcane/ha-docker-filter`). It removes
+hidden entries from the container, image and disk-usage lists and from the
+event stream, and adds one `label!` to a container or image prune. Hiding
+does nothing for a prune: dockerd decides what is unused, and a stopped app
+has no container, so its image is unused by definition. `arcane/CLAUDE.md`,
+"Hiding what Home Assistant manages", has the design and its limits.
+
 ## Home Assistant Core is NOT running when your app's init script runs
 
 Supervisor starts apps in stages and Core starts *between* them
@@ -540,7 +548,7 @@ build, run, wait for health, `docker stop`, check exit code and grep for
 | `portainer_ee_lts` | 3.0s | clean | 10 (default) | Re-measured 2026-07-31 with the nginx socket shim added. |
 | `portainer_ee_sts` | 3.0s | clean | 10 (default) | Re-measured 2026-07-31 with the nginx socket shim added. |
 | `dockhand` | 3.6s | clean | 10 (default) | |
-| `arcane` | 4.4s | clean | 10 (default) | Re-measured 2026-11-19 with the ingress proxy added. |
+| `arcane` | 3-4s | clean | 10 (default) | Re-measured 2026-11-20 with the socket filter added. |
 | `muninndb` | 3.7s | clean | **120** | Empty DB; shutdown backup ran in 126ms. |
 | `dockge` | 5.6s | clean | 10 (default) | |
 | `huly` | 24-25s | clean | **120** | Also backup downtime (`backup: cold`). |
