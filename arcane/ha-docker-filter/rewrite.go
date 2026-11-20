@@ -237,9 +237,9 @@ func encodeObject(members []member) []byte {
 
 // diskUsage filters GET /system/df. dockerd sends two shapes, and below API
 // 1.52 or without verbose=1 both at once: the lists Containers and Images,
-// and ContainerUsage and ImageUsage with counters over their Items. Arcane's
-// scheduled prune plans from this answer and removes by ID, so a hidden
-// entry left in it is an entry that can be pruned.
+// and ContainerUsage and ImageUsage with counters over their Items. A tool
+// may plan a prune from this answer and remove by ID, so a hidden entry left
+// in it is an entry that can be pruned.
 func (f *filter) diskUsage(resp *http.Response) error {
 	body, err := readBody(resp)
 	if err != nil {
