@@ -11,6 +11,7 @@ _2026-11-20_
 - If you keep images with the label `dockhand.prune=false`, "prune unused images" is refused while the option is on, with a message that says why. See the documentation.
 - An environment whose socket path is `/run/docker.sock` goes round the option; the log names it at start. Dockhand's default, `/var/run/docker.sock`, does not.
 - If you are coming from 1.0.58, its notes are below and not shown here. In short: the sidebar panel works, stacks can be deployed, and the `port` option is gone. To reach Dockhand on another port, change the host port under the app's Network settings.
+- **With `traefik_enable` on, Dockhand starts again, and the route leads to Dockhand.** The shared route helper stopped on a variable that was not set, and since bashio runs scripts strictly, that stopped the app. The route also named the ingress port, which is the panel's adapter now and is not published; it names Dockhand's own port as the host publishes it.
 
 Same Dockhand as 1.0.58.
 

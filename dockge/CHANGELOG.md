@@ -9,6 +9,7 @@ _2026-11-20_
 - **A stack's relative folders (`./config`) are mounted from the stack's folder.** Docker looks for them on the host, so the app gives Dockge the host's name for its data folder.
 - **The sidebar panel works.** Dockge's page asked for its files and its connection from the site root, which under the sidebar is Home Assistant itself. A small adapter now serves the panel. Dockge's own port is unchanged.
 - **`hide_hassio_containers` does what it says.** It had no effect. Compose projects whose containers Home Assistant manages are now left out of Dockge's list. An app marks the containers it starts for itself with `io.github.shobuprime.app-managed=true`.
+- **With `traefik_enable` on, Dockge starts again, and the route leads to Dockge.** The shared route helper stopped on a variable that was not set, and since bashio runs scripts strictly, that stopped the app. The route names Dockge's own port as the host publishes it.
 
 Same Dockge as 1.5.0.
 

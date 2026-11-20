@@ -5,6 +5,7 @@
 _2026-11-20_
 
 - The containers of the stack are labelled `io.github.shobuprime.app-managed=true`. A Docker manager that goes by this label leaves them out of its lists: they are this app's to start and stop, and stopping one from outside breaks Huly.
+- **With `traefik_enable` on, Huly starts again.** The shared route helper stopped on a variable that was not set, and since bashio runs scripts strictly, that stopped the app.
 
 Same Huly as 0.7.426. The label is applied the next time the stack starts.
 
