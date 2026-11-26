@@ -1,6 +1,6 @@
 # Global ARGs must be declared before the first FROM
 ARG BUILD_FROM
-ARG LEMONADE_VERSION=2026.47.1
+ARG LEMONADE_VERSION=2026.48.3
 
 # ---------------------------------------------------------------------------
 # Stage 0: Fetch Lemonade

@@ -1,5 +1,89 @@
 # Changelog
 
+## 2026.48.3
+
+_2026-11-26_
+
+## Headline
+
+- Better Ollama compatibility: /api/generate passes images and audio through to the model, /api/show reports speech, decision and audio capabilities and resolves model aliases, and models that can't chat or generate get a clear 400 error instead of a failed load.
+- New image models on TheNoise v0.15.0: MOSS-Image and H3-Image.
+- Automatic context sizing no longer falls back to 4K context when it misreads available memory.
+- FLM NPU backend updated to v1.0.13, with embedding models working on it.
+- llama.cpp updated to b12233, ROCm stable to b12223 and ROCm nightly to b1372.
+
+## Breaking Changes
+
+- /api/chat and /api/generate return HTTP 400 instead of 500 for models that can't chat or generate (image generation, embedding and reranking models).
+- GET /pull/variants returns HTTP 400 instead of 500 when a repository has no supported model files.
+- The TheNoise backend moves from v0.12.1 to v0.15.0, which may change output or memory use for existing image models.
+
+## Lemonade Server
+
+| Operating System | Downloads |
+|------------------|-----------|
+| **Windows** | [lemonade.msi](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade.msi) |
+| **Ubuntu 24.04+** | [Launchpad PPA](https://launchpad.net/~lemonade-team/+archive/ubuntu/stable) |
+| **Debian 13 (x86_64)** | [lemonade-server_2026.48.3-debian13_amd64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-server_2026.48.3-debian13_amd64.deb) |
+| **Debian 13 (ARM64)** | [lemonade-server_2026.48.3-debian13_arm64.deb](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-server_2026.48.3-debian13_arm64.deb) |
+| **Fedora 43 (x86_64)** | [lemonade-server-2026.48.3-fc43.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-server-2026.48.3-fc43.x86_64.rpm) |
+| **Fedora 43 (ARM64)** | [lemonade-server-2026.48.3-fc43.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-server-2026.48.3-fc43.aarch64.rpm) |
+| **Fedora 44 (x86_64)** | [lemonade-server-2026.48.3-fc44.x86_64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-server-2026.48.3-fc44.x86_64.rpm) |
+| **Fedora 44 (ARM64)** | [lemonade-server-2026.48.3-fc44.aarch64.rpm](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-server-2026.48.3-fc44.aarch64.rpm) |
+| **macOS** | [Lemonade-2026.48.3-Darwin.pkg](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/Lemonade-2026.48.3-Darwin.pkg) |
+
+> **Other platforms?** See our [Installation Options](https://lemonade-server.ai/docs/guide/install/) for [Docker](https://lemonade-server.ai/docs/guide/install/docker/), [Snap](https://lemonade-server.ai/docs/guide/install/ubuntu/#__tabbed_2_3), [Arch](https://lemonade-server.ai/docs/guide/install/arch/), [Debian](https://lemonade-server.ai/docs/guide/install/), and more.
+
+## Embeddable Lemonade
+
+Portable binaries for bundling into your own installer. Run `lemond ./` as a subprocess.
+
+| Platform | Download |
+|----------|----------|
+| **Ubuntu x64** | [lemonade-embeddable-2026.48.3-ubuntu-x64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-embeddable-2026.48.3-ubuntu-x64.tar.gz) |
+| **Ubuntu arm64** | [lemonade-embeddable-2026.48.3-ubuntu-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-embeddable-2026.48.3-ubuntu-arm64.tar.gz) |
+| **Windows x64** | [lemonade-embeddable-2026.48.3-windows-x64.zip](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-embeddable-2026.48.3-windows-x64.zip) |
+| **macOS arm64** | [lemonade-embeddable-2026.48.3-macos-arm64.tar.gz](https://github.com/lemonade-sdk/lemonade/releases/download/v2026.48.3/lemonade-embeddable-2026.48.3-macos-arm64.tar.gz) |
+
+---
+
+## What's Changed
+
+Thanks `apollo-2006`, `bitgamma`, `fl0rianr`, `github-actions`, `iswaryaalex`, `itomek`, `jeremyfowers`, `meghsat`, `sreeram-11`, `superm1` for your awesome contributions to this release!
+
+<details>
+<summary>Click to expand changelog</summary>
+
+* fix(CI): Porting the SystemOne test model to Laya from Julia by `meghsat` in https://github.com/lemonade-sdk/lemonade/pull/4156
+* repo-manager action: track lemonade-testing's runner instead of pinning by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/4151
+* Triage Dashboard Additional View by `iswaryaalex` in https://github.com/lemonade-sdk/lemonade/pull/3807
+* fix(ollama): reject models that can't chat or generate before loading them by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/4155
+* Run linux embedded build on Ubuntu 24.04 by `superm1` in https://github.com/lemonade-sdk/lemonade/pull/4140
+* feat(ollama): report speech and decision capabilities in /api/show by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/4160
+* fix(ollama): end failed /api/chat and /api/generate streams with an error line by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/4157
+* Fix TheNoise custom image model registration by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/4138
+* fix(ollama): pass images and audio through /api/generate and report audio by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/4163
+* fix(ollama): resolve model aliases in /api/show by `sreeram-11` in https://github.com/lemonade-sdk/lemonade/pull/4158
+* fix(docs): only re-commit API examples whose response shape changed by `jeremyfowers` in https://github.com/lemonade-sdk/lemonade/pull/4114
+* fix(gui): Updating the ModelScope assets to GUI3 by `meghsat` in https://github.com/lemonade-sdk/lemonade/pull/4135
+* Update llama.cpp to b12233 by `github-actions`[bot] in https://github.com/lemonade-sdk/lemonade/pull/4118
+* fix(server): Fixes the autotune falling back to 4k context on iGPU and NPUs by `meghsat` in https://github.com/lemonade-sdk/lemonade/pull/4182
+* ci: skip expensive jobs for small docs-only PRs by `fl0rianr` in https://github.com/lemonade-sdk/lemonade/pull/2889
+* fix: keep WebSocket API keys out of URLs by `itomek` in https://github.com/lemonade-sdk/lemonade/pull/4141
+* Bump TheNoise to v0.15.0, add MOSS-Image and H3-Image by `bitgamma` in https://github.com/lemonade-sdk/lemonade/pull/4187
+* server: return 400 for repos with no supported model files by `apollo-2006` in https://github.com/lemonade-sdk/lemonade/pull/3673
+
+</details>
+
+**Full Changelog**: https://github.com/lemonade-sdk/lemonade/compare/v2026.47.1...v2026.48.3
+
+---
+
+> Windows installers and embeddable binaries are signed. Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). See our [Code Signing Policy](https://github.com/lemonade-sdk/lemonade#code-signing-policy).
+
+---
+
+
 ## 2026.47.1
 
 _2026-11-18_
