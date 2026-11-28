@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.0.60
+
+_2026-11-28_
+
+### Changed
+- Updated Dockhand to version 1.0.60
+
+Released: 2026-11-28
+
+## What's new in v1.0.60
+
+- ✨ re-pull a container's image from the edit modal (#1943, PR#1943, @vgezer)
+- ✨ Bitwarden inline references with bws://<secret-UUID> (PR#1952, @tuvokian)
+- ✨ EXTRA_STACK_ROOTS authorizes stack directories kept outside DATA_DIR (#1964)
+- ✨ prune the Docker build cache from the images page and on a per-environment schedule (#1937)
+- ✨ update a service's image tag in the compose file from the version popup (#1830, PR#1961, @OlliWare)
+- ✨ Italian interface translation
+- ✨ Dutch interface translation
+- 🐛 host CPU is no longer underreported for Hawser edge environments (#1969)
+- 🐛 clears a removed git stack env override from the local .env.dockhand (#1888, PR#1949, @Totopo27)
+- 🐛 marking a variable as secret removes the stale plain-value .env from a Hawser host (#1954)
+- 🐛 batch and scheduled updates no longer fail for containers on the default bridge network (#1957, PR#1958, @raetha)
+- 🐛 newer-version count reflects the installed build, not the pinned tag (#1880)
+- 🐛 serializes concurrent scans of the same scanner type so Trivy no longer fails on database lock errors (#1970)
+- 🐛 an offline Hawser environment no longer floods the log with per-cycle connection errors (#1966, #1739)
+- 🐛 a forced stack removal warns when compose down failed and volumes may be left behind (#1968)
+- 🐛 a stack recreate no longer restarts every container afterwards, which killed network_mode: service dependents mid-startup (#1873)
+
+## Docker image
+
+```bash
+docker pull fnsys/dockhand:v1.0.60
+```
+
+Also available as `fnsys/dockhand:latest`
+
+[View on Docker Hub](https://hub.docker.com/r/fnsys/dockhand)
+
+---
+
+
 ## 1.0.59
 
 _2026-11-24_
